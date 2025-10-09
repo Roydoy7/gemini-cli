@@ -27,11 +27,13 @@ export class RoleManager {
   }
 
   getAllRoles(): RoleDefinition[] {
-    return Array.from(this.roles.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(this.roles.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }
 
   getRolesByCategory(category: RoleCategory): RoleDefinition[] {
-    return this.getAllRoles().filter(role => role.category === category);
+    return this.getAllRoles().filter((role) => role.category === category);
   }
 
   getRole(roleId: string): RoleDefinition | undefined {
@@ -45,9 +47,9 @@ export class RoleManager {
   async setCurrentRole(roleId: string): Promise<boolean> {
     const role = this.roles.get(roleId);
     if (!role) return false;
-    
+
     this.currentRole = role;
-    
+
     return true;
   }
 
@@ -57,13 +59,13 @@ export class RoleManager {
 
   removeCustomRole(roleId: string): boolean {
     if (this.isBuiltinRole(roleId)) return false;
-    
+
     const deleted = this.roles.delete(roleId);
-    
+
     if (this.currentRole.id === roleId) {
       this.currentRole = this.roles.get('software_engineer')!;
     }
-    
+
     return deleted;
   }
 
@@ -74,7 +76,7 @@ export class RoleManager {
   createRoleContext(
     roleId?: string,
     userMemory?: string,
-    additionalInstructions?: string
+    additionalInstructions?: string,
   ): RoleContext {
     const role = roleId ? this.getRole(roleId) : this.getCurrentRole();
     if (!role) {
@@ -84,7 +86,7 @@ export class RoleManager {
     return {
       role,
       userMemory,
-      additionalInstructions
+      additionalInstructions,
     };
   }
 
@@ -103,7 +105,7 @@ export class RoleManager {
   }
 
   private loadBuiltinRoles(): void {
-    Object.values(BUILTIN_ROLES).forEach(role => {
+    Object.values(BUILTIN_ROLES).forEach((role) => {
       this.roles.set(role.id, role);
     });
   }
@@ -115,10 +117,20 @@ export class RoleManager {
     config: Config,
     userMemory?: string,
     roleId?: string,
-    additionalInstructions?: string
+    additionalInstructions?: string,
   ): string {
     try {
-      const context = this.createRoleContext(roleId, userMemory, additionalInstructions);
+      // Special handling for software_engineer: use original gemini-cli system prompt
+      const effectiveRoleId = roleId || this.currentRole.id;
+      if (effectiveRoleId === 'software_engineer') {
+        return getCoreSystemPrompt(config, userMemory);
+      }
+
+      const context = this.createRoleContext(
+        roleId,
+        userMemory,
+        additionalInstructions,
+      );
       return this.generateSystemPrompt(context);
     } catch {
       // Fallback to original system prompt if role system fails
@@ -128,10 +140,16 @@ export class RoleManager {
 
   /**
    * Checks if the role system is enabled via environment variable
+   * Default: enabled (unless explicitly disabled)
    */
   isRoleSystemEnabled(): boolean {
-    return process.env['GEMINI_ROLE_SYSTEM'] !== '0' && 
-           process.env['GEMINI_ROLE_SYSTEM'] !== 'false';
+    const envValue = process.env['GEMINI_ROLE_SYSTEM'];
+    // Disable only if explicitly set to '0' or 'false'
+    if (envValue === '0' || envValue === 'false') {
+      return false;
+    }
+    // Enabled by default
+    return true;
   }
 
   /**
@@ -141,10 +159,15 @@ export class RoleManager {
     config: Config,
     userMemory?: string,
     roleId?: string,
-    additionalInstructions?: string
+    additionalInstructions?: string,
   ): string {
     if (this.isRoleSystemEnabled()) {
-      return this.getRoleAwareSystemPrompt(config, userMemory, roleId, additionalInstructions);
+      return this.getRoleAwareSystemPrompt(
+        config,
+        userMemory,
+        roleId,
+        additionalInstructions,
+      );
     }
     return getCoreSystemPrompt(config, userMemory);
   }
