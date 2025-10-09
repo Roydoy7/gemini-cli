@@ -16,7 +16,7 @@ import { StatusIndicator } from './StatusIndicator';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import ToolConfirmationMessage from './ToolConfirmationMessage';
 import { SmartVisualization } from '@/components/charts/SmartVisualization';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { useChatStore } from '@/stores/chatStore';
 import type { ChatMessage, ToolCallConfirmationDetails, ToolConfirmationOutcome, ToolCall } from '@/types';
 import { CodeHighlight } from '@/components/ui/CodeHighlight';
@@ -419,7 +419,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(({
         content: message.content
       };
       
-      await multiModelService.addCustomTemplate(template);
+      await geminiChatService.addCustomTemplate(template);
       
       // Refresh the template list in the sidebar
       if (onTemplateSaved) {

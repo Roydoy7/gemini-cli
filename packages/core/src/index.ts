@@ -13,6 +13,7 @@ export * from './policy/policy-engine.js';
 
 // Export Core Logic
 export * from './core/client.js';
+export * from './core/chatManager.js';
 export * from './core/contentGenerator.js';
 export { AuthType } from './core/contentGenerator.js';
 export * from './core/loggingContentGenerator.js';

@@ -3,7 +3,7 @@ import { Check, Bot, RefreshCw, Trash2, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { useAppStore } from '@/stores/appStore';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { cn } from '@/utils/cn';
 import type { ModelProviderType } from '@/types';
 import { AuthSettingsModal } from '@/components/settings/AuthSettingsModal';
@@ -105,13 +105,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onClose }) => {
     try {
       console.log('[ModelSelector] Checking Gemini auth...');
       
-      const status = await multiModelService.getOAuthStatus('gemini');
+      const status = await geminiChatService.getOAuthStatus('gemini');
       console.log('[ModelSelector] OAuth status:', status);
       setGeminiAuthStatus(status);
       
       // Also check for environment API key
       console.log('[ModelSelector] Checking environment API key...');
-      const envResult = await multiModelService.checkEnvApiKey('gemini');
+      const envResult = await geminiChatService.checkEnvApiKey('gemini');
       console.log('[ModelSelector] Environment API key result:', JSON.stringify(envResult, null, 2));
       console.log('[ModelSelector] Setting envApiKeyDetected to:', envResult.detected);
       setEnvApiKeyDetected(envResult.detected);
@@ -145,7 +145,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onClose }) => {
     setLoadingProvider(providerId);
     try {
       console.log(`[ModelSelector] Loading models for provider: ${providerId}`);
-      const models = await multiModelService.getAvailableModels(providerId);
+      const models = await geminiChatService.getAvailableModels(providerId);
       const providerModels = models[providerId] || [];
       console.log(`[ModelSelector] Loaded ${providerModels.length} models for ${providerId}:`, providerModels);
       
@@ -194,7 +194,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onClose }) => {
 
     setLoading(true);
     try {
-      await multiModelService.switchProvider(selectedProvider, model);
+      await geminiChatService.switchProvider(selectedProvider, model);
       setCurrentProvider(selectedProvider);
       setCurrentModel(model);
       onClose();

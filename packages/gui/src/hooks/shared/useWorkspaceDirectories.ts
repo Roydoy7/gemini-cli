@@ -1,5 +1,11 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { useState, useEffect } from 'react';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 
 export interface WorkspaceDirectoriesState {
   directories: readonly string[];
@@ -25,7 +31,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
     try {
       setLoading(true);
       setError(null);
-      const dirs = await multiModelService.getWorkspaceDirectories();
+      const dirs = await geminiChatService.getWorkspaceDirectories();
       setDirectories(dirs);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load workspace directories';
@@ -48,7 +54,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
       localStorage.setItem('active-workspace-directories', JSON.stringify(newDirectories));
       
       // Then sync to backend
-      await multiModelService.addWorkspaceDirectory(directory, basePath);
+      await geminiChatService.addWorkspaceDirectory(directory, basePath);
       console.log('Added directory to localStorage and backend:', directory);
     } catch (err) {
       // Revert UI state on error
@@ -72,7 +78,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
       localStorage.setItem('active-workspace-directories', JSON.stringify(newDirectories));
       
       // Then sync to backend
-      await multiModelService.setWorkspaceDirectories(newDirectories);
+      await geminiChatService.setWorkspaceDirectories(newDirectories);
       // console.log('Set workspace directories in localStorage and backend:', newDirectories);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to set workspace directories';
@@ -116,7 +122,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
             // Wait for service to be ready, then sync
             setTimeout(async () => {
               try {
-                await multiModelService.setWorkspaceDirectories(parsed);
+                await geminiChatService.setWorkspaceDirectories(parsed);
                 // console.log('Synced localStorage directories to backend:', parsed);
               } catch (error) {
                 console.warn('Failed to sync localStorage directories to backend (will retry):', error);
@@ -124,7 +130,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
                 // Retry after a longer delay
                 setTimeout(async () => {
                   try {
-                    await multiModelService.setWorkspaceDirectories(parsed);
+                    await geminiChatService.setWorkspaceDirectories(parsed);
                     console.log('Successfully synced localStorage directories to backend on retry');
                   } catch (retryError) {
                     console.warn('Failed to sync on retry, will use localStorage data only:', retryError);
@@ -148,10 +154,12 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
 
     // Set up real-time sync listener
     let cleanup: (() => void) | undefined;
-    
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((globalThis as any).electronAPI?.onWorkspaceDirectoriesChanged) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cleanup = (globalThis as any).electronAPI.onWorkspaceDirectoriesChanged(
-        (_event: any, data: { type: string; directories: readonly string[]; changedDirectory?: string }) => {
+        (_event: unknown, data: { type: string; directories: readonly string[]; changedDirectory?: string }) => {
           // console.log('Workspace directories changed:', data);
           setDirectories(data.directories);
           setError(null);

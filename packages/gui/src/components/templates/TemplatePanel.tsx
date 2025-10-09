@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { useAppStore } from '@/stores/appStore';
 import type { PresetTemplate } from '@/types';
 
@@ -54,7 +54,7 @@ export const TemplatePanel = forwardRef<TemplatePanelHandle, TemplatePanelProps>
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      const backendTemplates = await multiModelService.getAllTemplatesAsync();
+      const backendTemplates = await geminiChatService.getAllTemplatesAsync();
       const customTemplates = backendTemplates.filter(template => !template.isBuiltin);
       setTemplates(customTemplates);
       console.log('Templates loaded:', customTemplates.length, 'custom templates');
@@ -89,7 +89,7 @@ export const TemplatePanel = forwardRef<TemplatePanelHandle, TemplatePanelProps>
   const handleSaveEdit = async () => {
     if (editingTemplate) {
       try {
-        await multiModelService.updateCustomTemplate(editingTemplate, {
+        await geminiChatService.updateCustomTemplate(editingTemplate, {
           name: editName.trim(),
           template: editContent.trim(),
           description: editDescription.trim() || undefined,
@@ -117,7 +117,7 @@ export const TemplatePanel = forwardRef<TemplatePanelHandle, TemplatePanelProps>
 
   const handleDeleteTemplate = async (templateId: string) => {
     try {
-      await multiModelService.deleteCustomTemplate(templateId);
+      await geminiChatService.deleteCustomTemplate(templateId);
       
       // Reload templates to get updated data
       await loadTemplates();
@@ -150,7 +150,7 @@ export const TemplatePanel = forwardRef<TemplatePanelHandle, TemplatePanelProps>
         usageCount: 0
       };
       
-      await multiModelService.addCustomTemplate(templateData);
+      await geminiChatService.addCustomTemplate(templateData);
       
       // Reload templates to get updated data
       await loadTemplates();

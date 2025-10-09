@@ -3,7 +3,7 @@ import { Check, User, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { useAppStore } from '@/stores/appStore';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { cn } from '@/utils/cn';
 import type { RoleDefinition } from '@/types';
 
@@ -31,7 +31,7 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({ onClose }) => {
         if (isMounted) {
           setLoading(true);
         }
-        const allRoles = await multiModelService.getAllRolesAsync();
+        const allRoles = await geminiChatService.getAllRolesAsync();
         if (isMounted) {
           setRoles(allRoles);
         }
@@ -72,7 +72,7 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({ onClose }) => {
     setSwitching(true);
     setLoading(true);
     try {
-      const success = await multiModelService.switchRole(roleId);
+      const success = await geminiChatService.switchRole(roleId);
       if (success) {
         setCurrentRole(roleId);
         onClose();

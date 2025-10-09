@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAppStore } from '@/stores/appStore';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { X, Key, User, CheckCircle, AlertTriangle } from 'lucide-react';
 
 interface AuthSettingsModalProps {
@@ -46,7 +46,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({ open, onCl
   
   const checkEnvironmentApiKey = async () => {
     try {
-      const result = await multiModelService.checkEnvApiKey('gemini');
+      const result = await geminiChatService.checkEnvApiKey('gemini');
       setEnvApiKeyDetected(result.detected);
       console.log(`Environment API key check: ${result.detected ? 'detected' : 'not detected'} from ${result.source}`);
     } catch (error) {
@@ -57,7 +57,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({ open, onCl
 
   const checkOAuthStatus = async () => {
     try {
-      const status = await multiModelService.getOAuthStatus('gemini');
+      const status = await geminiChatService.getOAuthStatus('gemini');
       setOauthStatus(status);
     } catch (error) {
       console.error('Failed to check OAuth status:', error);
@@ -71,12 +71,12 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({ open, onCl
     
     try {
       console.log('Starting OAuth flow...');
-      const result = await multiModelService.startOAuthFlow('gemini');
+      const result = await geminiChatService.startOAuthFlow('gemini');
       
       if (result.success) {
         // Set backend OAuth preference explicitly
         console.log('Setting OAuth preference in backend...');
-        await multiModelService.setOAuthPreference('gemini');
+        await geminiChatService.setOAuthPreference('gemini');
         
         // Update configuration to use OAuth
         updateAuthConfig({
@@ -115,7 +115,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({ open, onCl
   const handleUseOAuth = async () => {
     try {
       console.log('Setting OAuth preference in backend...');
-      await multiModelService.setOAuthPreference('gemini');
+      await geminiChatService.setOAuthPreference('gemini');
       
       // Update configuration to use OAuth
       updateAuthConfig({
@@ -145,7 +145,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({ open, onCl
 
   const handleOAuthLogout = async () => {
     try {
-      const result = await multiModelService.clearOAuthCredentials('gemini');
+      const result = await geminiChatService.clearOAuthCredentials('gemini');
       
       if (result.success) {
         // Update configuration to remove OAuth
@@ -185,7 +185,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({ open, onCl
     try {
       // Set backend API key preference explicitly
       console.log('Setting API key preference in backend...');
-      await multiModelService.setApiKeyPreference('gemini');
+      await geminiChatService.setApiKeyPreference('gemini');
 
       updateAuthConfig({
         gemini: {

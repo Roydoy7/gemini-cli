@@ -9,7 +9,7 @@ import {
   FileSpreadsheet, FileType, FileCheck, Database, Presentation, Mail, Calculator
 } from 'lucide-react';
 import type { AutocompleteProvider, AutocompleteItem } from '../types';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 
 export class WorkspaceDirectoryProvider implements AutocompleteProvider {
   trigger = '@';
@@ -85,8 +85,8 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
     this.isLoading = true;
 
     try {
-      // Get workspace directories from multiModelService
-      const workspaceDirectories = await multiModelService.getWorkspaceDirectories();
+      // Get workspace directories from geminiChatService
+      const workspaceDirectories = await geminiChatService.getWorkspaceDirectories();
 
       this.cachedItems = [];
 
@@ -175,7 +175,7 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
 
     try {
       // Use the backend API to get directory contents
-      const contents = await multiModelService.getDirectoryContents(directory);
+      const contents = await geminiChatService.getDirectoryContents(directory);
 
       for (const item of contents) {
         const displayName = item.name;

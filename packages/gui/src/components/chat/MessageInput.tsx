@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { useWorkspaceDirectories } from '@/hooks';
 import { cn } from '@/utils/cn';
 import type { ChatMessage, UniversalMessage, RoleDefinition } from '@/types';
@@ -118,7 +118,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
     try {
       console.log('Fetching Excel workbooks...');
       setIsLoadingWorkbooks(true);
-      const result = await multiModelService.getExcelWorkbooks();
+      const result = await geminiChatService.getExcelWorkbooks();
       console.log('Excel workbooks result:', result);
       if (result.success) {
         setWorkbooks(result.workbooks);
@@ -207,7 +207,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
     if (!showTemplateMenu) {
       try {
         setLoadingTemplates(true);
-        const backendTemplates = await multiModelService.getAllTemplatesAsync();
+        const backendTemplates = await geminiChatService.getAllTemplatesAsync();
         const customTemplates = backendTemplates.filter(template => !template.isBuiltin);
         setTemplates(customTemplates);
         setShowTemplateMenu(true);
@@ -244,9 +244,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
     if (!editingTemplate) return;
 
     try {
-      await multiModelService.updateCustomTemplate(editingTemplate.id, { content: editContent });
+      await geminiChatService.updateCustomTemplate(editingTemplate.id, { content: editContent });
       // Refresh templates list
-      const backendTemplates = await multiModelService.getAllTemplatesAsync();
+      const backendTemplates = await geminiChatService.getAllTemplatesAsync();
       const customTemplates = backendTemplates.filter(t => !t.isBuiltin);
       setTemplates(customTemplates);
       setEditingTemplate(null);
@@ -268,9 +268,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
     e.stopPropagation();
     if (confirm(`Are you sure you want to delete the template "${template.name || 'Untitled'}"?`)) {
       try {
-        await multiModelService.deleteCustomTemplate(template.id);
+        await geminiChatService.deleteCustomTemplate(template.id);
         // Refresh templates list
-        const backendTemplates = await multiModelService.getAllTemplatesAsync();
+        const backendTemplates = await geminiChatService.getAllTemplatesAsync();
         const customTemplates = backendTemplates.filter(t => !t.isBuiltin);
         setTemplates(customTemplates);
       } catch (error) {
@@ -289,7 +289,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
       // Load worksheets if not already loaded
       setLoadingWorksheets(prev => ({ ...prev, [workbookKey]: true }));
       try {
-        const result = await multiModelService.getExcelWorksheets(workbook.name);
+        const result = await geminiChatService.getExcelWorksheets(workbook.name);
         if (result.success) {
           setWorksheets(prev => ({
             ...prev,
@@ -331,7 +331,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
     setLoadingSelection(prev => ({ ...prev, [workbookName]: true }));
 
     try {
-      const result = await multiModelService.getExcelSelection(workbookName);
+      const result = await geminiChatService.getExcelSelection(workbookName);
       if (result.success && result.selection) {
         // Selection already contains full path, sheet name, and address
         const selectionText = result.selection;
@@ -548,7 +548,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
           updateSession(sessionId, { roleId: currentRoleId });
 
           // Update backend session metadata
-          await multiModelService.setSessionRole(sessionId, currentRoleId);
+          await geminiChatService.setSessionRole(sessionId, currentRoleId);
           console.log(`Updated session ${sessionId} role to ${currentRoleId}`);
         } catch (error) {
           console.error('Failed to update session role:', error);
@@ -580,7 +580,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
         updateSession(activeSessionId, { roleId: currentRole });
 
         // Update backend session metadata
-        await multiModelService.setSessionRole(activeSessionId, currentRole);
+        await geminiChatService.setSessionRole(activeSessionId, currentRole);
         console.log(`Set role ${currentRole} for new session ${activeSessionId}`);
       } catch (error) {
         console.error('Failed to set session role:', error);
@@ -604,7 +604,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
         } else if (action === 'switch') {
           // Switch to session's role
           try {
-            await multiModelService.switchRole(compatibility.sessionRoleId);
+            await geminiChatService.switchRole(compatibility.sessionRoleId);
             // Update frontend state to sync with backend
             const { setCurrentRole } = useAppStore.getState();
             setCurrentRole(compatibility.sessionRoleId);
@@ -663,10 +663,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
       if (!session) return;
 
       // Ensure backend is on the same session before sending message
-      const currentBackendSessionId = await multiModelService.getCurrentSessionId();
+      const currentBackendSessionId = await geminiChatService.getCurrentSessionId();
       if (currentBackendSessionId !== activeSessionId) {
         console.warn(`Backend session (${currentBackendSessionId}) != frontend session (${activeSessionId}). Syncing...`);
-        await multiModelService.switchSession(activeSessionId);
+        await geminiChatService.switchSession(activeSessionId);
       }
 
       // Send ONLY the new user message (MultiModelSystem manages history internally)
@@ -675,7 +675,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
         content: userMessage.content,
         timestamp: userMessage.timestamp
       };
-      const { stream, cancel } = await multiModelService.sendMessage([newUserMessage]);
+      const { stream, cancel } = await geminiChatService.sendMessage([newUserMessage]);
 
       // Save the cancel function for stop button
       streamCleanupRef.current = cancel;
@@ -902,7 +902,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(({ di
           setTimeout(async () => {
             try {
               // Only refresh session info for title updates
-              const sessionsInfo = await multiModelService.getSessionsInfo();
+              const sessionsInfo = await geminiChatService.getSessionsInfo();
               const updatedSessionInfo = sessionsInfo.find(s => s.id === activeSessionId);
               if (updatedSessionInfo) {
                 const currentSession = useAppStore.getState().sessions.find(s => s.id === activeSessionId);

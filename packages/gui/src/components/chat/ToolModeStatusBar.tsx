@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Shield, ShieldCheck, ShieldX } from 'lucide-react';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { useChatStore } from '@/stores/chatStore';
 
 export const ToolModeStatusBar: React.FC = () => {
@@ -14,7 +14,7 @@ export const ToolModeStatusBar: React.FC = () => {
 
   const loadCurrentMode = async () => {
     try {
-      const mode = await multiModelService.getApprovalMode();
+      const mode = await geminiChatService.getApprovalMode();
       setApprovalMode(mode);
     } catch (error) {
       console.error('Failed to load approval mode:', error);
@@ -26,7 +26,7 @@ export const ToolModeStatusBar: React.FC = () => {
     
     setLoading(true);
     try {
-      await multiModelService.setApprovalMode(newMode);
+      await geminiChatService.setApprovalMode(newMode);
       setApprovalMode(newMode);
     } catch (error) {
       console.error('Failed to update approval mode:', error);

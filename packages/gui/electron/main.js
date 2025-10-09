@@ -9,10 +9,10 @@
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
-const { MultiModelSystem, Config, RoleManager, WorkspaceManager, SessionManager, ModelProviderFactory, AuthManager, TemplateManager} = require('@google/gemini-cli-core')
+const { GeminiChatManager, Config, RoleManager, WorkspaceManager, SessionManager, ModelProviderFactory, AuthManager, TemplateManager} = require('@google/gemini-cli-core')
 
-// MultiModelSystem instance - we'll initialize this when needed
-let multiModelSystem = null
+// GeminiChatManager instance - we'll initialize this when needed
+let geminiChatManager = null
 let templateManager = null
 let isInitialized = false
 let initializationPromise = null
@@ -101,17 +101,17 @@ ipcMain.handle('dialog-show-open-dialog', async (_, options) => {
   }
 })
 
-// Helper function to ensure MultiModelSystem is initialized
+// Helper function to ensure GeminiChatManager is initialized
 const ensureInitialized = async (configParams = {}) => {
   // If already initialized, return immediately
-  if (multiModelSystem && isInitialized) {
-    return multiModelSystem
+  if (geminiChatManager && isInitialized) {
+    return geminiChatManager
   }
   
   // If initialization is in progress, wait for it
   if (initializationPromise) {
     await initializationPromise
-    return multiModelSystem
+    return geminiChatManager
   }
   
   // Start initialization
@@ -147,8 +147,9 @@ const ensureInitialized = async (configParams = {}) => {
       const config = new Config(configParameters)
       await config.initialize()
       
-      // Initialize MultiModelSystem with the proper Config instance and optional GeminiClient
-      multiModelSystem = new MultiModelSystem(config)
+      // Initialize GeminiChatManager with the proper Config instance
+      geminiChatManager = new GeminiChatManager(config)
+      await geminiChatManager.initialize()
       
       // Initialize SessionManager with config and ModelProviderFactory
       await SessionManager.getInstance().initializeWithConfig({
@@ -168,29 +169,29 @@ const ensureInitialized = async (configParams = {}) => {
       isInitialized = true
       // console.log('MultiModelSystem, SessionManager and WorkspaceManager initialized with LM Studio default model')
     } catch (error) {
-      console.error('Failed to initialize MultiModelSystem:', error)
+      console.error('Failed to initialize GeminiChatManager:', error)
       initializationPromise = null // Reset on error
       throw error
     }
   })()
   
   await initializationPromise
-  return multiModelSystem
+  return geminiChatManager
 }
 
-// MultiModel IPC handlers - Now using actual MultiModelSystem  
-ipcMain.handle('multimodel-initialize', async (_, configParams) => {
+// GeminiChat IPC handlers - Now using actual GeminiChatManager
+ipcMain.handle('geminiChat-initialize', async (_, configParams) => {
   try {
-    // console.log('MultiModel initialize called with:', configParams)
+    // console.log('GeminiChat initialize called with:', configParams)
     await ensureInitialized(configParams)
     return { success: true }
   } catch (error) {
-    console.error('Failed to initialize MultiModelSystem:', error)
+    console.error('Failed to initialize GeminiChatManager:', error)
     throw error
   }
 })
 
-ipcMain.handle('multimodel-get-available-models', async (_, providerType) => {
+ipcMain.handle('geminiChat-get-available-models', async (_, providerType) => {
   try {
     // console.log('MultiModel getAvailableModels called with:', providerType)
     const system = await ensureInitialized()
@@ -222,7 +223,7 @@ ipcMain.handle('multimodel-get-available-models', async (_, providerType) => {
   }
 })
 
-ipcMain.handle('multimodel-get-all-roles', async () => {
+ipcMain.handle('geminiChat-get-all-roles', async () => {
   // console.log('MultiModel getAllRoles called')
   try {
     const system = await ensureInitialized()
@@ -245,7 +246,7 @@ ipcMain.handle('multimodel-get-all-roles', async () => {
   }
 })
 
-ipcMain.handle('multimodel-get-current-role', async () => {
+ipcMain.handle('geminiChat-get-current-role', async () => {
   // console.log('MultiModel getCurrentRole called')
   try {
     const system = await ensureInitialized()
@@ -267,7 +268,7 @@ ipcMain.handle('multimodel-get-current-role', async () => {
 })
 
 // Add more handlers as needed...
-ipcMain.handle('multimodel-switch-provider', async (_, providerType, model) => {
+ipcMain.handle('geminiChat-switch-provider', async (_, providerType, model) => {
   try {
     // console.log('MultiModel switchProvider called:', providerType, model)
     const system = await ensureInitialized()
@@ -290,7 +291,7 @@ ipcMain.handle('multimodel-switch-provider', async (_, providerType, model) => {
   }
 })
 
-ipcMain.handle('multimodel-switch-role', async (_, roleId) => {
+ipcMain.handle('geminiChat-switch-role', async (_, roleId) => {
   // console.log('MultiModel switchRole called:', roleId)
   try {
     const system = await ensureInitialized()
@@ -304,7 +305,7 @@ ipcMain.handle('multimodel-switch-role', async (_, roleId) => {
 })
 
 // Workspace directory management handlers
-ipcMain.handle('multimodel-get-workspace-directories', async () => {
+ipcMain.handle('geminiChat-get-workspace-directories', async () => {
   try {
     // console.log('MultiModel getWorkspaceDirectories called')
     const system = await ensureInitialized()
@@ -317,11 +318,11 @@ ipcMain.handle('multimodel-get-workspace-directories', async () => {
   }
 })
 
-ipcMain.handle('multimodel-get-directory-contents', async (_, directoryPath) => {
+ipcMain.handle('geminiChat-get-directory-contents', async (_, directoryPath) => {
   try {
     // console.log('MultiModel getDirectoryContents called for:', directoryPath)
     const system = await ensureInitialized()
-    const items = await multiModelSystem.getDirectoryContents(directoryPath)
+    const items = await geminiChatManager.getDirectoryContents(directoryPath)
     // console.log('Got directory contents:', items.length, 'items')
     return items
   } catch (error) {
@@ -330,7 +331,7 @@ ipcMain.handle('multimodel-get-directory-contents', async (_, directoryPath) => 
   }
 })
 
-ipcMain.handle('multimodel-add-workspace-directory', async (event, directory, basePath) => {
+ipcMain.handle('geminiChat-add-workspace-directory', async (event, directory, basePath) => {
   try {
     // console.log('MultiModel addWorkspaceDirectory called:', directory, 'basePath:', basePath)
     const system = await ensureInitialized()
@@ -354,7 +355,7 @@ ipcMain.handle('multimodel-add-workspace-directory', async (event, directory, ba
   }
 })
 
-ipcMain.handle('multimodel-set-workspace-directories', async (event, directories) => {
+ipcMain.handle('geminiChat-set-workspace-directories', async (event, directories) => {
   try {
     // console.log('MultiModel setWorkspaceDirectories called:', directories)
     const system = await ensureInitialized()
@@ -377,7 +378,7 @@ ipcMain.handle('multimodel-set-workspace-directories', async (event, directories
   }
 })
 
-ipcMain.handle('multimodel-get-all-templates', async () => {
+ipcMain.handle('geminiChat-get-all-templates', async () => {
   try {
     await ensureInitialized()
     const templates = templateManager.getAllTemplates()
@@ -389,7 +390,7 @@ ipcMain.handle('multimodel-get-all-templates', async () => {
   }
 })
 
-ipcMain.handle('multimodel-add-custom-template', async (_, template) => {
+ipcMain.handle('geminiChat-add-custom-template', async (_, template) => {
   try {
     await ensureInitialized()
     templateManager.addCustomTemplate(template)
@@ -401,7 +402,7 @@ ipcMain.handle('multimodel-add-custom-template', async (_, template) => {
   }
 })
 
-ipcMain.handle('multimodel-update-custom-template', async (_, id, updates) => {
+ipcMain.handle('geminiChat-update-custom-template', async (_, id, updates) => {
   try {
     await ensureInitialized()
     templateManager.updateCustomTemplate(id, updates)
@@ -413,7 +414,7 @@ ipcMain.handle('multimodel-update-custom-template', async (_, id, updates) => {
   }
 })
 
-ipcMain.handle('multimodel-delete-custom-template', async (_, id) => {
+ipcMain.handle('geminiChat-delete-custom-template', async (_, id) => {
   try {
     await ensureInitialized()
     templateManager.deleteCustomTemplate(id)
@@ -426,7 +427,7 @@ ipcMain.handle('multimodel-delete-custom-template', async (_, id) => {
 })
 
 // History management handlers
-ipcMain.handle('multimodel-get-history', async () => {
+ipcMain.handle('geminiChat-get-history', async () => {
   try {
     const system = await ensureInitialized()
     const history = SessionManager.getInstance().getHistory()
@@ -438,7 +439,7 @@ ipcMain.handle('multimodel-get-history', async () => {
   }
 })
 
-ipcMain.handle('multimodel-set-history', async (_, history) => {
+ipcMain.handle('geminiChat-set-history', async (_, history) => {
   try {
     const system = await ensureInitialized()
     SessionManager.getInstance().setHistory(history)
@@ -450,7 +451,7 @@ ipcMain.handle('multimodel-set-history', async (_, history) => {
   }
 })
 
-ipcMain.handle('multimodel-clear-history', async () => {
+ipcMain.handle('geminiChat-clear-history', async () => {
   try {
     const system = await ensureInitialized()
     SessionManager.getInstance().clearHistory()
@@ -463,7 +464,7 @@ ipcMain.handle('multimodel-clear-history', async () => {
 })
 
 // Session management handlers
-ipcMain.handle('multimodel-create-session', async (_, sessionId, title = 'New Chat', roleId) => {
+ipcMain.handle('geminiChat-create-session', async (_, sessionId, title = 'New Chat', roleId) => {
   try {
     const system = await ensureInitialized()
     SessionManager.getInstance().createSession(sessionId, title, roleId)
@@ -475,7 +476,7 @@ ipcMain.handle('multimodel-create-session', async (_, sessionId, title = 'New Ch
   }
 })
 
-ipcMain.handle('multimodel-switch-session', async (_, sessionId) => {
+ipcMain.handle('geminiChat-switch-session', async (_, sessionId) => {
   try {
     const system = await ensureInitialized()
     SessionManager.getInstance().switchSession(sessionId)
@@ -487,7 +488,7 @@ ipcMain.handle('multimodel-switch-session', async (_, sessionId) => {
   }
 })
 
-ipcMain.handle('multimodel-delete-session', async (_, sessionId) => {
+ipcMain.handle('geminiChat-delete-session', async (_, sessionId) => {
   try {
     const system = await ensureInitialized()
     SessionManager.getInstance().deleteSession(sessionId)
@@ -499,7 +500,7 @@ ipcMain.handle('multimodel-delete-session', async (_, sessionId) => {
   }
 })
 
-ipcMain.handle('multimodel-delete-all-sessions', async () => {
+ipcMain.handle('geminiChat-delete-all-sessions', async () => {
   try {
     const system = await ensureInitialized()
     const sessionManager = SessionManager.getInstance()
@@ -518,7 +519,7 @@ ipcMain.handle('multimodel-delete-all-sessions', async () => {
   }
 })
 
-ipcMain.handle('multimodel-get-current-session-id', async () => {
+ipcMain.handle('geminiChat-get-current-session-id', async () => {
   try {
     const system = await ensureInitialized()
     const sessionId = SessionManager.getInstance().getCurrentSessionId()
@@ -530,7 +531,7 @@ ipcMain.handle('multimodel-get-current-session-id', async () => {
   }
 })
 
-ipcMain.handle('multimodel-get-display-messages', async (_, sessionId) => {
+ipcMain.handle('geminiChat-get-display-messages', async (_, sessionId) => {
   try {
     const system = await ensureInitialized()
     const messages = SessionManager.getInstance().getDisplayMessages(sessionId)
@@ -542,7 +543,7 @@ ipcMain.handle('multimodel-get-display-messages', async (_, sessionId) => {
   }
 })
 
-ipcMain.handle('multimodel-get-sessions-info', async () => {
+ipcMain.handle('geminiChat-get-sessions-info', async () => {
   try {
     const system = await ensureInitialized()
     const sessionsInfo = SessionManager.getInstance().getSessionsInfo()
@@ -554,7 +555,7 @@ ipcMain.handle('multimodel-get-sessions-info', async () => {
   }
 })
 
-ipcMain.handle('multimodel-update-session-title', async (_, sessionId, newTitle) => {
+ipcMain.handle('geminiChat-update-session-title', async (_, sessionId, newTitle) => {
   try {
     const system = await ensureInitialized()
     SessionManager.getInstance().updateSessionTitle(sessionId, newTitle)
@@ -566,7 +567,7 @@ ipcMain.handle('multimodel-update-session-title', async (_, sessionId, newTitle)
   }
 })
 
-ipcMain.handle('multimodel-set-session-role', async (_, sessionId, roleId) => {
+ipcMain.handle('geminiChat-set-session-role', async (_, sessionId, roleId) => {
   try {
     const system = await ensureInitialized()
     SessionManager.getInstance().setSessionRole(sessionId, roleId)
@@ -580,7 +581,7 @@ ipcMain.handle('multimodel-set-session-role', async (_, sessionId, roleId) => {
 
 
 // Add message sending handler
-ipcMain.handle('multimodel-send-message', async (_, messages, signal) => {
+ipcMain.handle('geminiChat-send-message', async (_, messages, signal) => {
   try {
     // console.log('MultiModel sendMessage called with:', messages?.length, 'messages')
     const system = await ensureInitialized()
@@ -608,7 +609,7 @@ ipcMain.handle('multimodel-send-message', async (_, messages, signal) => {
 })
 
 // Handle stream cancellation from frontend
-ipcMain.handle('multimodel-cancel-stream', async (event, streamId) => {
+ipcMain.handle('geminiChat-cancel-stream', async (event, streamId) => {
   try {
     const streamInfo = activeStreams.get(streamId)
     if (streamInfo) {
@@ -619,7 +620,7 @@ ipcMain.handle('multimodel-cancel-stream', async (event, streamId) => {
       activeStreams.delete(streamId)
 
       // Send cancellation event to frontend
-      event.sender.send('multimodel-stream-error', {
+      event.sender.send('geminiChat-stream-error', {
         streamId,
         error: 'Stream cancelled by user'
       })
@@ -636,7 +637,7 @@ ipcMain.handle('multimodel-cancel-stream', async (event, streamId) => {
 })
 
 // Add streaming message handler using electron-ipc-stream
-ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamId) => {
+ipcMain.handle('geminiChat-send-message-stream', async (event, messages, streamId) => {
   try {
     // console.log('MultiModel sendMessageStream called with:', messages?.length, 'messages', 'streamId:', streamId)
     const system = await ensureInitialized()
@@ -736,7 +737,7 @@ ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamI
             timestamp: Date.now()
           }
 
-          event.sender.send('multimodel-stream-error', errorData)
+          event.sender.send('geminiChat-stream-error', errorData)
 
           // Break the loop to stop processing
           break
@@ -751,7 +752,7 @@ ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamI
             compressionInfo: chunk.compressionInfo,
             timestamp: Date.now()
           }
-          event.sender.send('multimodel-stream-chunk', compressionData)
+          event.sender.send('geminiChat-stream-chunk', compressionData)
         } else if (chunk.type === 'content') {
           // Send content chunk - preserve original event type
           const chunkData = {
@@ -761,7 +762,7 @@ ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamI
             role: chunk.role || 'assistant',
             timestamp: Date.now()
           }
-          event.sender.send('multimodel-stream-chunk', chunkData)
+          event.sender.send('geminiChat-stream-chunk', chunkData)
 
           // Accumulate content for final response
           if (chunk.content) {
@@ -777,7 +778,7 @@ ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamI
             timestamp: Date.now(),
             ...chunk // Include any additional properties
           }
-          event.sender.send('multimodel-stream-chunk', chunkData)
+          event.sender.send('geminiChat-stream-chunk', chunkData)
 
           if (chunk.content) {
             fullContent += chunk.content
@@ -794,7 +795,7 @@ ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamI
         timestamp: Date.now()
       }
       
-      event.sender.send('multimodel-stream-complete', completionData)
+      event.sender.send('geminiChat-stream-complete', completionData)
 
       return { success: true, totalContent: fullContent }
 
@@ -817,7 +818,7 @@ ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamI
         timestamp: Date.now()
       }
 
-      event.sender.send('multimodel-stream-error', errorData)
+      event.sender.send('geminiChat-stream-error', errorData)
       throw streamError
     }
     
@@ -842,7 +843,7 @@ ipcMain.handle('multimodel-send-message-stream', async (event, messages, streamI
         error: errorMessage,
         timestamp: Date.now()
       }
-      event.sender.send('multimodel-stream-error', errorData)
+      event.sender.send('geminiChat-stream-error', errorData)
     }
 
     throw error
@@ -1018,7 +1019,7 @@ ipcMain.handle('set-approval-mode', async (_, mode) => {
 })
 
 // Direct Excel tool call handler
-ipcMain.handle('multimodel-call-excel-tool', async (_, operation, params) => {
+ipcMain.handle('geminiChat-call-excel-tool', async (_, operation, params) => {
   try {
     const system = await ensureInitialized()
     const { ExcelTool } = require('@google/gemini-cli-core')

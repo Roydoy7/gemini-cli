@@ -17,7 +17,7 @@ import type { ToolCallConfirmationDetails, ToolConfirmationOutcome } from '@/typ
 
 // Define Electron API interface
 interface ElectronAPI {
-  multiModel: {
+  geminiChat: {
     initialize: (config: Record<string, unknown>) => Promise<void>;
     switchProvider: (providerType: string, model: string) => Promise<void>;
     switchRole: (roleId: string) => Promise<boolean>;
@@ -83,7 +83,7 @@ declare global {
   }
 }
 
-class MultiModelService {
+class GeminiChatService {
   private initialized = false;
   private switchingRole = false;
   private lastRoleSwitch: { roleId: string; timestamp: number } | null = null;
@@ -98,18 +98,22 @@ class MultiModelService {
 
   private get api() {
     const electronAPI = (globalThis as GlobalThis).electronAPI;
-    if (!electronAPI?.multiModel) {
+    if (!electronAPI?.geminiChat) {
       throw new Error('Electron API not available');
     }
-    return electronAPI.multiModel;
+    return electronAPI.geminiChat;
   }
 
   async initialize(config: Record<string, unknown>): Promise<void> {
     await this.api.initialize(config);
     this.initialized = true;
-    
+
     // Set up tool confirmation listener
     this.setupConfirmationListener();
+  }
+
+  isInitialized(): boolean {
+    return this.initialized;
   }
 
   // Set the confirmation callback for tool approvals
@@ -149,7 +153,7 @@ class MultiModelService {
 
   async switchProvider(providerType: ModelProviderType, model: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.switchProvider(providerType, model);
@@ -157,7 +161,7 @@ class MultiModelService {
 
   async switchRole(roleId: string): Promise<boolean> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     // Prevent duplicate calls within 1 second
@@ -194,7 +198,7 @@ class MultiModelService {
     messages: UniversalMessage[]
   ): Promise<{ stream: AsyncGenerator<UniversalStreamEvent>; cancel: () => void }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     const streamResponse = this.api.sendMessageStream(messages);
@@ -343,24 +347,24 @@ class MultiModelService {
 
   async getAvailableModels(providerType?: ModelProviderType): Promise<Record<string, string[]>> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     // Check cache if no specific provider is requested and cache is still valid
     const now = Date.now();
     if (!providerType && this.modelsCache && (now - this.modelsCacheTimestamp) < this.MODELS_CACHE_TTL) {
-      console.log('MultiModelService: Using cached models');
+      console.log('GeminiChatService: Using cached models');
       return this.modelsCache;
     }
 
-    console.log('MultiModelService: Fetching models from API', providerType ? `for provider: ${providerType}` : 'for all providers');
+    console.log('GeminiChatService: Fetching models from API', providerType ? `for provider: ${providerType}` : 'for all providers');
     const models = await this.api.getAvailableModels(providerType);
     
     // Cache the full model list if no specific provider was requested
     if (!providerType) {
       this.modelsCache = models;
       this.modelsCacheTimestamp = now;
-      console.log('MultiModelService: Cached models for future use');
+      console.log('GeminiChatService: Cached models for future use');
     }
 
     return models;
@@ -422,7 +426,7 @@ class MultiModelService {
     variables: Record<string, string | number | boolean>
   ): Promise<string> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     return await this.api.renderTemplate(templateId, variables);
@@ -430,7 +434,7 @@ class MultiModelService {
 
   async addWorkspaceDirectory(directory: string, basePath?: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.addWorkspaceDirectory(directory, basePath);
@@ -438,7 +442,7 @@ class MultiModelService {
 
   async setWorkspaceDirectories(directories: readonly string[]): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.setWorkspaceDirectories(directories);
@@ -487,7 +491,7 @@ class MultiModelService {
 
   async addCustomRole(role: RoleDefinition): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.addCustomRole(role);
@@ -495,7 +499,7 @@ class MultiModelService {
 
   async addCustomTemplate(template: Omit<PresetTemplate, 'isBuiltin'>): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.addCustomTemplate(template);
@@ -503,7 +507,7 @@ class MultiModelService {
 
   async updateCustomTemplate(id: string, updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.updateCustomTemplate(id, updates);
@@ -511,7 +515,7 @@ class MultiModelService {
 
   async deleteCustomTemplate(id: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.deleteCustomTemplate(id);
@@ -520,7 +524,7 @@ class MultiModelService {
   // Session management methods
   async createSession(sessionId: string, title?: string, roleId?: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.createSession(sessionId, title, roleId);
@@ -528,7 +532,7 @@ class MultiModelService {
 
   async switchSession(sessionId: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.switchSession(sessionId);
@@ -536,7 +540,7 @@ class MultiModelService {
 
   async deleteSession(sessionId: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.deleteSession(sessionId);
@@ -544,7 +548,7 @@ class MultiModelService {
 
   async deleteAllSessions(): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.deleteAllSessions();
@@ -576,7 +580,7 @@ class MultiModelService {
 
   async updateSessionTitle(sessionId: string, newTitle: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.updateSessionTitle(sessionId, newTitle);
@@ -584,7 +588,7 @@ class MultiModelService {
 
   async setSessionRole(sessionId: string, roleId: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.setSessionRole(sessionId, roleId);
@@ -593,7 +597,7 @@ class MultiModelService {
   // OAuth authentication methods
   async startOAuthFlow(providerType: string): Promise<{ success: boolean; message?: string; error?: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     return await this.api.startOAuthFlow(providerType);
@@ -609,7 +613,7 @@ class MultiModelService {
 
   async clearOAuthCredentials(providerType: string): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     return await this.api.clearOAuthCredentials(providerType);
@@ -617,7 +621,7 @@ class MultiModelService {
 
   async checkEnvApiKey(providerType: string): Promise<{ detected: boolean; source: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     return await this.api.checkEnvApiKey(providerType);
@@ -625,7 +629,7 @@ class MultiModelService {
 
   async setApiKeyPreference(providerType: string): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     return await this.api.setApiKeyPreference(providerType);
@@ -633,7 +637,7 @@ class MultiModelService {
 
   async setOAuthPreference(providerType: string): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     return await this.api.setOAuthPreference(providerType);
@@ -649,7 +653,7 @@ class MultiModelService {
 
   async setApprovalMode(mode: 'default' | 'autoEdit' | 'yolo'): Promise<void> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     await this.api.setApprovalMode(mode);
@@ -658,7 +662,7 @@ class MultiModelService {
   // Excel tool methods using direct Excel tool
   async getExcelWorkbooks(): Promise<{ success: boolean; workbooks: Array<{name: string; path?: string}>; error?: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     try {
@@ -688,7 +692,7 @@ class MultiModelService {
 
   async getExcelWorksheets(workbook: string): Promise<{ success: boolean; worksheets: Array<{index: number, name: string}>; error?: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     try {
@@ -718,7 +722,7 @@ class MultiModelService {
 
   async getExcelSelection(workbook: string): Promise<{ success: boolean; selection?: string; error?: string }> {
     if (!this.initialized) {
-      throw new Error('MultiModelService not initialized');
+      throw new Error('GeminiChatService not initialized');
     }
 
     try {
@@ -745,4 +749,4 @@ class MultiModelService {
   }
 }
 
-export const multiModelService = new MultiModelService();
+export const geminiChatService = new GeminiChatService();

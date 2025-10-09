@@ -9,7 +9,7 @@ import {useEffect} from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import type { ChatSession, ModelProviderType } from '@/types';
 
 export const App: React.FC = () => {
@@ -68,10 +68,10 @@ export const App: React.FC = () => {
           approvalMode: 'default'  // Require user confirmation for important tool calls
         };
         
-        await multiModelService.initialize(configParams);
+        await geminiChatService.initialize(configParams);
         
         // Set up tool confirmation callback
-        multiModelService.setConfirmationCallback(async (details) => 
+        geminiChatService.setConfirmationCallback(async (details) => 
           new Promise((resolve) => {
             // Set the confirmation request in chat store
             useChatStore.getState().setToolConfirmation(details);
@@ -94,14 +94,14 @@ export const App: React.FC = () => {
         );
         
         // Switch to the current provider and model after initialization
-        await multiModelService.switchProvider(currentProvider, currentModel);
+        await geminiChatService.switchProvider(currentProvider, currentModel);
         
         // Switch to the current role after initialization
-        await multiModelService.switchRole(currentRole);
+        await geminiChatService.switchRole(currentRole);
         
         // Load builtin roles after initialization
         try {
-          const roles = await multiModelService.getAllRolesAsync();
+          const roles = await geminiChatService.getAllRolesAsync();
           if (roles.length > 0) {
             setBuiltinRoles(roles.filter(role => role.isBuiltin !== false));
           }
@@ -119,7 +119,7 @@ export const App: React.FC = () => {
 
         // Load sessions from backend (backend is the source of truth)
         try {
-          const sessionsInfo = await multiModelService.getSessionsInfo();
+          const sessionsInfo = await geminiChatService.getSessionsInfo();
           // console.log('Retrieved sessions from backend:', sessionsInfo);
           
           // Convert backend session info to frontend session format
@@ -154,13 +154,13 @@ export const App: React.FC = () => {
           // Switch to the most recent session (first in sorted list) and load its messages
           if (sessionsInfo.length > 0) {
             const mostRecentSessionId = sessionsInfo[0].id;
-            await multiModelService.switchSession(mostRecentSessionId);
+            await geminiChatService.switchSession(mostRecentSessionId);
             setActiveSession(mostRecentSessionId);
             console.log('Switched to most recent session:', mostRecentSessionId);
             
             // Load messages for the initial session
             try {
-              const messages = await multiModelService.getDisplayMessages(mostRecentSessionId);
+              const messages = await geminiChatService.getDisplayMessages(mostRecentSessionId);
               // console.log('Loaded', messages.length, 'messages for initial session:', mostRecentSessionId);
               
               // Convert and update the session with messages
@@ -188,7 +188,7 @@ export const App: React.FC = () => {
         // Pre-load templates to ensure they're available when TemplatePanel mounts
         try {
           console.log('Pre-loading templates...');
-          const templates = await multiModelService.getAllTemplatesAsync();
+          const templates = await geminiChatService.getAllTemplatesAsync();
           console.log('Pre-loaded', templates.length, 'templates successfully');
         } catch (error) {
           console.error('Failed to pre-load templates:', error);

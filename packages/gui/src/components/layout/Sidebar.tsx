@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { useAppStore } from '@/stores/appStore';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 import { cn } from '@/utils/cn';
 import type { ChatSession } from '@/types';
 
@@ -137,11 +137,11 @@ export const Sidebar: React.FC = () => {
 
     // Notify backend to create and switch to new session
     try {
-      await multiModelService.createSession(newSession.id, newSession.title); // Don't pass roleId
+      await geminiChatService.createSession(newSession.id, newSession.title); // Don't pass roleId
       // console.log('Backend session created:', newSession.id, newSession.title, 'roleId will be set on first message');
       
       // Switch backend to new session to keep frontend and backend in sync
-      await multiModelService.switchSession(newSession.id);
+      await geminiChatService.switchSession(newSession.id);
       // console.log('Backend switched to new session:', newSession.id);
     } catch (error) {
       console.error('Failed to create/switch to new backend session:', error);
@@ -178,7 +178,7 @@ export const Sidebar: React.FC = () => {
 
     // Notify backend to delete session
     try {
-      await multiModelService.deleteSession(sessionId);
+      await geminiChatService.deleteSession(sessionId);
       console.log('Backend session deleted:', sessionId);
 
       // If this was the active session and we have another session to switch to
@@ -194,7 +194,7 @@ export const Sidebar: React.FC = () => {
   const handleDeleteAllSessions = async () => {
     try {
       // First notify backend to delete all sessions
-      await multiModelService.deleteAllSessions();
+      await geminiChatService.deleteAllSessions();
       console.log('All backend sessions deleted');
       
       // Then clear frontend store
@@ -238,13 +238,13 @@ export const Sidebar: React.FC = () => {
   const performSessionSwitch = async (sessionId: string) => {
     try {
       // First switch backend session to ensure consistency
-      await multiModelService.switchSession(sessionId);
+      await geminiChatService.switchSession(sessionId);
 
       // Only switch frontend after backend confirms success
       setActiveSession(sessionId);
 
       // Load session messages from backend
-      const messages = await multiModelService.getDisplayMessages(sessionId);
+      const messages = await geminiChatService.getDisplayMessages(sessionId);
       console.log('Loaded', messages.length, 'messages for session:', sessionId);
 
       // Convert backend messages to frontend format and update store
@@ -274,7 +274,7 @@ export const Sidebar: React.FC = () => {
       // Switch to the session's role
       const session = sessions.find(s => s.id === roleConflictDialog.sessionId);
       if (session?.roleId) {
-        await multiModelService.switchRole(session.roleId);
+        await geminiChatService.switchRole(session.roleId);
         setCurrentRole(session.roleId); // Update frontend state
         console.log('Switched to session role:', session.roleId);
       }

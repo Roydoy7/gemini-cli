@@ -40,7 +40,7 @@ interface AppStore extends AppState {
   
   setInitialized: (initialized: boolean) => void;
   
-  // Note: Template management moved to backend system via multiModelService
+  // Note: Template management moved to backend system via geminiChatService
 }
 
 export const useAppStore = create<AppStore>()(
@@ -105,8 +105,8 @@ export const useAppStore = create<AppStore>()(
 
       syncOAuthStatus: async () => {
         try {
-          const { multiModelService } = await import('@/services/multiModelService');
-          const oauthStatus = await multiModelService.getOAuthStatus('gemini');
+          const { geminiChatService } = await import('@/services/geminiChatService');
+          const oauthStatus = await geminiChatService.getOAuthStatus('gemini');
           
           // Update auth config based on OAuth status
           const currentState = useAppStore.getState();
@@ -194,7 +194,7 @@ export const useAppStore = create<AppStore>()(
       setInitialized: (initialized: boolean) =>
         set({ initialized }),
 
-      // Note: Template management moved to backend system via multiModelService
+      // Note: Template management moved to backend system via geminiChatService
     }),
     {
       name: 'gemini-cli-gui',

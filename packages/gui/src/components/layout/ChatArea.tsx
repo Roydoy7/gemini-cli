@@ -15,7 +15,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ToolConfirmationOutcome, ChatMessage } from '@/types';
-import { multiModelService } from '@/services/multiModelService';
+import { geminiChatService } from '@/services/geminiChatService';
 
 interface ChatAreaHandle {
   setMessage: (message: string) => void;
@@ -186,7 +186,7 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(({ onTemplateR
       
       try {
         // Update both frontend state and backend configuration
-        await multiModelService.setApprovalMode(newMode);
+        await geminiChatService.setApprovalMode(newMode);
         setApprovalMode(newMode);
         console.log(`Approval mode updated to: ${newMode}`);
       } catch (error) {
