@@ -1632,9 +1632,11 @@ Title:`;
     const workspaceContextText = workspaceContext.map(part => 
       typeof part === 'object' && 'text' in part ? part.text : ''
     ).join('\n');
-    
+
+
     // Combine role prompt with workspace context
     const roleSystemPrompt = RoleManager.getInstance().getRoleAwareSystemPrompt(
+      this.config,
       userMemory,
       roleId,
       additionalInstructions

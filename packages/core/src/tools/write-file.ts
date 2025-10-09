@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as Diff from 'diff';
+import { WRITE_FILE_TOOL_NAME } from './tool-names.js';
 import type { Config } from '../config/config.js';
 import { ApprovalMode } from '../config/config.js';
 import type {
@@ -17,7 +18,6 @@ import type {
   ToolLocation,
   ToolResult,
 } from './tools.js';
-import type { DiffUpdateResult } from '../ide/ideContext.js';
 import {
   BaseDeclarativeTool,
   BaseToolInvocation,
@@ -36,12 +36,12 @@ import type {
   ModifiableDeclarativeTool,
   ModifyContext,
 } from './modifiable-tool.js';
-import { getSpecificMimeType } from '../utils/fileUtils.js';
-import { FileOperation } from '../telemetry/metrics.js';
-import { IDEConnectionStatus } from '../ide/ide-client.js';
-import { getProgrammingLanguage } from '../telemetry/telemetry-utils.js';
+import { IdeClient } from '../ide/ide-client.js';
 import { logFileOperation } from '../telemetry/loggers.js';
 import { FileOperationEvent } from '../telemetry/types.js';
+import { FileOperation } from '../telemetry/metrics.js';
+import { getSpecificMimeType } from '../utils/fileUtils.js';
+import { getLanguageFromFilePath } from '../utils/language-detection.js';
 
 /**
  * Parameters for the WriteFile tool
@@ -122,6 +122,7 @@ export async function getCorrectedFileContent(
         file_path: filePath,
       },
       config.getGeminiClient(),
+      config.getBaseLlmClient(),
       abortSignal,
     );
     correctedContent = correctedParams.new_string;
@@ -129,7 +130,7 @@ export async function getCorrectedFileContent(
     // This implies new file (ENOENT)
     correctedContent = await ensureCorrectFileContent(
       proposedContent,
-      config.getGeminiClient(),
+      config.getBaseLlmClient(),
       abortSignal,
     );
   }
@@ -194,20 +195,11 @@ class WriteFileToolInvocation extends BaseToolInvocation<
       DEFAULT_DIFF_OPTIONS,
     );
 
-    let ideConfirmation: Promise<DiffUpdateResult> | undefined = undefined;
-    
-    // Only attempt IDE operations if IDE mode is enabled and client is available
-    if (this.config.getIdeMode()) {
-      try {
-        const ideClient = this.config.getIdeClient();
-        if (ideClient.getConnectionStatus().status === IDEConnectionStatus.Connected) {
-          ideConfirmation = ideClient.openDiff(this.params.file_path, correctedContent);
-        }
-      } catch (error) {
-        // IDE client not available or not connected - continue without IDE confirmation
-        console.log('[WriteFile] IDE client not available, continuing without IDE confirmation', error);
-      }
-    }
+    const ideClient = await IdeClient.getInstance();
+    const ideConfirmation =
+      this.config.getIdeMode() && ideClient.isDiffingEnabled()
+        ? ideClient.openDiff(this.params.file_path, correctedContent)
+        : undefined;
 
     const confirmationDetails: ToolEditConfirmationDetails = {
       type: 'edit',
@@ -318,6 +310,24 @@ class WriteFileToolInvocation extends BaseToolInvocation<
         );
       }
 
+      // Log file operation for telemetry (without diff_stat to avoid double-counting)
+      const mimetype = getSpecificMimeType(file_path);
+      const programmingLanguage = getLanguageFromFilePath(file_path);
+      const extension = path.extname(file_path);
+      const operation = isNewFile ? FileOperation.CREATE : FileOperation.UPDATE;
+
+      logFileOperation(
+        this.config,
+        new FileOperationEvent(
+          WriteFileTool.Name,
+          operation,
+          fileContent.split('\n').length,
+          mimetype,
+          extension,
+          programmingLanguage,
+        ),
+      );
+
       const displayResult: FileDiff = {
         fileDiff,
         fileName,
@@ -325,38 +335,6 @@ class WriteFileToolInvocation extends BaseToolInvocation<
         newContent: correctedContentResult.correctedContent,
         diffStat,
       };
-
-      const lines = fileContent.split('\n').length;
-      const mimetype = getSpecificMimeType(file_path);
-      const extension = path.extname(file_path); // Get extension
-      const programming_language = getProgrammingLanguage({ file_path });
-      if (isNewFile) {
-        logFileOperation(
-          this.config,
-          new FileOperationEvent(
-            WriteFileTool.Name,
-            FileOperation.CREATE,
-            lines,
-            mimetype,
-            extension,
-            diffStat,
-            programming_language,
-          ),
-        );
-      } else {
-        logFileOperation(
-          this.config,
-          new FileOperationEvent(
-            WriteFileTool.Name,
-            FileOperation.UPDATE,
-            lines,
-            mimetype,
-            extension,
-            diffStat,
-            programming_language,
-          ),
-        );
-      }
 
       return {
         llmContent: llmSuccessMessageParts.join(' '),
@@ -412,7 +390,7 @@ export class WriteFileTool
   extends BaseDeclarativeTool<WriteFileToolParams, ToolResult>
   implements ModifiableDeclarativeTool<WriteFileToolParams>
 {
-  static readonly Name: string = 'write_file';
+  static readonly Name: string = WRITE_FILE_TOOL_NAME;
 
   constructor(private readonly config: Config) {
     super(

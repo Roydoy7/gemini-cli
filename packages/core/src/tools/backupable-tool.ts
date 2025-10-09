@@ -7,10 +7,12 @@
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  BaseDeclarativeTool,  
+  BaseDeclarativeTool,
 } from './tools.js';
 import type { ToolResult, ToolInvocation, Kind } from './tools.js';
 import { ToolErrorType } from './tool-error.js';
+import type { AnsiOutput } from '../utils/terminalSerializer.js';
+import type { ShellExecutionConfig } from '../services/shellExecutionService.js';
 
 /**
  * Base interface for file operation parameters
@@ -192,7 +194,11 @@ export abstract class BackupableTool<TParams extends FileOperationParams, TResul
     const originalExecute = originalInvocation.execute.bind(originalInvocation);
     
     // Override execute to add backup logic
-    originalInvocation.execute = async (signal: AbortSignal, updateOutput?: (output: string) => void): Promise<TResult> => {
+    originalInvocation.execute = async (
+      signal: AbortSignal,
+      updateOutput?: (output: string | AnsiOutput) => void,
+      shellExecutionConfig?: ShellExecutionConfig
+    ): Promise<TResult> => {
       // Create backup before modify operations
       if (this.isModifyOperation(params)) {
         const filePath = this.getTargetFilePath(params);
@@ -200,9 +206,9 @@ export abstract class BackupableTool<TParams extends FileOperationParams, TResul
           await this.createBackup(filePath);
         }
       }
-      
+
       // Execute original operation
-      return originalExecute(signal, updateOutput);
+      return originalExecute(signal, updateOutput, shellExecutionConfig);
     };
     
     return originalInvocation;

@@ -1,0 +1,99 @@
+
+> @google/gemini-cli@0.10.0-nightly.20251007.c195a9aa build
+> node scripts/build.js
+
+npm WARN EBADENGINE Unsupported engine {
+npm WARN EBADENGINE   package: 'npm-run-all2@8.0.4',
+npm WARN EBADENGINE   required: { node: '^20.5.0 || >=22.0.0', npm: '>= 10' },
+npm WARN EBADENGINE   current: { node: 'v22.17.0', npm: '9.8.1' }
+npm WARN EBADENGINE }
+npm WARN skipping integrity check for git dependency ssh://git@github.com/electron/node-gyp.git 
+npm WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm WARN deprecated @npmcli/move-file@2.0.1: This functionality has been moved to @npmcli/fs
+npm WARN deprecated rimraf@2.7.1: Rimraf versions prior to v4 are no longer supported
+npm WARN deprecated rimraf@2.6.3: Rimraf versions prior to v4 are no longer supported
+npm WARN deprecated lodash.isequal@4.5.0: This package is deprecated. Use require('node:util').isDeepStrictEqual instead.
+npm WARN deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm WARN deprecated glob@8.1.0: Glob versions prior to v9 are no longer supported
+npm WARN deprecated glob@8.1.0: Glob versions prior to v9 are no longer supported
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm WARN deprecated boolean@3.2.0: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+npm WARN deprecated fstream@1.0.12: This package is no longer supported.
+
+> @google/gemini-cli@0.10.0-nightly.20251007.c195a9aa postinstall
+> node scripts/install-python-embedded.cjs
+
+[Python Installer] Python embedded environment already exists, skipping installation
+
+> @google/gemini-cli@0.10.0-nightly.20251007.c195a9aa prepare
+> husky && npm run bundle
+
+
+> @google/gemini-cli@0.10.0-nightly.20251007.c195a9aa bundle
+> npm run generate && node esbuild.config.js && node scripts/copy_bundle_assets.js
+
+
+> @google/gemini-cli@0.10.0-nightly.20251007.c195a9aa generate
+> node scripts/generate-git-commit-info.js
+
+✘ [ERROR] Expected ")" but found "."
+
+    packages/core/src/config/config.ts:1154:12:
+      1154 │     if (this.getUseRipgrep()) {
+           │             ^
+           ╵             )
+
+✘ [ERROR] Expected ")" but found "."
+
+    packages/core/src/config/config.ts:1154:12:
+      1154 │     if (this.getUseRipgrep()) {
+           │             ^
+           ╵             )
+
+gemini.js build failed: Error: Build failed with 1 error:
+packages/core/src/config/config.ts:1154:12: ERROR: Expected ")" but found "."
+    at failureErrorWithLog (/workspaces/gemini-cli/node_modules/esbuild/lib/main.js:1465:15)
+    at /workspaces/gemini-cli/node_modules/esbuild/lib/main.js:924:25
+    at /workspaces/gemini-cli/node_modules/esbuild/lib/main.js:876:52
+    at buildResponseToResult (/workspaces/gemini-cli/node_modules/esbuild/lib/main.js:922:7)
+    at /workspaces/gemini-cli/node_modules/esbuild/lib/main.js:949:16
+    at responseCallbacks.<computed> (/workspaces/gemini-cli/node_modules/esbuild/lib/main.js:601:9)
+    at handleIncomingPacket (/workspaces/gemini-cli/node_modules/esbuild/lib/main.js:656:12)
+    at Socket.readFromStdout (/workspaces/gemini-cli/node_modules/esbuild/lib/main.js:579:7)
+    at Socket.emit (node:events:518:28)
+    at addChunk (node:internal/streams/readable:561:12) {
+  errors: [Getter/Setter],
+  warnings: [Getter/Setter]
+}
+npm ERR! code 1
+npm ERR! path /workspaces/gemini-cli
+npm ERR! command failed
+npm ERR! command sh -c husky && npm run bundle
+
+npm ERR! A complete log of this run can be found in: /home/codespace/.npm/_logs/2025-10-09T06_24_16_369Z-debug-0.log
+node:internal/errors:983
+  const err = new Error(message);
+              ^
+
+Error: Command failed: npm install
+    at genericNodeError (node:internal/errors:983:15)
+    at wrappedFn (node:internal/errors:537:14)
+    at checkExecSyncError (node:child_process:883:11)
+    at execSync (node:child_process:955:15)
+    at file:///workspaces/gemini-cli/scripts/build.js:30:3
+    at ModuleJob.run (node:internal/modules/esm/module_job:329:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:644:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
+  status: 1,
+  signal: null,
+  output: [ null, null, null ],
+  pid: 39991,
+  stdout: null,
+  stderr: null
+}
+
+Node.js v22.17.0

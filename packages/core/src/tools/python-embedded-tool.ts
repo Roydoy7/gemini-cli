@@ -23,6 +23,8 @@ import {
 } from './tools.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { ShellExecutionService } from '../services/shellExecutionService.js';
+import type { ShellExecutionConfig } from '../services/shellExecutionService.js';
+import type { AnsiOutput } from '../utils/terminalSerializer.js';
 import { XlwingsDocTool } from '../tools/xlwings-doc-tool.js';
 import { GeminiSearchTool } from '../tools/gemini-search-tool.js';
 import { KnowledgeBaseTool } from './knowledge-base-tool.js';
@@ -85,8 +87,8 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
 
   async execute(
     signal: AbortSignal,
-    updateOutput?: (output: string) => void,
-    _terminalColumns?: number,
+    updateOutput?: (output: string | AnsiOutput) => void,
+    shellExecutionConfig?: ShellExecutionConfig,
   ): Promise<ToolResult> {
     try {
       // Get embedded Python path
@@ -116,6 +118,7 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
             () => {}, // No output callback for install
             signal,
             false, // Don't use NodePty for install
+            shellExecutionConfig || {},
           );
           
           const installResult = await installPromise;
@@ -234,6 +237,7 @@ sys.exit(_exit_code)`;
         } : () => {},
         signal,
         false, // Don't use NodePty for Python execution
+        shellExecutionConfig || {},
       );
       
       const result = await pythonPromise;
@@ -566,6 +570,7 @@ def col_letter_to_index(col_letter):
             () => {},
             new AbortController().signal,
             false,
+            {},
           );
           const result = await versionPromise;
         

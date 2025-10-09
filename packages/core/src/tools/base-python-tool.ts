@@ -22,6 +22,8 @@ import {
 } from './tools.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { ShellExecutionService } from '../services/shellExecutionService.js';
+import type { ShellExecutionConfig } from '../services/shellExecutionService.js';
+import type { AnsiOutput } from '../utils/terminalSerializer.js';
 
 interface PythonOperationParams {
   /** Operation type */
@@ -197,8 +199,8 @@ class BasePythonToolInvocation<
 
   override async execute(
     signal: AbortSignal,
-    updateOutput?: (output: string) => void,
-    _terminalColumns?: number,
+    updateOutput?: (output: string | AnsiOutput) => void,
+    shellExecutionConfig?: ShellExecutionConfig,
   ): Promise<TResult> {
     try {
       // Get embedded Python path
@@ -229,6 +231,7 @@ class BasePythonToolInvocation<
               () => {},
               signal,
               false,
+              shellExecutionConfig || {},
             );
             const checkResult = await checkPromise;
 
@@ -257,6 +260,7 @@ class BasePythonToolInvocation<
               () => {},
               signal,
               false,
+              shellExecutionConfig || {},
             );
 
             const installResult = await installPromise;
@@ -357,6 +361,7 @@ else:
         } : () => {},
         signal,
         false,
+        shellExecutionConfig || {},
       );
       
       const result = await pythonPromise;

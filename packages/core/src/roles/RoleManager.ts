@@ -7,6 +7,7 @@
 import type { RoleDefinition, RoleContext, RoleCategory } from './types.js';
 import { BUILTIN_ROLES } from './BuiltinRoles.js';
 import { getCoreSystemPrompt } from '../core/prompts.js';
+import type { Config } from '../config/config.js';
 
 export class RoleManager {
   private static instance: RoleManager | null = null;
@@ -111,6 +112,7 @@ export class RoleManager {
    * Generates a role-aware system prompt
    */
   getRoleAwareSystemPrompt(
+    config: Config,
     userMemory?: string,
     roleId?: string,
     additionalInstructions?: string
@@ -120,7 +122,7 @@ export class RoleManager {
       return this.generateSystemPrompt(context);
     } catch {
       // Fallback to original system prompt if role system fails
-      return getCoreSystemPrompt(userMemory);
+      return getCoreSystemPrompt(config, userMemory);
     }
   }
 
@@ -136,13 +138,14 @@ export class RoleManager {
    * Gets the combined system prompt, using role system if enabled
    */
   getCombinedSystemPrompt(
+    config: Config,
     userMemory?: string,
     roleId?: string,
     additionalInstructions?: string
   ): string {
     if (this.isRoleSystemEnabled()) {
-      return this.getRoleAwareSystemPrompt(userMemory, roleId, additionalInstructions);
+      return this.getRoleAwareSystemPrompt(config, userMemory, roleId, additionalInstructions);
     }
-    return getCoreSystemPrompt(userMemory);
+    return getCoreSystemPrompt(config, userMemory);
   }
 }
