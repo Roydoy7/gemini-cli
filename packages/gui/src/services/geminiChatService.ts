@@ -4,76 +4,155 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { 
+import type {
   UniversalMessage,
   UniversalStreamEvent,
   RoleDefinition,
   PresetTemplate,
   ModelProviderType,
   CompressionInfo,
-  ToolCall
+  ToolCall,
 } from '@/types';
-import type { ToolCallConfirmationDetails, ToolConfirmationOutcome } from '@/types';
+import type {
+  ToolCallConfirmationDetails,
+  ToolConfirmationOutcome,
+} from '@/types';
 
 // Define Electron API interface
 interface ElectronAPI {
   geminiChat: {
-    initialize: (config: Record<string, unknown>) => Promise<void>;
+    initialize: (
+      config: Record<string, unknown>,
+      initialRoleId?: string,
+    ) => Promise<void>;
     switchProvider: (providerType: string, model: string) => Promise<void>;
     switchRole: (roleId: string) => Promise<boolean>;
-    sendMessage: (messages: UniversalMessage[]) => Promise<UniversalStreamEvent[]>;
+    sendMessage: (
+      messages: UniversalMessage[],
+    ) => Promise<UniversalStreamEvent[]>;
     sendMessageStream: (messages: UniversalMessage[]) => {
       streamId: string;
       startStream: (
-        onChunk: (chunk: { type: string; content?: string; role?: string; timestamp: number; compressionInfo?: CompressionInfo; toolCall?: ToolCall; toolCallId?: string; toolName?: string }) => void,
-        onComplete: (data: { type: string; content: string; role: string; timestamp: number }) => void,
-        onError: (error: { type: string; error: string }) => void
+        onChunk: (chunk: {
+          type: string;
+          content?: string;
+          role?: string;
+          timestamp: number;
+          compressionInfo?: CompressionInfo;
+          toolCall?: ToolCall;
+          toolCallId?: string;
+          toolName?: string;
+        }) => void,
+        onComplete: (data: {
+          type: string;
+          content: string;
+          role: string;
+          timestamp: number;
+        }) => void,
+        onError: (error: { type: string; error: string }) => void,
       ) => () => void; // Returns cleanup function
     };
-    getAvailableModels: (providerType?: string) => Promise<Record<string, string[]>>;
     getAllRoles: () => Promise<RoleDefinition[]>;
     getCurrentRole: () => Promise<RoleDefinition | null>;
     getAllTemplates: () => Promise<PresetTemplate[]>;
-    renderTemplate: (templateId: string, variables: Record<string, string | number | boolean>) => Promise<string>;
-    addWorkspaceDirectory: (directory: string, basePath?: string) => Promise<void>;
+    renderTemplate: (
+      templateId: string,
+      variables: Record<string, string | number | boolean>,
+    ) => Promise<string>;
+    addWorkspaceDirectory: (
+      directory: string,
+      basePath?: string,
+    ) => Promise<void>;
     getWorkspaceDirectories: () => Promise<readonly string[]>;
-    getDirectoryContents: (directoryPath: string) => Promise<Array<{
-      name: string;
-      path: string;
-      type: 'file' | 'folder';
-      size?: number;
-      modified?: Date;
-    }>>;
+    getDirectoryContents: (directoryPath: string) => Promise<
+      Array<{
+        name: string;
+        path: string;
+        type: 'file' | 'folder';
+        size?: number;
+        modified?: Date;
+      }>
+    >;
     setWorkspaceDirectories: (directories: readonly string[]) => Promise<void>;
     getCurrentToolset: () => Promise<string[]>;
     addCustomRole: (role: RoleDefinition) => Promise<void>;
-    addCustomTemplate: (template: Omit<PresetTemplate, 'isBuiltin'>) => Promise<void>;
-    updateCustomTemplate: (id: string, updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>) => Promise<void>;
+    addCustomTemplate: (
+      template: Omit<PresetTemplate, 'isBuiltin'>,
+    ) => Promise<void>;
+    updateCustomTemplate: (
+      id: string,
+      updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>,
+    ) => Promise<void>;
     deleteCustomTemplate: (id: string) => Promise<void>;
     // Session management
-    createSession: (sessionId: string, title?: string, roleId?: string) => Promise<void>;
+    createSession: (
+      sessionId: string,
+      title?: string,
+      roleId?: string,
+    ) => Promise<void>;
     switchSession: (sessionId: string) => Promise<void>;
     deleteSession: (sessionId: string) => Promise<void>;
     deleteAllSessions: () => Promise<void>;
     getCurrentSessionId: () => Promise<string | null>;
     getDisplayMessages: (sessionId?: string) => Promise<UniversalMessage[]>;
-    getSessionsInfo: () => Promise<Array<{id: string, title: string, messageCount: number, lastUpdated: Date, roleId?: string}>>;
+    getSessionsInfo: () => Promise<
+      Array<{
+        id: string;
+        title: string;
+        messageCount: number;
+        lastUpdated: Date;
+        roleId?: string;
+      }>
+    >;
     updateSessionTitle: (sessionId: string, newTitle: string) => Promise<void>;
     setSessionRole: (sessionId: string, roleId: string) => Promise<void>;
     // Tool confirmation
-    onToolConfirmationRequest: (callback: (event: unknown, data: { streamId: string; confirmationDetails: ToolCallConfirmationDetails }) => void) => () => void;
-    sendToolConfirmationResponse: (outcome: string) => Promise<{ success: boolean }>;
+    onToolConfirmationRequest: (
+      callback: (
+        event: unknown,
+        data: {
+          streamId: string;
+          confirmationDetails: ToolCallConfirmationDetails;
+        },
+      ) => void,
+    ) => () => void;
+    sendToolConfirmationResponse: (
+      outcome: string,
+    ) => Promise<{ success: boolean }>;
     // OAuth authentication
-    startOAuthFlow: (providerType: string) => Promise<{ success: boolean; message?: string; error?: string }>;
-    getOAuthStatus: (providerType: string) => Promise<{ authenticated: boolean; userEmail?: string }>;
-    clearOAuthCredentials: (providerType: string) => Promise<{ success: boolean; error?: string }>;
-    checkEnvApiKey: (providerType: string) => Promise<{ detected: boolean; source: string }>;
-    setApiKeyPreference: (providerType: string) => Promise<{ success: boolean; error?: string }>;
-    setOAuthPreference: (providerType: string) => Promise<{ success: boolean; error?: string }>;
+    startOAuthFlow: (
+      providerType: string,
+    ) => Promise<{ success: boolean; message?: string; error?: string }>;
+    getOAuthStatus: (
+      providerType: string,
+    ) => Promise<{ authenticated: boolean; userEmail?: string }>;
+    clearOAuthCredentials: (
+      providerType: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    checkEnvApiKey: (
+      providerType: string,
+    ) => Promise<{ detected: boolean; source: string }>;
+    setApiKeyPreference: (
+      providerType: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    setOAuthPreference: (
+      providerType: string,
+    ) => Promise<{ success: boolean; error?: string }>;
     getApprovalMode: () => Promise<'default' | 'autoEdit' | 'yolo'>;
     setApprovalMode: (mode: 'default' | 'autoEdit' | 'yolo') => Promise<void>;
     // Direct Excel tool calls
-    callExcelTool: (operation: string, params?: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string; workbooks?: Array<{name: string, saved: boolean}>; worksheets?: Array<{index: number, name: string}>; apps?: unknown[]; selection?: string }>;
+    callExcelTool: (
+      operation: string,
+      params?: Record<string, unknown>,
+    ) => Promise<{
+      success: boolean;
+      data?: unknown;
+      error?: string;
+      workbooks?: Array<{ name: string; saved: boolean }>;
+      worksheets?: Array<{ index: number; name: string }>;
+      apps?: unknown[];
+      selection?: string;
+    }>;
   };
 }
 
@@ -90,10 +169,10 @@ class GeminiChatService {
   private modelsCache: Record<string, string[]> | null = null;
   private modelsCacheTimestamp: number = 0;
   private readonly MODELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-  
+
   // Tool confirmation callback
   private confirmationCallback?: (
-    details: ToolCallConfirmationDetails
+    details: ToolCallConfirmationDetails,
   ) => Promise<ToolConfirmationOutcome>;
 
   private get api() {
@@ -104,8 +183,11 @@ class GeminiChatService {
     return electronAPI.geminiChat;
   }
 
-  async initialize(config: Record<string, unknown>): Promise<void> {
-    await this.api.initialize(config);
+  async initialize(
+    config: Record<string, unknown>,
+    initialRoleId?: string,
+  ): Promise<void> {
+    await this.api.initialize(config, initialRoleId);
     this.initialized = true;
 
     // Set up tool confirmation listener
@@ -118,7 +200,9 @@ class GeminiChatService {
 
   // Set the confirmation callback for tool approvals
   setConfirmationCallback(
-    callback: (details: ToolCallConfirmationDetails) => Promise<ToolConfirmationOutcome>
+    callback: (
+      details: ToolCallConfirmationDetails,
+    ) => Promise<ToolConfirmationOutcome>,
   ): void {
     this.confirmationCallback = callback;
   }
@@ -128,14 +212,16 @@ class GeminiChatService {
     if (this.api.onToolConfirmationRequest) {
       this.api.onToolConfirmationRequest(async (_, data) => {
         console.log(' from main process:', data);
-        
+
         if (this.confirmationCallback) {
           try {
             // Call the registered callback to handle confirmation in GUI
             // data.confirmationDetails is the actual ToolCallConfirmationDetails
-            const outcome = await this.confirmationCallback(data.confirmationDetails);
+            const outcome = await this.confirmationCallback(
+              data.confirmationDetails,
+            );
             console.log('Sending confirmation response:', outcome);
-            
+
             // Send the response back to main process
             this.api.sendToolConfirmationResponse(outcome);
           } catch (error) {
@@ -151,12 +237,16 @@ class GeminiChatService {
     }
   }
 
-  async switchProvider(providerType: ModelProviderType, model: string): Promise<void> {
+  async switchProvider(
+    _providerType: ModelProviderType,
+    model: string,
+  ): Promise<void> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
 
-    await this.api.switchProvider(providerType, model);
+    // Project now uses only Gemini, no provider switching needed
+    console.log(`Model switched to: ${model} (provider switching removed)`);
   }
 
   async switchRole(roleId: string): Promise<boolean> {
@@ -166,16 +256,22 @@ class GeminiChatService {
 
     // Prevent duplicate calls within 1 second
     const now = Date.now();
-    if (this.lastRoleSwitch && 
-        this.lastRoleSwitch.roleId === roleId && 
-        now - this.lastRoleSwitch.timestamp < 1000) {
-      console.log(`Ignoring duplicate switchRole call for ${roleId} (within 1s)`);
+    if (
+      this.lastRoleSwitch &&
+      this.lastRoleSwitch.roleId === roleId &&
+      now - this.lastRoleSwitch.timestamp < 1000
+    ) {
+      console.log(
+        `Ignoring duplicate switchRole call for ${roleId} (within 1s)`,
+      );
       return true;
     }
 
     // Prevent concurrent calls
     if (this.switchingRole) {
-      console.log(`Role switch already in progress, ignoring call for ${roleId}`);
+      console.log(
+        `Role switch already in progress, ignoring call for ${roleId}`,
+      );
       return false;
     }
 
@@ -183,11 +279,11 @@ class GeminiChatService {
     try {
       console.log(`Switching to role: ${roleId}`);
       const result = await this.api.switchRole(roleId);
-      
+
       if (result) {
         this.lastRoleSwitch = { roleId, timestamp: now };
       }
-      
+
       return result;
     } finally {
       this.switchingRole = false;
@@ -195,8 +291,11 @@ class GeminiChatService {
   }
 
   async sendMessage(
-    messages: UniversalMessage[]
-  ): Promise<{ stream: AsyncGenerator<UniversalStreamEvent>; cancel: () => void }> {
+    messages: UniversalMessage[],
+  ): Promise<{
+    stream: AsyncGenerator<UniversalStreamEvent>;
+    cancel: () => void;
+  }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -216,15 +315,37 @@ class GeminiChatService {
       // Set up real-time callbacks
       cleanup = streamResponse.startStream(
         // onChunk callback
-        (chunk) => {
+        (chunk: {
+          type: string;
+          content?: string;
+          role?: string;
+          timestamp: number;
+          compressionInfo?: CompressionInfo;
+          toolCall?: ToolCall;
+          toolCallId?: string;
+          toolName?: string;
+          thoughtSummary?: { subject: string; description: string };
+        }) => {
           if (chunk.type === 'content_delta' && chunk.content) {
             events.push({
               type: 'content_delta',
               content: chunk.content,
               role: chunk.role as 'assistant',
-              timestamp: chunk.timestamp
+              timestamp: chunk.timestamp,
             });
             // Immediately wake up the generator
+            if (resolveNext) {
+              resolveNext();
+              resolveNext = null;
+            }
+          } else if (chunk.type === 'thought') {
+            // Handle thought events - pass through with structured data
+            events.push({
+              type: 'thought',
+              thoughtSummary: chunk.thoughtSummary,
+              timestamp: chunk.timestamp,
+            });
+            // Wake up the generator for thought event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
@@ -234,33 +355,33 @@ class GeminiChatService {
             events.push({
               type: 'compression',
               compressionInfo: chunk.compressionInfo,
-              timestamp: chunk.timestamp
+              timestamp: chunk.timestamp,
             });
             // Wake up the generator for compression event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
             }
-          } else if (chunk.type === 'tool_call') {
-            // Handle tool call events
+          } else if (chunk.type === 'tool_call_request') {
+            // Handle tool call request events
             events.push({
-              type: 'tool_call',
+              type: 'tool_call_request',
               toolCall: chunk.toolCall,
-              timestamp: chunk.timestamp
+              timestamp: chunk.timestamp,
             });
             // Wake up the generator for tool call event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
             }
-          } else if (chunk.type === 'tool_response') {
-            // Handle tool response events
+          } else if (chunk.type === 'tool_call_response') {
+            // Handle tool call response events
             events.push({
-              type: 'tool_response',
+              type: 'tool_call_response',
               content: chunk.content,
               toolCallId: chunk.toolCallId,
               toolName: chunk.toolName,
-              timestamp: chunk.timestamp
+              timestamp: chunk.timestamp,
             });
             // Wake up the generator for tool response event
             if (resolveNext) {
@@ -275,7 +396,7 @@ class GeminiChatService {
             type: 'message_complete',
             content: data.content,
             role: data.role as 'assistant',
-            timestamp: data.timestamp
+            timestamp: data.timestamp,
           });
           isComplete = true;
           // Wake up the generator for completion
@@ -289,7 +410,7 @@ class GeminiChatService {
           events.push({
             type: 'error',
             error: error.error,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
           hasError = true;
           // Wake up the generator for error
@@ -297,9 +418,9 @@ class GeminiChatService {
             resolveNext();
             resolveNext = null;
           }
-        }
+        },
       );
-      
+
       try {
         // Real-time event yielding loop
         while (!isComplete && !hasError) {
@@ -309,10 +430,10 @@ class GeminiChatService {
             yield event;
             eventIndex++;
           }
-          
+
           // Wait for the next event to arrive (event-driven instead of polling)
           if (!isComplete && !hasError && eventIndex >= events.length) {
-            await new Promise<void>(resolve => {
+            await new Promise<void>((resolve) => {
               resolveNext = resolve;
               // Fallback timeout to prevent infinite waiting
               setTimeout(() => {
@@ -324,14 +445,13 @@ class GeminiChatService {
             });
           }
         }
-        
+
         // Yield any remaining events
         while (eventIndex < events.length) {
           const event = events[eventIndex];
           yield event;
           eventIndex++;
         }
-        
       } finally {
         if (cleanup) cleanup();
       }
@@ -341,30 +461,36 @@ class GeminiChatService {
       stream: eventGenerator(),
       cancel: () => {
         if (cleanup) cleanup();
-      }
+      },
     };
   }
 
-  async getAvailableModels(providerType?: ModelProviderType): Promise<Record<string, string[]>> {
+  async getAvailableModels(
+    providerType?: ModelProviderType,
+  ): Promise<Record<string, string[]>> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
 
     // Check cache if no specific provider is requested and cache is still valid
     const now = Date.now();
-    if (!providerType && this.modelsCache && (now - this.modelsCacheTimestamp) < this.MODELS_CACHE_TTL) {
-      console.log('GeminiChatService: Using cached models');
+    if (
+      !providerType &&
+      this.modelsCache &&
+      now - this.modelsCacheTimestamp < this.MODELS_CACHE_TTL
+    ) {
       return this.modelsCache;
     }
 
-    console.log('GeminiChatService: Fetching models from API', providerType ? `for provider: ${providerType}` : 'for all providers');
-    const models = await this.api.getAvailableModels(providerType);
-    
+    // Return hardcoded Gemini models since getAvailableModels API is removed
+    const models: Record<string, string[]> = {
+      gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+    };
+
     // Cache the full model list if no specific provider was requested
     if (!providerType) {
       this.modelsCache = models;
       this.modelsCacheTimestamp = now;
-      console.log('GeminiChatService: Cached models for future use');
     }
 
     return models;
@@ -423,7 +549,7 @@ class GeminiChatService {
 
   async renderTemplate(
     templateId: string,
-    variables: Record<string, string | number | boolean>
+    variables: Record<string, string | number | boolean>,
   ): Promise<string> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
@@ -432,7 +558,10 @@ class GeminiChatService {
     return await this.api.renderTemplate(templateId, variables);
   }
 
-  async addWorkspaceDirectory(directory: string, basePath?: string): Promise<void> {
+  async addWorkspaceDirectory(
+    directory: string,
+    basePath?: string,
+  ): Promise<void> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -442,7 +571,8 @@ class GeminiChatService {
 
   async setWorkspaceDirectories(directories: readonly string[]): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      // Silently ignore if not initialized - the sync will happen later
+      return;
     }
 
     await this.api.setWorkspaceDirectories(directories);
@@ -456,13 +586,15 @@ class GeminiChatService {
     return await this.api.getWorkspaceDirectories();
   }
 
-  async getDirectoryContents(directoryPath: string): Promise<Array<{
-    name: string;
-    path: string;
-    type: 'file' | 'folder';
-    size?: number;
-    modified?: Date;
-  }>> {
+  async getDirectoryContents(directoryPath: string): Promise<
+    Array<{
+      name: string;
+      path: string;
+      type: 'file' | 'folder';
+      size?: number;
+      modified?: Date;
+    }>
+  > {
     if (!this.initialized) {
       return [];
     }
@@ -470,9 +602,9 @@ class GeminiChatService {
     try {
       const items = await this.api.getDirectoryContents(directoryPath);
       // Convert modified dates from strings back to Date objects
-      return items.map(item => ({
+      return items.map((item) => ({
         ...item,
-        modified: item.modified ? new Date(item.modified) : undefined
+        modified: item.modified ? new Date(item.modified) : undefined,
       }));
     } catch (error) {
       console.error('Failed to get directory contents:', error);
@@ -488,7 +620,6 @@ class GeminiChatService {
     return await this.api.getCurrentToolset();
   }
 
-
   async addCustomRole(role: RoleDefinition): Promise<void> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
@@ -497,7 +628,9 @@ class GeminiChatService {
     await this.api.addCustomRole(role);
   }
 
-  async addCustomTemplate(template: Omit<PresetTemplate, 'isBuiltin'>): Promise<void> {
+  async addCustomTemplate(
+    template: Omit<PresetTemplate, 'isBuiltin'>,
+  ): Promise<void> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -505,7 +638,10 @@ class GeminiChatService {
     await this.api.addCustomTemplate(template);
   }
 
-  async updateCustomTemplate(id: string, updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>): Promise<void> {
+  async updateCustomTemplate(
+    id: string,
+    updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>,
+  ): Promise<void> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -522,7 +658,11 @@ class GeminiChatService {
   }
 
   // Session management methods
-  async createSession(sessionId: string, title?: string, roleId?: string): Promise<void> {
+  async createSession(
+    sessionId: string,
+    title?: string,
+    roleId?: string,
+  ): Promise<void> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -570,7 +710,15 @@ class GeminiChatService {
     return await this.api.getDisplayMessages(sessionId);
   }
 
-  async getSessionsInfo(): Promise<Array<{id: string, title: string, messageCount: number, lastUpdated: Date, roleId?: string}>> {
+  async getSessionsInfo(): Promise<
+    Array<{
+      id: string;
+      title: string;
+      messageCount: number;
+      lastUpdated: Date;
+      roleId?: string;
+    }>
+  > {
     if (!this.initialized) {
       return [];
     }
@@ -595,7 +743,9 @@ class GeminiChatService {
   }
 
   // OAuth authentication methods
-  async startOAuthFlow(providerType: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  async startOAuthFlow(
+    providerType: string,
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -603,7 +753,9 @@ class GeminiChatService {
     return await this.api.startOAuthFlow(providerType);
   }
 
-  async getOAuthStatus(providerType: string): Promise<{ authenticated: boolean; userEmail?: string }> {
+  async getOAuthStatus(
+    providerType: string,
+  ): Promise<{ authenticated: boolean; userEmail?: string }> {
     if (!this.initialized) {
       return { authenticated: false };
     }
@@ -611,7 +763,9 @@ class GeminiChatService {
     return await this.api.getOAuthStatus(providerType);
   }
 
-  async clearOAuthCredentials(providerType: string): Promise<{ success: boolean; error?: string }> {
+  async clearOAuthCredentials(
+    providerType: string,
+  ): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -619,7 +773,9 @@ class GeminiChatService {
     return await this.api.clearOAuthCredentials(providerType);
   }
 
-  async checkEnvApiKey(providerType: string): Promise<{ detected: boolean; source: string }> {
+  async checkEnvApiKey(
+    providerType: string,
+  ): Promise<{ detected: boolean; source: string }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -627,7 +783,9 @@ class GeminiChatService {
     return await this.api.checkEnvApiKey(providerType);
   }
 
-  async setApiKeyPreference(providerType: string): Promise<{ success: boolean; error?: string }> {
+  async setApiKeyPreference(
+    providerType: string,
+  ): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -635,7 +793,9 @@ class GeminiChatService {
     return await this.api.setApiKeyPreference(providerType);
   }
 
-  async setOAuthPreference(providerType: string): Promise<{ success: boolean; error?: string }> {
+  async setOAuthPreference(
+    providerType: string,
+  ): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -660,7 +820,11 @@ class GeminiChatService {
   }
 
   // Excel tool methods using direct Excel tool
-  async getExcelWorkbooks(): Promise<{ success: boolean; workbooks: Array<{name: string; path?: string}>; error?: string }> {
+  async getExcelWorkbooks(): Promise<{
+    success: boolean;
+    workbooks: Array<{ name: string; path?: string }>;
+    error?: string;
+  }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
@@ -671,79 +835,91 @@ class GeminiChatService {
       if (result.success && result.workbooks) {
         return {
           success: true,
-          workbooks: result.workbooks
+          workbooks: result.workbooks,
         };
       }
 
       return {
         success: false,
         workbooks: [],
-        error: result.error || 'Failed to get workbooks from Excel tool'
+        error: result.error || 'Failed to get workbooks from Excel tool',
       };
     } catch (error) {
       console.error('Error getting Excel workbooks:', error);
       return {
         success: false,
         workbooks: [],
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 
-  async getExcelWorksheets(workbook: string): Promise<{ success: boolean; worksheets: Array<{index: number, name: string}>; error?: string }> {
+  async getExcelWorksheets(
+    workbook: string,
+  ): Promise<{
+    success: boolean;
+    worksheets: Array<{ index: number; name: string }>;
+    error?: string;
+  }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
 
     try {
-      const result = await this.api.callExcelTool('listWorksheets', { workbookName: workbook });
+      const result = await this.api.callExcelTool('listWorksheets', {
+        workbookName: workbook,
+      });
 
       if (result.success && result.worksheets) {
         return {
           success: true,
-          worksheets: result.worksheets
+          worksheets: result.worksheets,
         };
       }
 
       return {
         success: false,
         worksheets: [],
-        error: result.error || 'Failed to get worksheets from Excel tool'
+        error: result.error || 'Failed to get worksheets from Excel tool',
       };
     } catch (error) {
       console.error('Error getting Excel worksheets:', error);
       return {
         success: false,
         worksheets: [],
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 
-  async getExcelSelection(workbook: string): Promise<{ success: boolean; selection?: string; error?: string }> {
+  async getExcelSelection(
+    workbook: string,
+  ): Promise<{ success: boolean; selection?: string; error?: string }> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
     }
 
     try {
-      const result = await this.api.callExcelTool('getSelection', { workbookName: workbook });
+      const result = await this.api.callExcelTool('getSelection', {
+        workbookName: workbook,
+      });
 
       if (result.success && result.selection) {
         return {
           success: true,
-          selection: result.selection
+          selection: result.selection,
         };
       }
 
       return {
         success: false,
-        error: result.error || 'Failed to get selection from Excel'
+        error: result.error || 'Failed to get selection from Excel',
       };
     } catch (error) {
       console.error('Error getting Excel selection:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }

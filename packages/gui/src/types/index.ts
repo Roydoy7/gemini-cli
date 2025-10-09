@@ -9,10 +9,10 @@
 // Temporarily define core types locally until build issues are resolved
 export enum ModelProviderType {
   GEMINI = 'gemini',
-  OPENAI = 'openai', 
+  OPENAI = 'openai',
   LM_STUDIO = 'lm_studio',
   ANTHROPIC = 'anthropic',
-  CUSTOM = 'custom'
+  CUSTOM = 'custom',
 }
 
 export interface ModelProviderConfig {
@@ -55,16 +55,31 @@ export interface CompressionInfo {
   compressionRatio: number;
 }
 
+export interface ThoughtSummary {
+  subject: string;
+  description: string;
+}
+
 export interface UniversalStreamEvent {
-  type: 'content' | 'content_delta' | 'tool_call' | 'tool_response' | 'done' | 'message_complete' | 'error' | 'compression';
+  type:
+    | 'content'
+    | 'content_delta'
+    | 'tool_call_request'
+    | 'tool_call_response'
+    | 'done'
+    | 'message_complete'
+    | 'error'
+    | 'compression'
+    | 'thought';
   content?: string;
   toolCall?: ToolCall;
   toolCallId?: string;
   toolName?: string;
-  toolSuccess?: boolean;  // Added to indicate tool execution success/failure
-  toolResponseData?: ToolResponseData;  // Structured tool response data
+  toolSuccess?: boolean; // Added to indicate tool execution success/failure
+  toolResponseData?: ToolResponseData; // Structured tool response data
   response?: UniversalResponse;
   compressionInfo?: CompressionInfo;
+  thoughtSummary?: ThoughtSummary; // Thought process data
   error?: Error | string;
   role?: 'assistant' | 'user' | 'system';
   timestamp?: number;
@@ -73,7 +88,7 @@ export interface UniversalStreamEvent {
 export interface ChartConfig {
   type: 'line' | 'bar' | 'area' | 'candlestick' | 'pie' | 'scatter';
   title: string;
-  data: Record<string, string | number | boolean>[];
+  data: Array<Record<string, string | number | boolean>>;
   xKey: string;
   yKey?: string;
   yKeys?: string[];
@@ -90,9 +105,14 @@ export interface ChartConfig {
 }
 
 export interface VisualizationData {
-  type: 'quotes' | 'ohlc_bars' | 'technical_indicators' | 'screener_results' | 'signals';
+  type:
+    | 'quotes'
+    | 'ohlc_bars'
+    | 'technical_indicators'
+    | 'screener_results'
+    | 'signals';
   title: string;
-  data: Record<string, string | number | boolean>[];
+  data: Array<Record<string, string | number | boolean>>;
   metadata?: {
     symbols?: string[];
     timeframe?: string;
@@ -190,8 +210,8 @@ export interface ChatMessage {
   timestamp: Date;
   toolCalls?: ToolCall[];
   error?: string;
-  toolSuccess?: boolean;  // Added to indicate tool execution success/failure
-  toolResponseData?: ToolResponseData;  // Structured tool response data
+  toolSuccess?: boolean; // Added to indicate tool execution success/failure
+  toolResponseData?: ToolResponseData; // Structured tool response data
 }
 
 export interface ToolCall {
@@ -312,25 +332,25 @@ export interface AppState {
   // Session management
   sessions: ChatSession[];
   activeSessionId: string | null;
-  
+
   // Model and authentication
   currentProvider: ModelProviderType;
   currentModel: string;
   authConfig: AuthConfig;
-  
+
   // Workspace
   currentWorkspace: WorkspaceConfig | null;
   workspaces: WorkspaceConfig[];
-  
+
   // UI state
   language: Language;
   theme: ThemeMode;
   sidebarCollapsed: boolean;
   initialized: boolean;
-  
+  isHydrated: boolean; // Indicates if persist has loaded from storage
+
   // Role system
   currentRole: string;
   customRoles: RoleDefinition[];
   builtinRoles: RoleDefinition[];
 }
-

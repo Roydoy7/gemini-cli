@@ -1,14 +1,20 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist } from 'zustand';
 import { ModelProviderType } from '@/types';
-import type { 
+import type {
   AppState,
-  ChatSession, 
-  WorkspaceConfig, 
+  ChatSession,
+  WorkspaceConfig,
   AuthConfig,
   Language,
   ThemeMode,
-  RoleDefinition
+  RoleDefinition,
 } from '@/types';
 
 interface AppStore extends AppState {
@@ -18,28 +24,31 @@ interface AppStore extends AppState {
   updateSession: (sessionId: string, updates: Partial<ChatSession>) => void;
   removeSession: (sessionId: string) => void;
   clearAllSessions: () => void;
-  
+
   setCurrentProvider: (provider: ModelProviderType) => void;
   setCurrentModel: (model: string) => void;
   updateAuthConfig: (config: Partial<AuthConfig>) => void;
   syncOAuthStatus: () => Promise<void>;
-  
+
   setCurrentWorkspace: (workspace: WorkspaceConfig | null) => void;
   addWorkspace: (workspace: WorkspaceConfig) => void;
-  updateWorkspace: (workspaceId: string, updates: Partial<WorkspaceConfig>) => void;
+  updateWorkspace: (
+    workspaceId: string,
+    updates: Partial<WorkspaceConfig>,
+  ) => void;
   removeWorkspace: (workspaceId: string) => void;
-  
+
   setLanguage: (language: Language) => void;
   setTheme: (theme: ThemeMode) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
-  
+
   setCurrentRole: (roleId: string) => void;
   addCustomRole: (role: RoleDefinition) => void;
   removeCustomRole: (roleId: string) => void;
   setBuiltinRoles: (roles: RoleDefinition[]) => void;
-  
+
   setInitialized: (initialized: boolean) => void;
-  
+
   // Note: Template management moved to backend system via geminiChatService
 }
 
@@ -58,6 +67,7 @@ export const useAppStore = create<AppStore>()(
       theme: 'system',
       sidebarCollapsed: false,
       initialized: false,
+      isHydrated: false,
       currentRole: 'software_engineer',
       customRoles: [],
       builtinRoles: [],
@@ -75,13 +85,15 @@ export const useAppStore = create<AppStore>()(
       updateSession: (sessionId: string, updates: Partial<ChatSession>) =>
         set((state) => ({
           sessions: state.sessions.map((session) =>
-            session.id === sessionId ? { ...session, ...updates } : session
+            session.id === sessionId ? { ...session, ...updates } : session,
           ),
         })),
 
       removeSession: (sessionId: string) =>
         set((state) => ({
-          sessions: state.sessions.filter((session) => session.id !== sessionId),
+          sessions: state.sessions.filter(
+            (session) => session.id !== sessionId,
+          ),
           activeSessionId:
             state.activeSessionId === sessionId ? null : state.activeSessionId,
         })),
@@ -95,8 +107,7 @@ export const useAppStore = create<AppStore>()(
       setCurrentProvider: (provider: ModelProviderType) =>
         set({ currentProvider: provider }),
 
-      setCurrentModel: (model: string) =>
-        set({ currentModel: model }),
+      setCurrentModel: (model: string) => set({ currentModel: model }),
 
       updateAuthConfig: (config: Partial<AuthConfig>) =>
         set((state) => ({
@@ -105,21 +116,23 @@ export const useAppStore = create<AppStore>()(
 
       syncOAuthStatus: async () => {
         try {
-          const { geminiChatService } = await import('@/services/geminiChatService');
+          const { geminiChatService } = await import(
+            '@/services/geminiChatService'
+          );
           const oauthStatus = await geminiChatService.getOAuthStatus('gemini');
-          
+
           // Update auth config based on OAuth status
           const currentState = useAppStore.getState();
           const currentGeminiConfig = currentState.authConfig.gemini;
-          
+
           if (oauthStatus.authenticated) {
             // If OAuth is authenticated but config doesn't reflect it, update
             if (!currentGeminiConfig || currentGeminiConfig.type !== 'oauth') {
               useAppStore.getState().updateAuthConfig({
                 gemini: {
                   type: 'oauth',
-                  oauthToken: 'authenticated'
-                }
+                  oauthToken: 'authenticated',
+                },
               });
             }
           } else {
@@ -128,8 +141,8 @@ export const useAppStore = create<AppStore>()(
               useAppStore.getState().updateAuthConfig({
                 gemini: {
                   type: 'api_key',
-                  oauthToken: undefined
-                }
+                  oauthToken: undefined,
+                },
               });
             }
           }
@@ -146,10 +159,15 @@ export const useAppStore = create<AppStore>()(
           workspaces: [...state.workspaces, workspace],
         })),
 
-      updateWorkspace: (workspaceId: string, updates: Partial<WorkspaceConfig>) =>
+      updateWorkspace: (
+        workspaceId: string,
+        updates: Partial<WorkspaceConfig>,
+      ) =>
         set((state) => ({
           workspaces: state.workspaces.map((workspace) =>
-            workspace.id === workspaceId ? { ...workspace, ...updates } : workspace
+            workspace.id === workspaceId
+              ? { ...workspace, ...updates }
+              : workspace,
           ),
           currentWorkspace:
             state.currentWorkspace?.id === workspaceId
@@ -166,17 +184,14 @@ export const useAppStore = create<AppStore>()(
               : state.currentWorkspace,
         })),
 
-      setLanguage: (language: Language) =>
-        set({ language }),
+      setLanguage: (language: Language) => set({ language }),
 
-      setTheme: (theme: ThemeMode) =>
-        set({ theme }),
+      setTheme: (theme: ThemeMode) => set({ theme }),
 
       setSidebarCollapsed: (collapsed: boolean) =>
         set({ sidebarCollapsed: collapsed }),
 
-      setCurrentRole: (roleId: string) =>
-        set({ currentRole: roleId }),
+      setCurrentRole: (roleId: string) => set({ currentRole: roleId }),
 
       addCustomRole: (role: RoleDefinition) =>
         set((state) => ({
@@ -191,8 +206,7 @@ export const useAppStore = create<AppStore>()(
       setBuiltinRoles: (roles: RoleDefinition[]) =>
         set({ builtinRoles: roles }),
 
-      setInitialized: (initialized: boolean) =>
-        set({ initialized }),
+      setInitialized: (initialized: boolean) => set({ initialized }),
 
       // Note: Template management moved to backend system via geminiChatService
     }),
@@ -210,6 +224,16 @@ export const useAppStore = create<AppStore>()(
         currentProvider: state.currentProvider,
         currentModel: state.currentModel,
       }),
-    }
-  )
+      onRehydrateStorage: () => (state) => {
+        // Mark as hydrated when storage is restored
+        if (state) {
+          state.isHydrated = true;
+          console.log(
+            '[AppStore] Hydrated with currentRole:',
+            state.currentRole,
+          );
+        }
+      },
+    },
+  ),
 );

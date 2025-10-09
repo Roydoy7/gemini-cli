@@ -5,20 +5,29 @@
  */
 
 /* eslint-env node */
-/* eslint-disable no-console, @typescript-eslint/no-require-imports, import/enforce-node-protocol-usage, @typescript-eslint/no-unused-vars, no-undef */
+/* eslint-disable @typescript-eslint/no-require-imports, import/enforce-node-protocol-usage, @typescript-eslint/no-unused-vars, no-undef */
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
-const path = require('path')
-const { GeminiChatManager, Config, RoleManager, WorkspaceManager, SessionManager, ModelProviderFactory, AuthManager, TemplateManager} = require('@google/gemini-cli-core')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
+const {
+  GeminiChatManager,
+  Config,
+  RoleManager,
+  WorkspaceManager,
+  SessionManager,
+  ModelProviderFactory,
+  AuthManager,
+  TemplateManager,
+} = require('@google/gemini-cli-core');
 
 // GeminiChatManager instance - we'll initialize this when needed
-let geminiChatManager = null
-let templateManager = null
-let isInitialized = false
-let initializationPromise = null
+let geminiChatManager = null;
+let templateManager = null;
+let isInitialized = false;
+let initializationPromise = null;
 
 // Track active streams and their AbortControllers for proper cancellation
-const activeStreams = new Map() // streamId -> { abortController, startTime }
+const activeStreams = new Map(); // streamId -> { abortController, startTime }
 
 const createWindow = () => {
   // Create the browser window.
@@ -28,111 +37,117 @@ const createWindow = () => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
-  })
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
 
   // Load the React app
-  const isDev = process.env.NODE_ENV === 'development'
-  
+  const isDev = process.env.NODE_ENV === 'development';
+
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000')
+    mainWindow.loadURL('http://localhost:3000');
     // Open the DevTools in development
-    mainWindow.webContents.openDevTools()
+    mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
-}
+};
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(() => {
-  createWindow()
+  createWindow();
 
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+      createWindow();
     }
-  })
-})
+  });
+});
 
 // Quit when all windows are closed, except on macOS.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit()
+    app.quit();
   }
-})
+});
 
 // IPC handlers
 ipcMain.handle('get-app-version', () => {
-  return app.getVersion()
-})
+  return app.getVersion();
+});
 
 ipcMain.handle('get-working-directory', () => {
   // Return user's home directory or Documents folder instead of process.cwd()
-  const os = require('os')
-  const path = require('path')
-  
+  const os = require('os');
+  const path = require('path');
+
   // Try to get Documents folder, fallback to home directory
   try {
-    const documentsPath = path.join(os.homedir(), 'Documents')
-    const fs = require('fs')
+    const documentsPath = path.join(os.homedir(), 'Documents');
+    const fs = require('fs');
     if (fs.existsSync(documentsPath)) {
-      return documentsPath
+      return documentsPath;
     }
   } catch (error) {
-    console.warn('Failed to access Documents folder:', error)
+    console.warn('Failed to access Documents folder:', error);
   }
-  
+
   // Fallback to home directory
-  return os.homedir()
-})
+  return os.homedir();
+});
 
 // Dialog API handlers
 ipcMain.handle('dialog-show-open-dialog', async (_, options) => {
   try {
-    const result = await dialog.showOpenDialog(options)
-    return result
+    const result = await dialog.showOpenDialog(options);
+    return result;
   } catch (error) {
-    console.error('Failed to show open dialog:', error)
-    throw error
+    console.error('Failed to show open dialog:', error);
+    throw error;
   }
-})
+});
 
 // Helper function to ensure GeminiChatManager is initialized
-const ensureInitialized = async (configParams = {}) => {
+const ensureInitialized = async (
+  configParams = {},
+  initialRoleId = undefined,
+) => {
   // If already initialized, return immediately
   if (geminiChatManager && isInitialized) {
-    return geminiChatManager
+    return geminiChatManager;
   }
-  
+
   // If initialization is in progress, wait for it
   if (initializationPromise) {
-    await initializationPromise
-    return geminiChatManager
+    await initializationPromise;
+    return geminiChatManager;
   }
-  
+
   // Start initialization
   initializationPromise = (async () => {
     try {
       // Create a proper ConfigParameters object
       // Get user's preferred working directory instead of process.cwd()
-      const os = require('os')
-      const path = require('path')
-      let workingDirectory = os.homedir()
-      
+      const os = require('os');
+      const path = require('path');
+      let workingDirectory = os.homedir();
+
       try {
-        const documentsPath = path.join(os.homedir(), 'Documents')
-        const fs = require('fs')
+        const documentsPath = path.join(os.homedir(), 'Documents');
+        const fs = require('fs');
         if (fs.existsSync(documentsPath)) {
-          workingDirectory = documentsPath
+          workingDirectory = documentsPath;
         }
       } catch (error) {
-        console.warn('Failed to access Documents folder, using home directory:', error)
+        console.warn(
+          'Failed to access Documents folder, using home directory:',
+          error,
+        );
       }
-      
+
       const configParameters = {
         sessionId: `gui-session-${Date.now()}`,
         targetDir: workingDirectory,
@@ -140,911 +155,944 @@ const ensureInitialized = async (configParams = {}) => {
         cwd: workingDirectory,
         interactive: true,
         ideMode: false, // 禁用 IDE 模式以避免 wmic 命令问题
-        ...configParams
-      }
-      
+        ...configParams,
+      };
+
       // Create the Config instance
-      const config = new Config(configParameters)
-      await config.initialize()
-      
+      const config = new Config(configParameters);
+
+      // Initialize contentGenerator with Google OAuth as default
+      // This must be done before config.initialize() because GeminiClient needs contentGenerator
+      const { AuthType } = require('@google/gemini-cli-core');
+      await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+
+      await config.initialize();
+
       // Initialize GeminiChatManager with the proper Config instance
-      geminiChatManager = new GeminiChatManager(config)
-      await geminiChatManager.initialize()
-      
+      geminiChatManager = new GeminiChatManager(config);
+      await geminiChatManager.initialize(initialRoleId);
+
       // Initialize SessionManager with config and ModelProviderFactory
       await SessionManager.getInstance().initializeWithConfig({
         config: config,
-        createModelProvider: ModelProviderFactory.create
-      })
-      
+        createModelProvider: ModelProviderFactory.create,
+      });
+
       // Initialize WorkspaceManager with config to ensure proper setup
-      const workspaceManager = WorkspaceManager.getInstance(config)
-      await workspaceManager.ensureInitialized()
+      const workspaceManager = WorkspaceManager.getInstance(config);
+      await workspaceManager.ensureInitialized();
       // console.log('WorkspaceManager initialized with config and persisted directories loaded')
-      
+
       // Initialize TemplateManager with config
-      templateManager = new TemplateManager(config)
+      templateManager = new TemplateManager(config);
       // console.log('TemplateManager initialized with config')
-      
-      isInitialized = true
+
+      isInitialized = true;
       // console.log('MultiModelSystem, SessionManager and WorkspaceManager initialized with LM Studio default model')
     } catch (error) {
-      console.error('Failed to initialize GeminiChatManager:', error)
-      initializationPromise = null // Reset on error
-      throw error
+      console.error('Failed to initialize GeminiChatManager:', error);
+      initializationPromise = null; // Reset on error
+      throw error;
     }
-  })()
-  
-  await initializationPromise
-  return geminiChatManager
-}
+  })();
+
+  await initializationPromise;
+  return geminiChatManager;
+};
 
 // GeminiChat IPC handlers - Now using actual GeminiChatManager
-ipcMain.handle('geminiChat-initialize', async (_, configParams) => {
-  try {
-    // console.log('GeminiChat initialize called with:', configParams)
-    await ensureInitialized(configParams)
-    return { success: true }
-  } catch (error) {
-    console.error('Failed to initialize GeminiChatManager:', error)
-    throw error
-  }
-})
+ipcMain.handle(
+  'geminiChat-initialize',
+  async (_, configParams, initialRoleId) => {
+    try {
+      // console.log('GeminiChat initialize called with:', configParams, 'initialRoleId:', initialRoleId)
+      await ensureInitialized(configParams, initialRoleId);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to initialize GeminiChatManager:', error);
+      throw error;
+    }
+  },
+);
 
-ipcMain.handle('geminiChat-get-available-models', async (_, providerType) => {
-  try {
-    // console.log('MultiModel getAvailableModels called with:', providerType)
-    const system = await ensureInitialized()
-    const models = await system.getAvailableModels(providerType)
-    
-    // 确保 LM Studio 包含我们的默认模型
-    if (!models.lm_studio || !models.lm_studio.includes('openai/gpt-oss-20b')) {
-      models.lm_studio = models.lm_studio || []
-      if (!models.lm_studio.includes('openai/gpt-oss-20b')) {
-        models.lm_studio.unshift('openai/gpt-oss-20b') // 添加到开头作为默认
-      }
-    }
-    
-    // Filter out empty provider arrays to avoid UI confusion
-    const filteredModels = Object.fromEntries(
-      Object.entries(models).filter(([provider, modelList]) => modelList && modelList.length > 0)
-    )
-    
-    // console.log('Retrieved models:', filteredModels)
-    return filteredModels
-  } catch (error) {
-    console.error('Failed to get available models:', error)
-    // 返回带有默认 LM Studio 模型的备用列表
-    return {
-      lm_studio: ['openai/gpt-oss-20b'],
-      gemini: ['gemini-2.5-pro-latest', 'gemini-2.5-flash-latest'],
-      openai: ['gpt-4', 'gpt-3.5-turbo'],
-    }
-  }
-})
+// Removed: Project now uses only Gemini, model list is hardcoded in frontend
+// ipcMain.handle('geminiChat-get-available-models', ...)
 
 ipcMain.handle('geminiChat-get-all-roles', async () => {
   // console.log('MultiModel getAllRoles called')
   try {
-    const system = await ensureInitialized()
-    const roles = RoleManager.getInstance().getAllRoles()
+    const system = await ensureInitialized();
+    const roles = RoleManager.getInstance().getAllRoles();
     // console.log('Retrieved roles:', roles.length, 'roles')
-    return roles
+    return roles;
   } catch (error) {
-    console.error('Failed to get all roles:', error)
+    console.error('Failed to get all roles:', error);
     // Fallback to basic built-in roles if system is not available
     return [
-      { 
-        id: 'software_engineer', 
-        name: 'Software Engineer', 
-        description: 'Professional software development and code analysis assistant',
+      {
+        id: 'software_engineer',
+        name: 'Software Engineer',
+        description:
+          'Professional software development and code analysis assistant',
         category: 'development',
         icon: '💻',
-        isBuiltin: true
-      }
-    ]
+        isBuiltin: true,
+      },
+    ];
   }
-})
+});
 
 ipcMain.handle('geminiChat-get-current-role', async () => {
   // console.log('MultiModel getCurrentRole called')
   try {
-    const system = await ensureInitialized()
-    const currentRole = RoleManager.getInstance().getCurrentRole()
+    const system = await ensureInitialized();
+    const currentRole = RoleManager.getInstance().getCurrentRole();
     // console.log('Retrieved current role:', currentRole.id)
-    return currentRole
+    return currentRole;
   } catch (error) {
-    console.error('Failed to get current role:', error)
+    console.error('Failed to get current role:', error);
     // Fallback to default role if system is not available
-    return { 
-      id: 'software_engineer', 
-      name: 'Software Engineer', 
-      description: 'Professional software development and code analysis assistant',
+    return {
+      id: 'software_engineer',
+      name: 'Software Engineer',
+      description:
+        'Professional software development and code analysis assistant',
       category: 'development',
       icon: '💻',
-      isBuiltin: true
-    }
+      isBuiltin: true,
+    };
   }
-})
+});
 
 // Add more handlers as needed...
-ipcMain.handle('geminiChat-switch-provider', async (_, providerType, model) => {
-  try {
-    // console.log('MultiModel switchProvider called:', providerType, model)
-    const system = await ensureInitialized()
-    
-    // 创建提供商配置
-    const providerConfig = {
-      type: providerType,
-      model: model,
-      isDefault: true
-    }
-        
-    // 切换到新的提供商和模型
-    await system.switchProvider(providerConfig)
-    
-    // console.log('Successfully switched to provider:', providerType, 'model:', model)
-    return { success: true }
-  } catch (error) {
-    console.error('Failed to switch provider:', error)
-    throw error
-  }
-})
+// Removed: Project now uses only Gemini, no provider switching needed
+// ipcMain.handle('geminiChat-switch-provider', ...)
 
 ipcMain.handle('geminiChat-switch-role', async (_, roleId) => {
   // console.log('MultiModel switchRole called:', roleId)
   try {
-    const system = await ensureInitialized()
-    const success = await system.switchRole(roleId)
+    const system = await ensureInitialized();
+    const success = await system.switchRole(roleId);
     // console.log('Role switched successfully:', success)
-    return success
+    return success;
   } catch (error) {
-    console.error('Failed to switch role:', error)
-    return false
+    console.error('Failed to switch role:', error);
+    return false;
   }
-})
+});
 
 // Workspace directory management handlers
 ipcMain.handle('geminiChat-get-workspace-directories', async () => {
   try {
     // console.log('MultiModel getWorkspaceDirectories called')
-    const system = await ensureInitialized()
-    const directories = WorkspaceManager.getInstance().getDirectories()
+    const system = await ensureInitialized();
+    const directories = WorkspaceManager.getInstance().getDirectories();
     // console.log('Current workspace directories:', directories)
-    return directories
+    return directories;
   } catch (error) {
-    console.error('Failed to get workspace directories:', error)
-    return []
+    console.error('Failed to get workspace directories:', error);
+    return [];
   }
-})
+});
 
-ipcMain.handle('geminiChat-get-directory-contents', async (_, directoryPath) => {
-  try {
-    // console.log('MultiModel getDirectoryContents called for:', directoryPath)
-    const system = await ensureInitialized()
-    const items = await geminiChatManager.getDirectoryContents(directoryPath)
-    // console.log('Got directory contents:', items.length, 'items')
-    return items
-  } catch (error) {
-    console.error('Error getting directory contents:', error)
-    return []
-  }
-})
+ipcMain.handle(
+  'geminiChat-get-directory-contents',
+  async (_, directoryPath) => {
+    try {
+      // console.log('MultiModel getDirectoryContents called for:', directoryPath)
+      const system = await ensureInitialized();
+      const items = await geminiChatManager.getDirectoryContents(directoryPath);
+      // console.log('Got directory contents:', items.length, 'items')
+      return items;
+    } catch (error) {
+      console.error('Error getting directory contents:', error);
+      return [];
+    }
+  },
+);
 
-ipcMain.handle('geminiChat-add-workspace-directory', async (event, directory, basePath) => {
-  try {
-    // console.log('MultiModel addWorkspaceDirectory called:', directory, 'basePath:', basePath)
-    const system = await ensureInitialized()
-    await WorkspaceManager.getInstance().addWorkspaceDirectory(directory, basePath)
-    
-    // Notify all renderer processes about the workspace change
-    const updatedDirectories = WorkspaceManager.getInstance().getDirectories()
-    BrowserWindow.getAllWindows().forEach(window => {
-      window.webContents.send('workspace-directories-changed', {
-        type: 'added',
-        directories: updatedDirectories,
-        changedDirectory: directory
-      })
-    })
-    
-    // console.log('Successfully added workspace directory:', directory)
-    return { success: true }
-  } catch (error) {
-    console.error('Failed to add workspace directory:', error)
-    throw error
-  }
-})
+ipcMain.handle(
+  'geminiChat-add-workspace-directory',
+  async (event, directory, basePath) => {
+    try {
+      // console.log('MultiModel addWorkspaceDirectory called:', directory, 'basePath:', basePath)
+      const system = await ensureInitialized();
+      await WorkspaceManager.getInstance().addWorkspaceDirectory(
+        directory,
+        basePath,
+      );
 
-ipcMain.handle('geminiChat-set-workspace-directories', async (event, directories) => {
-  try {
-    // console.log('MultiModel setWorkspaceDirectories called:', directories)
-    const system = await ensureInitialized()
-    await WorkspaceManager.getInstance().setDirectories(directories)
-    
-    // Notify all renderer processes about the workspace change
-    const updatedDirectories = WorkspaceManager.getInstance().getDirectories()
-    BrowserWindow.getAllWindows().forEach(window => {
-      window.webContents.send('workspace-directories-changed', {
-        type: 'set',
-        directories: updatedDirectories
-      })
-    })
-    
-    // console.log('Successfully set workspace directories')
-    return { success: true }
-  } catch (error) {
-    console.error('Failed to set workspace directories:', error)
-    throw error
-  }
-})
+      // Notify all renderer processes about the workspace change
+      const updatedDirectories =
+        WorkspaceManager.getInstance().getDirectories();
+      BrowserWindow.getAllWindows().forEach((window) => {
+        window.webContents.send('workspace-directories-changed', {
+          type: 'added',
+          directories: updatedDirectories,
+          changedDirectory: directory,
+        });
+      });
+
+      // console.log('Successfully added workspace directory:', directory)
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to add workspace directory:', error);
+      throw error;
+    }
+  },
+);
+
+ipcMain.handle(
+  'geminiChat-set-workspace-directories',
+  async (event, directories) => {
+    try {
+      // console.log('MultiModel setWorkspaceDirectories called:', directories)
+      const system = await ensureInitialized();
+      await WorkspaceManager.getInstance().setDirectories(directories);
+
+      // Notify all renderer processes about the workspace change
+      const updatedDirectories =
+        WorkspaceManager.getInstance().getDirectories();
+      BrowserWindow.getAllWindows().forEach((window) => {
+        window.webContents.send('workspace-directories-changed', {
+          type: 'set',
+          directories: updatedDirectories,
+        });
+      });
+
+      // console.log('Successfully set workspace directories')
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to set workspace directories:', error);
+      throw error;
+    }
+  },
+);
 
 ipcMain.handle('geminiChat-get-all-templates', async () => {
   try {
-    await ensureInitialized()
-    const templates = templateManager.getAllTemplates()
+    await ensureInitialized();
+    const templates = templateManager.getAllTemplates();
     // console.log('MultiModel getAllTemplates called, returning', templates.length, 'templates')
-    return templates
+    return templates;
   } catch (error) {
-    console.error('Failed to get all templates:', error)
-    return []
+    console.error('Failed to get all templates:', error);
+    return [];
   }
-})
+});
 
 ipcMain.handle('geminiChat-add-custom-template', async (_, template) => {
   try {
-    await ensureInitialized()
-    templateManager.addCustomTemplate(template)
+    await ensureInitialized();
+    templateManager.addCustomTemplate(template);
     // console.log('MultiModel addCustomTemplate called:', template.name)
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to add custom template:', error)
-    throw error
+    console.error('Failed to add custom template:', error);
+    throw error;
   }
-})
+});
 
 ipcMain.handle('geminiChat-update-custom-template', async (_, id, updates) => {
   try {
-    await ensureInitialized()
-    templateManager.updateCustomTemplate(id, updates)
+    await ensureInitialized();
+    templateManager.updateCustomTemplate(id, updates);
     // console.log('MultiModel updateCustomTemplate called:', id)
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to update custom template:', error)
-    throw error
+    console.error('Failed to update custom template:', error);
+    throw error;
   }
-})
+});
 
 ipcMain.handle('geminiChat-delete-custom-template', async (_, id) => {
   try {
-    await ensureInitialized()
-    templateManager.deleteCustomTemplate(id)
+    await ensureInitialized();
+    templateManager.deleteCustomTemplate(id);
     // console.log('MultiModel deleteCustomTemplate called:', id)
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to delete custom template:', error)
-    throw error
+    console.error('Failed to delete custom template:', error);
+    throw error;
   }
-})
+});
 
 // History management handlers
 ipcMain.handle('geminiChat-get-history', async () => {
   try {
-    const system = await ensureInitialized()
-    const history = SessionManager.getInstance().getHistory()
+    const system = await ensureInitialized();
+    const history = SessionManager.getInstance().getHistory();
     // console.log('MultiModel getHistory called, returning', history.length, 'messages')
-    return history
+    return history;
   } catch (error) {
-    console.error('Failed to get conversation history:', error)
-    return []
+    console.error('Failed to get conversation history:', error);
+    return [];
   }
-})
+});
 
 ipcMain.handle('geminiChat-set-history', async (_, history) => {
   try {
-    const system = await ensureInitialized()
-    SessionManager.getInstance().setHistory(history)
+    const system = await ensureInitialized();
+    SessionManager.getInstance().setHistory(history);
     // console.log('MultiModel setHistory called with', history.length, 'messages')
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to set conversation history:', error)
-    throw error
+    console.error('Failed to set conversation history:', error);
+    throw error;
   }
-})
+});
 
 ipcMain.handle('geminiChat-clear-history', async () => {
   try {
-    const system = await ensureInitialized()
-    SessionManager.getInstance().clearHistory()
+    const system = await ensureInitialized();
+    SessionManager.getInstance().clearHistory();
     // console.log('MultiModel clearHistory called')
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to clear conversation history:', error)
-    throw error
+    console.error('Failed to clear conversation history:', error);
+    throw error;
   }
-})
+});
 
 // Session management handlers
-ipcMain.handle('geminiChat-create-session', async (_, sessionId, title = 'New Chat', roleId) => {
-  try {
-    const system = await ensureInitialized()
-    SessionManager.getInstance().createSession(sessionId, title, roleId)
-    // console.log('MultiModel createSession called:', sessionId, title, 'roleId:', roleId)
-    return { success: true }
-  } catch (error) {
-    console.error('Failed to create session:', error)
-    throw error
-  }
-})
+ipcMain.handle(
+  'geminiChat-create-session',
+  async (_, sessionId, title = 'New Chat', roleId) => {
+    try {
+      const system = await ensureInitialized();
+      SessionManager.getInstance().createSession(sessionId, title, roleId);
+      // console.log('MultiModel createSession called:', sessionId, title, 'roleId:', roleId)
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to create session:', error);
+      throw error;
+    }
+  },
+);
 
 ipcMain.handle('geminiChat-switch-session', async (_, sessionId) => {
   try {
-    const system = await ensureInitialized()
-    SessionManager.getInstance().switchSession(sessionId)
-    // console.log('MultiModel switchSession called:', sessionId)
-    return { success: true }
+    const system = await ensureInitialized();
+    // Use GeminiChatManager.switchSession to properly load history into GeminiClient
+    await system.switchSession(sessionId);
+    console.log('[Main] Switched to session:', sessionId);
+    return { success: true };
   } catch (error) {
-    console.error('Failed to switch session:', error)
-    throw error
+    console.error('Failed to switch session:', error);
+    throw error;
   }
-})
+});
 
 ipcMain.handle('geminiChat-delete-session', async (_, sessionId) => {
   try {
-    const system = await ensureInitialized()
-    SessionManager.getInstance().deleteSession(sessionId)
+    const system = await ensureInitialized();
+    SessionManager.getInstance().deleteSession(sessionId);
     // console.log('MultiModel deleteSession called:', sessionId)
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to delete session:', error)
-    throw error
+    console.error('Failed to delete session:', error);
+    throw error;
   }
-})
+});
 
 ipcMain.handle('geminiChat-delete-all-sessions', async () => {
   try {
-    const system = await ensureInitialized()
-    const sessionManager = SessionManager.getInstance()
-    const sessionsInfo = sessionManager.getSessionsInfo()
-    
+    const system = await ensureInitialized();
+    const sessionManager = SessionManager.getInstance();
+    const sessionsInfo = sessionManager.getSessionsInfo();
+
     // Delete all sessions
     for (const sessionInfo of sessionsInfo) {
-      sessionManager.deleteSession(sessionInfo.id)
+      sessionManager.deleteSession(sessionInfo.id);
     }
-    
+
     // console.log('MultiModel deleteAllSessions called, deleted', sessionsInfo.length, 'sessions')
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to delete all sessions:', error)
-    throw error
+    console.error('Failed to delete all sessions:', error);
+    throw error;
   }
-})
+});
 
 ipcMain.handle('geminiChat-get-current-session-id', async () => {
   try {
-    const system = await ensureInitialized()
-    const sessionId = SessionManager.getInstance().getCurrentSessionId()
+    const system = await ensureInitialized();
+    const sessionId = SessionManager.getInstance().getCurrentSessionId();
     // console.log('MultiModel getCurrentSessionId called, returning:', sessionId)
-    return sessionId
+    return sessionId;
   } catch (error) {
-    console.error('Failed to get current session ID:', error)
-    return null
+    console.error('Failed to get current session ID:', error);
+    return null;
   }
-})
+});
 
 ipcMain.handle('geminiChat-get-display-messages', async (_, sessionId) => {
   try {
-    const system = await ensureInitialized()
-    const messages = SessionManager.getInstance().getDisplayMessages(sessionId)
+    const system = await ensureInitialized();
+    const messages = SessionManager.getInstance().getDisplayMessages(sessionId);
     // console.log('MultiModel getDisplayMessages called for session:', sessionId, 'returning', messages.length, 'messages')
-    return messages
+    return messages;
   } catch (error) {
-    console.error('Failed to get display messages:', error)
-    return []
+    console.error('Failed to get display messages:', error);
+    return [];
   }
-})
+});
 
 ipcMain.handle('geminiChat-get-sessions-info', async () => {
   try {
-    const system = await ensureInitialized()
-    const sessionsInfo = SessionManager.getInstance().getSessionsInfo()
+    const system = await ensureInitialized();
+    const sessionsInfo = SessionManager.getInstance().getSessionsInfo();
     // console.log('MultiModel getSessionsInfo called, returning', sessionsInfo.length, 'sessions')
-    return sessionsInfo
+    return sessionsInfo;
   } catch (error) {
-    console.error('Failed to get sessions info:', error)
-    return []
+    console.error('Failed to get sessions info:', error);
+    return [];
   }
-})
+});
 
-ipcMain.handle('geminiChat-update-session-title', async (_, sessionId, newTitle) => {
-  try {
-    const system = await ensureInitialized()
-    SessionManager.getInstance().updateSessionTitle(sessionId, newTitle)
-    // console.log('MultiModel updateSessionTitle called:', sessionId, newTitle)
-    return { success: true }
-  } catch (error) {
-    console.error('Failed to update session title:', error)
-    throw error
-  }
-})
+ipcMain.handle(
+  'geminiChat-update-session-title',
+  async (_, sessionId, newTitle) => {
+    try {
+      const system = await ensureInitialized();
+      SessionManager.getInstance().updateSessionTitle(sessionId, newTitle);
+      // console.log('MultiModel updateSessionTitle called:', sessionId, newTitle)
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to update session title:', error);
+      throw error;
+    }
+  },
+);
 
 ipcMain.handle('geminiChat-set-session-role', async (_, sessionId, roleId) => {
   try {
-    const system = await ensureInitialized()
-    SessionManager.getInstance().setSessionRole(sessionId, roleId)
+    const system = await ensureInitialized();
+    SessionManager.getInstance().setSessionRole(sessionId, roleId);
     // console.log('MultiModel setSessionRole called:', sessionId, roleId)
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to set session role:', error)
-    throw error
+    console.error('Failed to set session role:', error);
+    throw error;
   }
-})
-
+});
 
 // Add message sending handler
 ipcMain.handle('geminiChat-send-message', async (_, messages, signal) => {
   try {
     // console.log('MultiModel sendMessage called with:', messages?.length, 'messages')
-    const system = await ensureInitialized()
-    
+    const system = await ensureInitialized();
+
     // Debug: check current provider
-    const currentProvider = system.getCurrentProvider()
+    const currentProvider = system.getCurrentProvider();
     // console.log('Current provider config:', currentProvider)
-    
+
     // Convert messages to the format expected by MultiModelSystem
-    const universalMessages = messages.map(msg => ({
+    const universalMessages = messages.map((msg) => ({
       role: msg.role,
-      content: msg.content
-    }))
-    
+      content: msg.content,
+    }));
+
     // Create an AbortController for the signal
-    const abortController = new AbortController()
-    
-    const response = await system.sendMessage(universalMessages, abortController.signal)
+    const abortController = new AbortController();
+
+    const response = await system.sendMessage(
+      universalMessages,
+      abortController.signal,
+    );
     // console.log('MultiModel sendMessage response received')
-    return response
+    return response;
   } catch (error) {
-    console.error('Failed to send message:', error)
-    throw error
+    console.error('Failed to send message:', error);
+    throw error;
   }
-})
+});
 
 // Handle stream cancellation from frontend
 ipcMain.handle('geminiChat-cancel-stream', async (event, streamId) => {
   try {
-    const streamInfo = activeStreams.get(streamId)
+    const streamInfo = activeStreams.get(streamId);
     if (streamInfo) {
-      console.log(`Cancelling stream: ${streamId}`)
+      console.log(`Cancelling stream: ${streamId}`);
       // Abort the stream and any ongoing tool calls
-      streamInfo.abortController.abort('User cancelled stream')
+      streamInfo.abortController.abort('User cancelled stream');
       // Remove from active streams
-      activeStreams.delete(streamId)
+      activeStreams.delete(streamId);
 
       // Send cancellation event to frontend
       event.sender.send('geminiChat-stream-error', {
         streamId,
-        error: 'Stream cancelled by user'
-      })
+        error: 'Stream cancelled by user',
+      });
 
-      return { success: true, message: 'Stream cancelled successfully' }
+      return { success: true, message: 'Stream cancelled successfully' };
     } else {
-      console.warn(`Stream ${streamId} not found in active streams`)
-      return { success: false, message: 'Stream not found' }
+      console.warn(`Stream ${streamId} not found in active streams`);
+      return { success: false, message: 'Stream not found' };
     }
   } catch (error) {
-    console.error('Failed to cancel stream:', error)
-    return { success: false, message: error.message }
+    console.error('Failed to cancel stream:', error);
+    return { success: false, message: error.message };
   }
-})
+});
 
 // Add streaming message handler using electron-ipc-stream
-ipcMain.handle('geminiChat-send-message-stream', async (event, messages, streamId) => {
-  try {
-    // console.log('MultiModel sendMessageStream called with:', messages?.length, 'messages', 'streamId:', streamId)
-    const system = await ensureInitialized()
-    
-    // Set up tool confirmation handler for this stream session
-    system.setToolConfirmationHandler(async (confirmationDetails) => {
-      // console.log('Tool confirmation requested from main process:', confirmationDetails)
-      
-      // Create a serializable confirmation request with all necessary data
-      const confirmationRequest = {
-        title: confirmationDetails.title,
-        type: confirmationDetails.type,
-        // Include all fields needed for display
-        ...(confirmationDetails.type === 'edit' && {
-          fileName: confirmationDetails.fileName,
-          fileDiff: confirmationDetails.fileDiff,
-          originalContent: confirmationDetails.originalContent,
-          newContent: confirmationDetails.newContent
-        }),
-        ...(confirmationDetails.type === 'exec' && {
-          command: confirmationDetails.command,
-          rootCommand: confirmationDetails.rootCommand
-        }),
-        ...(confirmationDetails.type === 'mcp' && {
-          toolName: confirmationDetails.toolName,
-          parameters: confirmationDetails.parameters
-        }),
-        ...(confirmationDetails.type === 'info' && {
-          message: confirmationDetails.message
-        })
-      }
-      
-      // Send confirmation request to renderer process
-      event.sender.send('tool-confirmation-request', {
-        streamId,
-        confirmationDetails: confirmationRequest
-      })
-      
-      // Wait for response from renderer
-      return new Promise((resolve) => {
-        ipcMain.once('tool-confirmation-response', (responseEvent, outcome) => {
-          // console.log('Tool confirmation response received in main process:', outcome)
-          resolve(outcome)
-        })
-      })
-    })
-    
-    // Convert messages to the format expected by MultiModelSystem
-    const universalMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }))
-    
-    // Create an AbortController for the signal
-    const abortController = new AbortController()
-
-    // Register the stream for cancellation tracking
-    activeStreams.set(streamId, {
-      abortController,
-      startTime: Date.now()
-    })
-
+ipcMain.handle(
+  'geminiChat-send-message-stream',
+  async (event, messages, streamId) => {
     try {
-      // Use streaming approach
-      const streamGenerator = system.sendMessageStream(universalMessages, abortController.signal)
-      
-      let fullContent = ''
-      
-      for await (const chunk of streamGenerator) {
-        // Check if stream was cancelled
-        if (abortController.signal.aborted) {
-          console.log(`Stream ${streamId} was cancelled, stopping processing`)
-          break
+      // console.log('MultiModel sendMessageStream called with:', messages?.length, 'messages', 'streamId:', streamId)
+      const system = await ensureInitialized();
+
+      // Set up tool confirmation handler for this stream session
+      system.setToolConfirmationHandler(async (confirmationDetails) => {
+        // console.log('Tool confirmation requested from main process:', confirmationDetails)
+
+        // Create a serializable confirmation request with all necessary data
+        const confirmationRequest = {
+          title: confirmationDetails.title,
+          type: confirmationDetails.type,
+          // Include all fields needed for display
+          ...(confirmationDetails.type === 'edit' && {
+            fileName: confirmationDetails.fileName,
+            fileDiff: confirmationDetails.fileDiff,
+            originalContent: confirmationDetails.originalContent,
+            newContent: confirmationDetails.newContent,
+          }),
+          ...(confirmationDetails.type === 'exec' && {
+            command: confirmationDetails.command,
+            rootCommand: confirmationDetails.rootCommand,
+          }),
+          ...(confirmationDetails.type === 'mcp' && {
+            toolName: confirmationDetails.toolName,
+            parameters: confirmationDetails.parameters,
+          }),
+          ...(confirmationDetails.type === 'info' && {
+            message: confirmationDetails.message,
+          }),
+        };
+
+        // Send confirmation request to renderer process
+        event.sender.send('tool-confirmation-request', {
+          streamId,
+          confirmationDetails: confirmationRequest,
+        });
+
+        // Wait for response from renderer
+        return new Promise((resolve) => {
+          ipcMain.once(
+            'tool-confirmation-response',
+            (responseEvent, outcome) => {
+              // console.log('Tool confirmation response received in main process:', outcome)
+              resolve(outcome);
+            },
+          );
+        });
+      });
+
+      // GeminiChatManager.sendMessageStream() expects Part array (e.g., [{text: "..."}])
+      // It only needs the current user request, not full history
+      // History is managed internally by GeminiClient's GeminiChat
+      const lastMessage = messages[messages.length - 1];
+      const request = [{ text: lastMessage.content }];
+
+      // Create an AbortController for the signal
+      const abortController = new AbortController();
+
+      // Register the stream for cancellation tracking
+      activeStreams.set(streamId, {
+        abortController,
+        startTime: Date.now(),
+      });
+
+      try {
+        // Use streaming approach
+        console.log(
+          `[Main] Starting stream ${streamId} with request:`,
+          request,
+        );
+        const streamGenerator = system.sendMessageStream(
+          request,
+          abortController.signal,
+          streamId,
+        );
+        console.log(`[Main] Stream generator created for ${streamId}`);
+
+        let fullContent = '';
+        let chunkCount = 0;
+
+        console.log(`[Main] Entering for-await loop for stream ${streamId}`);
+        for await (const chunk of streamGenerator) {
+          chunkCount++;
+          console.log(
+            `[Main] Stream ${streamId} received chunk #${chunkCount}, type:`,
+            chunk.type,
+          );
+          // Check if stream was cancelled
+          if (abortController.signal.aborted) {
+            console.log(
+              `Stream ${streamId} was cancelled, stopping processing`,
+            );
+            break;
+          }
+
+          // // console.log('Stream chunk received:', chunk.type, chunk.content?.substring(0, 50))
+
+          // Handle error events - these should stop the stream immediately
+          if (chunk.type === 'error') {
+            console.error(
+              '[Main] Received error event from stream:',
+              chunk.error,
+            );
+
+            // Format error message with more detail
+            let errorMessage = chunk.error?.message || 'Unknown error occurred';
+
+            // Add additional context for specific error types
+            if (errorMessage.includes('GOOGLE_CLOUD_PROJECT')) {
+              errorMessage = `Authentication Error: ${errorMessage}\n\nFor Workspace GCA users, you need to set the GOOGLE_CLOUD_PROJECT environment variable before starting the application.\n\nPlease restart the application with:\nset GOOGLE_CLOUD_PROJECT=your-project-id`;
+            } else if (errorMessage.includes('Failed to initialize')) {
+              errorMessage = `Initialization Error: ${errorMessage}\n\nPlease check your authentication settings and try again.`;
+            }
+
+            // Send error through IPC events
+            const errorData = {
+              streamId,
+              type: 'error',
+              error: errorMessage,
+              timestamp: Date.now(),
+            };
+
+            event.sender.send('geminiChat-stream-error', errorData);
+
+            // Break the loop to stop processing
+            break;
+          }
+
+          // Handle different event types
+          if (chunk.type === 'compression') {
+            // Send compression event
+            const compressionData = {
+              streamId,
+              type: 'compression',
+              compressionInfo: chunk.compressionInfo,
+              timestamp: Date.now(),
+            };
+            event.sender.send('geminiChat-stream-chunk', compressionData);
+          } else if (chunk.type === 'content') {
+            // Turn events use 'value' field, convert to frontend format
+            const content = chunk.value || chunk.content || '';
+            const chunkData = {
+              streamId,
+              type: 'content_delta', // Frontend expects 'content_delta'
+              content: content,
+              role: 'assistant',
+              timestamp: Date.now(),
+            };
+            event.sender.send('geminiChat-stream-chunk', chunkData);
+
+            // Accumulate content for final response
+            if (content) {
+              fullContent += content;
+            }
+          } else if (chunk.type === 'thought') {
+            // Send thought as special event type with structured data
+            const thoughtSummary = chunk.value;
+            if (thoughtSummary && typeof thoughtSummary === 'object') {
+              const chunkData = {
+                streamId,
+                type: 'thought', // Keep as 'thought' type for special frontend handling
+                thoughtSummary: {
+                  subject: thoughtSummary.subject || '',
+                  description: thoughtSummary.description || '',
+                },
+                role: 'assistant',
+                timestamp: Date.now(),
+              };
+              event.sender.send('geminiChat-stream-chunk', chunkData);
+            }
+            // Don't accumulate thought in final content
+          } else if (chunk.type === 'finished') {
+            // Stream finished, don't send this to frontend
+            // The completion signal will be sent after the loop
+          } else {
+            // Handle other event types (tool_call, tool_response, etc.)
+            const chunkData = {
+              streamId,
+              type: chunk.type,
+              content: chunk.content || chunk.value || '',
+              role: 'assistant',
+              timestamp: Date.now(),
+              ...chunk, // Include any additional properties
+            };
+            event.sender.send('geminiChat-stream-chunk', chunkData);
+
+            // Accumulate content if present
+            const content = chunk.content || chunk.value;
+            if (content) {
+              fullContent += content;
+            }
+          }
         }
 
-        // // console.log('Stream chunk received:', chunk.type, chunk.content?.substring(0, 50))
+        // Send completion signal
+        const completionData = {
+          streamId,
+          type: 'complete',
+          content: fullContent,
+          role: 'assistant',
+          timestamp: Date.now(),
+        };
 
-        // Handle error events - these should stop the stream immediately
-        if (chunk.type === 'error') {
-          console.error('[Main] Received error event from stream:', chunk.error)
+        event.sender.send('geminiChat-stream-complete', completionData);
 
-          // Format error message with more detail
-          let errorMessage = chunk.error?.message || 'Unknown error occurred'
+        return { success: true, totalContent: fullContent };
+      } catch (streamError) {
+        console.error('[Main] Stream error occurred:', streamError);
 
-          // Add additional context for specific error types
-          if (errorMessage.includes('GOOGLE_CLOUD_PROJECT')) {
-            errorMessage = `Authentication Error: ${errorMessage}\n\nFor Workspace GCA users, you need to set the GOOGLE_CLOUD_PROJECT environment variable before starting the application.\n\nPlease restart the application with:\nset GOOGLE_CLOUD_PROJECT=your-project-id`
-          } else if (errorMessage.includes('Failed to initialize')) {
-            errorMessage = `Initialization Error: ${errorMessage}\n\nPlease check your authentication settings and try again.`
-          }
+        // Format error message with more detail
+        let errorMessage = streamError.message || 'Unknown error occurred';
 
-          // Send error through IPC events
-          const errorData = {
-            streamId,
-            type: 'error',
-            error: errorMessage,
-            timestamp: Date.now()
-          }
-
-          event.sender.send('geminiChat-stream-error', errorData)
-
-          // Break the loop to stop processing
-          break
+        // Add additional context for specific error types
+        if (errorMessage.includes('GOOGLE_CLOUD_PROJECT')) {
+          errorMessage = `Authentication Error: ${errorMessage}\n\nFor Workspace GCA users, you need to set the GOOGLE_CLOUD_PROJECT environment variable before starting the application.\n\nPlease restart the application with:\nset GOOGLE_CLOUD_PROJECT=your-project-id`;
         }
 
-        // Handle different event types
-        if (chunk.type === 'compression') {
-          // Send compression event
-          const compressionData = {
-            streamId,
-            type: 'compression',
-            compressionInfo: chunk.compressionInfo,
-            timestamp: Date.now()
-          }
-          event.sender.send('geminiChat-stream-chunk', compressionData)
-        } else if (chunk.type === 'content') {
-          // Send content chunk - preserve original event type
-          const chunkData = {
-            streamId,
-            type: 'content', // Keep original type for proper frontend handling
-            content: chunk.content || '',
-            role: chunk.role || 'assistant',
-            timestamp: Date.now()
-          }
-          event.sender.send('geminiChat-stream-chunk', chunkData)
+        // Send error through IPC events
+        const errorData = {
+          streamId,
+          type: 'error',
+          error: errorMessage,
+          timestamp: Date.now(),
+        };
 
-          // Accumulate content for final response
-          if (chunk.content) {
-            fullContent += chunk.content
-          }
-        } else {
-          // Handle other event types (tool_call, done, etc.)
-          const chunkData = {
-            streamId,
-            type: chunk.type,
-            content: chunk.content || '',
-            role: chunk.role || 'assistant',
-            timestamp: Date.now(),
-            ...chunk // Include any additional properties
-          }
-          event.sender.send('geminiChat-stream-chunk', chunkData)
-
-          if (chunk.content) {
-            fullContent += chunk.content
-          }
-        }
+        event.sender.send('geminiChat-stream-error', errorData);
+        throw streamError;
       }
-      
-      // Send completion signal
-      const completionData = {
-        streamId,
-        type: 'complete',
-        content: fullContent,
-        role: 'assistant',
-        timestamp: Date.now()
-      }
-      
-      event.sender.send('geminiChat-stream-complete', completionData)
+    } catch (error) {
+      console.error('[Main] Failed to send streaming message:', error);
 
-      return { success: true, totalContent: fullContent }
-
-    } catch (streamError) {
-      console.error('[Main] Stream error occurred:', streamError)
-
-      // Format error message with more detail
-      let errorMessage = streamError.message || 'Unknown error occurred'
+      // Format error message with context
+      let errorMessage = error.message || 'Failed to send message';
 
       // Add additional context for specific error types
       if (errorMessage.includes('GOOGLE_CLOUD_PROJECT')) {
-        errorMessage = `Authentication Error: ${errorMessage}\n\nFor Workspace GCA users, you need to set the GOOGLE_CLOUD_PROJECT environment variable before starting the application.\n\nPlease restart the application with:\nset GOOGLE_CLOUD_PROJECT=your-project-id`
+        errorMessage = `Authentication Error: ${errorMessage}\n\nFor Workspace GCA users, you need to set the GOOGLE_CLOUD_PROJECT environment variable before starting the application.\n\nPlease restart the application with:\nset GOOGLE_CLOUD_PROJECT=your-project-id`;
+      } else if (errorMessage.includes('Failed to initialize')) {
+        errorMessage = `Initialization Error: ${errorMessage}\n\nPlease check your authentication settings and try again.`;
       }
 
-      // Send error through IPC events
-      const errorData = {
-        streamId,
-        type: 'error',
-        error: errorMessage,
-        timestamp: Date.now()
+      // Send error through IPC if we have a streamId
+      if (streamId) {
+        const errorData = {
+          streamId,
+          type: 'error',
+          error: errorMessage,
+          timestamp: Date.now(),
+        };
+        event.sender.send('geminiChat-stream-error', errorData);
       }
 
-      event.sender.send('geminiChat-stream-error', errorData)
-      throw streamError
+      throw error;
+    } finally {
+      // Always clean up the stream from active streams tracking
+      activeStreams.delete(streamId);
+      console.log(`[Main] Stream ${streamId} removed from active streams`);
     }
-    
-  } catch (error) {
-    console.error('[Main] Failed to send streaming message:', error)
-
-    // Format error message with context
-    let errorMessage = error.message || 'Failed to send message'
-
-    // Add additional context for specific error types
-    if (errorMessage.includes('GOOGLE_CLOUD_PROJECT')) {
-      errorMessage = `Authentication Error: ${errorMessage}\n\nFor Workspace GCA users, you need to set the GOOGLE_CLOUD_PROJECT environment variable before starting the application.\n\nPlease restart the application with:\nset GOOGLE_CLOUD_PROJECT=your-project-id`
-    } else if (errorMessage.includes('Failed to initialize')) {
-      errorMessage = `Initialization Error: ${errorMessage}\n\nPlease check your authentication settings and try again.`
-    }
-
-    // Send error through IPC if we have a streamId
-    if (streamId) {
-      const errorData = {
-        streamId,
-        type: 'error',
-        error: errorMessage,
-        timestamp: Date.now()
-      }
-      event.sender.send('geminiChat-stream-error', errorData)
-    }
-
-    throw error
-  } finally {
-    // Always clean up the stream from active streams tracking
-    activeStreams.delete(streamId)
-    console.log(`Stream ${streamId} removed from active streams`)
-  }
-})
+  },
+);
 
 // OAuth Authentication IPC handlers using AuthManager
 ipcMain.handle('oauth-start-flow', async (_, providerType) => {
   try {
     // console.log('OAuth start flow called for:', providerType)
-    
+
     // Ensure system is initialized to get config
-    const system = await ensureInitialized()
-    
+    const system = await ensureInitialized();
+
     // Use AuthManager instead of hardcoded OAuth logic
     // const { AuthManager } = require('@google/gemini-cli-core')
-    const authManager = AuthManager.getInstance()
-    authManager.setConfig(system.getConfig())
-    
-    const result = await authManager.startOAuthFlow(providerType)
+    const authManager = AuthManager.getInstance();
+    authManager.setConfig(system.getConfig());
+
+    const result = await authManager.startOAuthFlow(providerType);
     // console.log('OAuth flow result:', result)
-    
-    return result
+
+    return result;
   } catch (error) {
-    console.error('OAuth flow failed:', error)
-    return { 
-      success: false, 
-      error: error.message || 'OAuth authentication failed' 
-    }
+    console.error('OAuth flow failed:', error);
+    return {
+      success: false,
+      error: error.message || 'OAuth authentication failed',
+    };
   }
-})
+});
 
 ipcMain.handle('oauth-get-status', async (_, providerType) => {
   try {
     // console.log('OAuth get status called for:', providerType)
-    
+
     // Use AuthManager for unified OAuth status checking
     // const { AuthManager } = require('@google/gemini-cli-core')
-    const authManager = AuthManager.getInstance()
-    
+    const authManager = AuthManager.getInstance();
+
     // Ensure system is initialized and pass config to AuthManager
-    const system = await ensureInitialized()
-    authManager.setConfig(system.getConfig())
-    
-    const status = await authManager.getAuthStatus(providerType)
+    const system = await ensureInitialized();
+    authManager.setConfig(system.getConfig());
+
+    const status = await authManager.getAuthStatus(providerType);
     // console.log('OAuth status result:', status)
-    
+
     return {
       authenticated: status.authenticated,
       userEmail: status.userEmail,
-      type: status.authType
-    }
+      type: status.authType,
+    };
   } catch (error) {
-    console.error('Failed to check OAuth status:', error)
-    return { authenticated: false }
+    console.error('Failed to check OAuth status:', error);
+    return { authenticated: false };
   }
-})
+});
 
 ipcMain.handle('oauth-clear-credentials', async (_, providerType) => {
   try {
     // console.log('OAuth clear credentials called for:', providerType)
-    
+
     // Use AuthManager for unified credential clearing
     // const { AuthManager } = require('@google/gemini-cli-core')
-    const authManager = AuthManager.getInstance()
-    
-    const result = await authManager.clearCredentials(providerType)
+    const authManager = AuthManager.getInstance();
+
+    const result = await authManager.clearCredentials(providerType);
     // console.log('OAuth credentials cleared:', result)
-    
-    return result
+
+    return result;
   } catch (error) {
-    console.error('Failed to clear OAuth credentials:', error)
-    return { 
-      success: false, 
-      error: error.message 
-    }
+    console.error('Failed to clear OAuth credentials:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
   }
-})
+});
 
 ipcMain.handle('check-env-api-key', async (_, providerType) => {
   try {
     // console.log('Check environment API key called for:', providerType)
-    
+
     // Use AuthManager for unified API key checking
     // const { AuthManager } = require('@google/gemini-cli-core')
-    const authManager = AuthManager.getInstance()
-    
-    const result = await authManager.checkEnvApiKey(providerType)
+    const authManager = AuthManager.getInstance();
+
+    const result = await authManager.checkEnvApiKey(providerType);
     // console.log('Environment API key check result:', result)
-    
-    return result
+
+    return result;
   } catch (error) {
-    console.error('Failed to check environment API key:', error)
-    return { detected: false, source: 'Error' }
+    console.error('Failed to check environment API key:', error);
+    return { detected: false, source: 'Error' };
   }
-})
+});
 
 // Add IPC handler for setting API key preference
 ipcMain.handle('set-api-key-preference', async (_, providerType) => {
   try {
     // console.log('Set API key preference called for:', providerType)
-    
+
     // Ensure system is initialized
-    const system = await ensureInitialized()
-    
+    const system = await ensureInitialized();
+
     // Use AuthManager to set API key preference
     // const { AuthManager } = require('@google/gemini-cli-core')
-    const authManager = AuthManager.getInstance()
-    authManager.setConfig(system.getConfig())
-    authManager.useApiKeyAuth(providerType)
-    
+    const authManager = AuthManager.getInstance();
+    authManager.setConfig(system.getConfig());
+    authManager.useApiKeyAuth(providerType);
+
     // console.log('API key preference set successfully')
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to set API key preference:', error)
-    return { 
-      success: false, 
-      error: error.message 
-    }
+    console.error('Failed to set API key preference:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
   }
-})
+});
 
 // Add IPC handler for setting OAuth preference
 ipcMain.handle('set-oauth-preference', async (_, providerType) => {
   try {
     // console.log('Set OAuth preference called for:', providerType)
-    
+
     // Ensure system is initialized
-    const system = await ensureInitialized()
-    
+    const system = await ensureInitialized();
+
     // Use AuthManager to set OAuth preference
     // const { AuthManager } = require('@google/gemini-cli-core')
-    const authManager = AuthManager.getInstance()
-    authManager.setConfig(system.getConfig())
-    authManager.setAuthPreference(providerType, 'oauth')
-    
+    const authManager = AuthManager.getInstance();
+    authManager.setConfig(system.getConfig());
+    authManager.setAuthPreference(providerType, 'oauth');
+
     // console.log('OAuth preference set successfully')
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Failed to set OAuth preference:', error)
-    return { 
-      success: false, 
-      error: error.message 
-    }
+    console.error('Failed to set OAuth preference:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
   }
-})
+});
 
 // Approval mode management handlers
 ipcMain.handle('get-approval-mode', async () => {
   try {
-    const system = await ensureInitialized()
-    const approvalMode = system.getApprovalMode()
-    return approvalMode
+    const system = await ensureInitialized();
+    const approvalMode = system.getApprovalMode();
+    return approvalMode;
   } catch (error) {
-    console.error('Failed to get approval mode:', error)
-    return 'default'
+    console.error('Failed to get approval mode:', error);
+    return 'default';
   }
-})
+});
 
 ipcMain.handle('set-approval-mode', async (_, mode) => {
   try {
-    const system = await ensureInitialized()
-    system.setApprovalMode(mode)
-    return { success: true }
+    const system = await ensureInitialized();
+    system.setApprovalMode(mode);
+    return { success: true };
   } catch (error) {
-    console.error('Failed to set approval mode:', error)
-    throw error
+    console.error('Failed to set approval mode:', error);
+    throw error;
   }
-})
+});
 
 // Direct Excel tool call handler
 ipcMain.handle('geminiChat-call-excel-tool', async (_, operation, params) => {
   try {
-    const system = await ensureInitialized()
-    const { ExcelTool } = require('@google/gemini-cli-core')
-    const excelTool = new ExcelTool(system.getConfig())
+    const system = await ensureInitialized();
+    const { ExcelTool } = require('@google/gemini-cli-core');
+    const excelTool = new ExcelTool(system.getConfig());
 
     switch (operation) {
       case 'listApps':
-        return await excelTool.listApps()
+        return await excelTool.listApps();
       case 'listWorkbooks':
-        return await excelTool.listWorkbooks()
+        return await excelTool.listWorkbooks();
       case 'listWorksheets':
-        return await excelTool.listWorksheets(params?.workbookName)
+        return await excelTool.listWorksheets(params?.workbookName);
       case 'getSelection':
-        return await excelTool.getSelection(params?.workbookName)
+        return await excelTool.getSelection(params?.workbookName);
       default:
         return {
           success: false,
-          error: `Unknown Excel operation: ${operation}`
-        }
+          error: `Unknown Excel operation: ${operation}`,
+        };
     }
   } catch (error) {
-    console.error('Failed to call Excel tool:', error)
+    console.error('Failed to call Excel tool:', error);
     return {
       success: false,
-      error: error.message
-    }
+      error: error.message,
+    };
   }
-})
+});

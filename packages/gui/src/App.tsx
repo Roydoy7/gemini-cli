@@ -5,7 +5,7 @@
  */
 
 import type React from 'react';
-import {useEffect} from 'react';
+import { useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
@@ -13,10 +13,15 @@ import { geminiChatService } from '@/services/geminiChatService';
 import type { ChatSession, ModelProviderType } from '@/types';
 
 export const App: React.FC = () => {
-  const { currentProvider, currentModel, currentRole, theme } = useAppStore();
+  const { currentProvider, currentModel, currentRole, theme, isHydrated } =
+    useAppStore();
   const { setBuiltinRoles, syncOAuthStatus } = useAppStore();
 
   useEffect(() => {
+    // Wait for zustand persist to hydrate before initializing
+    if (!isHydrated) {
+      return;
+    }
     // Apply theme to document
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -28,7 +33,7 @@ export const App: React.FC = () => {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       root.classList.toggle('dark', isDark);
     }
-  }, [theme]);
+  }, [theme, isHydrated]);
 
   useEffect(() => {
     // Initialize MultiModelService via Electron IPC
@@ -36,27 +41,36 @@ export const App: React.FC = () => {
       // Wait for Electron API to be available
       let retries = 0;
       const maxRetries = 10;
-      
+
       while (retries < maxRetries) {
-        const electronAPI = (globalThis as { electronAPI?: { getWorkingDirectory: () => Promise<string> } }).electronAPI;
+        const electronAPI = (
+          globalThis as {
+            electronAPI?: { getWorkingDirectory: () => Promise<string> };
+          }
+        ).electronAPI;
         if (electronAPI) {
           break;
         }
-        console.log(`Waiting for Electron API... attempt ${retries + 1}/${maxRetries}`);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        console.log(
+          `Waiting for Electron API... attempt ${retries + 1}/${maxRetries}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 100));
         retries++;
       }
-      
+
       try {
-        
         // Get working directory via IPC instead of process.cwd()
-        const electronAPI = (globalThis as { electronAPI?: { getWorkingDirectory: () => Promise<string> } }).electronAPI;
+        const electronAPI = (
+          globalThis as {
+            electronAPI?: { getWorkingDirectory: () => Promise<string> };
+          }
+        ).electronAPI;
         if (!electronAPI) {
           throw new Error('Electron API not available after waiting');
         }
         const workingDirectory = await electronAPI.getWorkingDirectory();
         console.log('Working directory:', workingDirectory);
-        
+
         const configParams = {
           sessionId: `gui-session-${Date.now()}`,
           targetDir: workingDirectory,
@@ -65,45 +79,40 @@ export const App: React.FC = () => {
           cwd: workingDirectory,
           interactive: true,
           telemetry: { enabled: false },
-          approvalMode: 'default'  // Require user confirmation for important tool calls
+          approvalMode: 'default', // Require user confirmation for important tool calls
         };
-        
-        await geminiChatService.initialize(configParams);
-        
+
+        await geminiChatService.initialize(configParams, currentRole);
+
         // Set up tool confirmation callback
-        geminiChatService.setConfirmationCallback(async (details) => 
-          new Promise((resolve) => {
-            // Set the confirmation request in chat store
-            useChatStore.getState().setToolConfirmation(details);
-            
-            // Override the onConfirm to resolve our promise
-            const originalOnConfirm = details.onConfirm;
-            details.onConfirm = async (outcome, payload) => {
-              // Clear the confirmation from store
-              useChatStore.getState().setToolConfirmation(null);
-              
-              // Call original handler if it exists
-              if (originalOnConfirm) {
-                await originalOnConfirm(outcome, payload);
-              }
-              
-              // Resolve with the outcome
-              resolve(outcome);
-            };
-          })
+        geminiChatService.setConfirmationCallback(
+          async (details) =>
+            new Promise((resolve) => {
+              // Set the confirmation request in chat store
+              useChatStore.getState().setToolConfirmation(details);
+
+              // Override the onConfirm to resolve our promise
+              const originalOnConfirm = details.onConfirm;
+              details.onConfirm = async (outcome, payload) => {
+                // Clear the confirmation from store
+                useChatStore.getState().setToolConfirmation(null);
+
+                // Call original handler if it exists
+                if (originalOnConfirm) {
+                  await originalOnConfirm(outcome, payload);
+                }
+
+                // Resolve with the outcome
+                resolve(outcome);
+              };
+            }),
         );
-        
-        // Switch to the current provider and model after initialization
-        await geminiChatService.switchProvider(currentProvider, currentModel);
-        
-        // Switch to the current role after initialization
-        await geminiChatService.switchRole(currentRole);
-        
+
         // Load builtin roles after initialization
         try {
           const roles = await geminiChatService.getAllRolesAsync();
           if (roles.length > 0) {
-            setBuiltinRoles(roles.filter(role => role.isBuiltin !== false));
+            setBuiltinRoles(roles.filter((role) => role.isBuiltin !== false));
           }
         } catch (error) {
           console.error('Failed to load builtin roles:', error);
@@ -121,22 +130,25 @@ export const App: React.FC = () => {
         try {
           const sessionsInfo = await geminiChatService.getSessionsInfo();
           // console.log('Retrieved sessions from backend:', sessionsInfo);
-          
+
           // Convert backend session info to frontend session format
           const { setActiveSession } = useAppStore.getState();
-          
+
           // Clear existing sessions and rebuild from backend
-          useAppStore.setState({ sessions: [] });
-          
+          useAppStore.setState({ sessions: [], activeSessionId: null });
+
           for (const sessionInfo of sessionsInfo) {
             // Create placeholder messages array based on messageCount
-            const placeholderMessages = Array.from({ length: sessionInfo.messageCount }, (_, index) => ({
-              id: `${sessionInfo.id}-placeholder-${index}`,
-              role: 'user' as const,
-              content: '',
-              timestamp: new Date()
-            }));
-            
+            const placeholderMessages = Array.from(
+              { length: sessionInfo.messageCount },
+              (_, index) => ({
+                id: `${sessionInfo.id}-placeholder-${index}`,
+                role: 'user' as const,
+                content: '',
+                timestamp: new Date(),
+              }),
+            );
+
             const session: ChatSession = {
               id: sessionInfo.id,
               title: sessionInfo.title,
@@ -145,42 +157,43 @@ export const App: React.FC = () => {
               updatedAt: sessionInfo.lastUpdated,
               provider: currentProvider as ModelProviderType,
               model: currentModel,
-              roleId: sessionInfo.roleId || currentRole // Use session's roleId if available, fallback to current role
+              roleId: sessionInfo.roleId || currentRole, // Use session's roleId if available, fallback to current role
             };
-            
+
             useAppStore.getState().addSession(session);
           }
-          
+
           // Switch to the most recent session (first in sorted list) and load its messages
           if (sessionsInfo.length > 0) {
             const mostRecentSessionId = sessionsInfo[0].id;
             await geminiChatService.switchSession(mostRecentSessionId);
             setActiveSession(mostRecentSessionId);
-            console.log('Switched to most recent session:', mostRecentSessionId);
-            
+            console.log(
+              'Switched to most recent session:',
+              mostRecentSessionId,
+            );
+
             // Load messages for the initial session
             try {
-              const messages = await geminiChatService.getDisplayMessages(mostRecentSessionId);
+              const messages =
+                await geminiChatService.getDisplayMessages(mostRecentSessionId);
               // console.log('Loaded', messages.length, 'messages for initial session:', mostRecentSessionId);
-              
+
               // Convert and update the session with messages
               const { updateSession } = useAppStore.getState();
-              const chatMessages = messages
-                .map((msg, index) => ({
-                  id: `${mostRecentSessionId}-${index}`,
-                  role: msg.role as 'user' | 'assistant' | 'system' | 'tool', // Cast to allowed types
-                  content: msg.content,
-                  timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(), // Convert to Date object
-                  toolCalls: msg.toolCalls
-                }));
-              
+              const chatMessages = messages.map((msg, index) => ({
+                id: `${mostRecentSessionId}-${index}`,
+                role: msg.role as 'user' | 'assistant' | 'system' | 'tool', // Cast to allowed types
+                content: msg.content,
+                timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(), // Convert to Date object
+                toolCalls: msg.toolCalls,
+              }));
+
               updateSession(mostRecentSessionId, { messages: chatMessages });
-              
             } catch (error) {
               console.error('Failed to load initial session messages:', error);
             }
           }
-          
         } catch (error) {
           console.error('Failed to load sessions from backend:', error);
         }
@@ -197,14 +210,20 @@ export const App: React.FC = () => {
         // Mark initialization as complete
         useAppStore.getState().setInitialized(true);
         console.log('App initialization completed');
-        
       } catch (error) {
         console.error('Failed to initialize MultiModelService:', error);
       }
     };
 
     initializeService();
-  }, []); // Only run once on mount
+  }, [
+    isHydrated,
+    currentProvider,
+    currentModel,
+    currentRole,
+    setBuiltinRoles,
+    syncOAuthStatus,
+  ]); // Re-run when hydration completes
 
   return <AppLayout />;
 };
