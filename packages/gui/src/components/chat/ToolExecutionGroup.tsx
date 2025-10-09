@@ -5,7 +5,14 @@
  */
 
 import { useState, useRef } from 'react';
-import { ChevronDown, ChevronRight, Hammer, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Hammer,
+  CheckCircle2,
+  XCircle,
+  Clock,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/utils/cn';
 import { CodeHighlight } from '@/components/ui/CodeHighlight';
@@ -32,7 +39,10 @@ interface ToolExecutionGroupProps {
  * Displays a group of tool executions (call + response pairs) in a compact, collapsible format.
  * Optimized to reduce vertical space while maintaining readability.
  */
-export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({ executions, timestamp }) => {
+export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({
+  executions,
+  timestamp,
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set([0])); // First item expanded by default
   const headerRef = useRef<HTMLDivElement>(null);
@@ -41,28 +51,33 @@ export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({ executio
 
   const toggleGroupExpanded = () => {
     if (headerRef.current) {
-      const scrollContainer = headerRef.current.closest('[data-scroll-container]') ||
-                             headerRef.current.closest('.overflow-y-auto') ||
-                             document.querySelector('[class*="overflow-y-auto"]');
+      const scrollContainer =
+        headerRef.current.closest('[data-scroll-container]') ||
+        headerRef.current.closest('.overflow-y-auto') ||
+        document.querySelector('[class*="overflow-y-auto"]');
 
       if (scrollContainer) {
-        // Get the header's current position in viewport
+        // Save the absolute scroll position of the element's top
         const rect = headerRef.current.getBoundingClientRect();
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const viewportOffset = rect.top - containerRect.top;
+        const scrollTop = scrollContainer.scrollTop;
+        const elementTopInDocument =
+          scrollTop + rect.top - scrollContainer.getBoundingClientRect().top;
 
         // Toggle state
         setIsExpanded(!isExpanded);
 
-        // Maintain the header's position in viewport after DOM update
+        // After DOM update, scroll to keep the element's top at the same position
         requestAnimationFrame(() => {
           if (headerRef.current) {
             const newRect = headerRef.current.getBoundingClientRect();
-            const newContainerRect = scrollContainer.getBoundingClientRect();
-            const newViewportOffset = newRect.top - newContainerRect.top;
+            const newElementTopInDocument =
+              scrollContainer.scrollTop +
+              newRect.top -
+              scrollContainer.getBoundingClientRect().top;
 
-            // Adjust scroll to keep header at the same viewport position
-            scrollContainer.scrollTop += (newViewportOffset - viewportOffset);
+            // Adjust scroll to maintain element's top position
+            scrollContainer.scrollTop +=
+              newElementTopInDocument - elementTopInDocument;
           }
         });
       } else {
@@ -74,7 +89,7 @@ export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({ executio
   };
 
   const toggleItemExpanded = (index: number) => {
-    setExpandedItems(prev => {
+    setExpandedItems((prev) => {
       const next = new Set(prev);
       if (next.has(index)) {
         next.delete(index);
@@ -85,8 +100,12 @@ export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({ executio
     });
   };
 
-  const allCompleted = executions.every(exec => exec.toolResponse !== undefined);
-  const hasFailures = executions.some(exec => exec.toolResponse?.success === false);
+  const allCompleted = executions.every(
+    (exec) => exec.toolResponse !== undefined,
+  );
+  const hasFailures = executions.some(
+    (exec) => exec.toolResponse?.success === false,
+  );
 
   // Single execution - show in expanded format by default
   if (executions.length === 1) {
@@ -105,24 +124,36 @@ export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({ executio
   return (
     <div className="space-y-2">
       {/* Group header with summary */}
-      <div ref={headerRef} className="bg-muted/30 rounded-lg border border-border/50 overflow-hidden">
+      <div
+        ref={headerRef}
+        className="bg-muted/30 rounded-lg border border-border/50 overflow-hidden"
+      >
         <button
           onClick={toggleGroupExpanded}
           className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
         >
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              {isExpanded ? (
+                <ChevronDown size={16} />
+              ) : (
+                <ChevronRight size={16} />
+              )}
               <Hammer size={16} className="text-primary" />
             </div>
             <span className="text-sm font-medium">
-              {executions.length} Tool Execution{executions.length > 1 ? 's' : ''}
+              {executions.length} Tool Execution
+              {executions.length > 1 ? 's' : ''}
             </span>
             {allCompleted && (
-              <span className={cn(
-                "text-xs font-medium flex items-center gap-1",
-                hasFailures ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
-              )}>
+              <span
+                className={cn(
+                  'text-xs font-medium flex items-center gap-1',
+                  hasFailures
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-green-600 dark:text-green-400',
+                )}
+              >
                 {hasFailures ? (
                   <>
                     <XCircle size={12} />
@@ -186,35 +217,40 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
   isExpanded,
   onToggle,
   timestamp,
-  isNested = false
+  isNested = false,
 }) => {
   const { toolCall, toolResponse } = execution;
   const cardRef = useRef<HTMLDivElement>(null);
 
   const handleToggle = () => {
     if (cardRef.current) {
-      const scrollContainer = cardRef.current.closest('[data-scroll-container]') ||
-                             cardRef.current.closest('.overflow-y-auto') ||
-                             document.querySelector('[class*="overflow-y-auto"]');
+      const scrollContainer =
+        cardRef.current.closest('[data-scroll-container]') ||
+        cardRef.current.closest('.overflow-y-auto') ||
+        document.querySelector('[class*="overflow-y-auto"]');
 
       if (scrollContainer) {
-        // Get the card's current position in viewport
+        // Save the absolute scroll position of the element's top
         const rect = cardRef.current.getBoundingClientRect();
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const viewportOffset = rect.top - containerRect.top;
+        const scrollTop = scrollContainer.scrollTop;
+        const elementTopInDocument =
+          scrollTop + rect.top - scrollContainer.getBoundingClientRect().top;
 
         // Toggle state
         onToggle();
 
-        // Maintain the card's position in viewport after DOM update
+        // After DOM update, scroll to keep the element's top at the same position
         requestAnimationFrame(() => {
           if (cardRef.current) {
             const newRect = cardRef.current.getBoundingClientRect();
-            const newContainerRect = scrollContainer.getBoundingClientRect();
-            const newViewportOffset = newRect.top - newContainerRect.top;
+            const newElementTopInDocument =
+              scrollContainer.scrollTop +
+              newRect.top -
+              scrollContainer.getBoundingClientRect().top;
 
-            // Adjust scroll to keep card at the same viewport position
-            scrollContainer.scrollTop += (newViewportOffset - viewportOffset);
+            // Adjust scroll to maintain element's top position
+            scrollContainer.scrollTop +=
+              newElementTopInDocument - elementTopInDocument;
           }
         });
       } else {
@@ -232,17 +268,20 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
     if (toolResponse.success === false) {
       return <XCircle size={14} className="text-red-600 dark:text-red-400" />;
     }
-    return <CheckCircle2 size={14} className="text-green-600 dark:text-green-400" />;
+    return (
+      <CheckCircle2 size={14} className="text-green-600 dark:text-green-400" />
+    );
   };
 
   const getStatusText = () => {
-    if (!toolResponse) return "Executing...";
-    if (toolResponse.success === false) return "Failed";
-    return "Success";
+    if (!toolResponse) return 'Executing...';
+    if (toolResponse.success === false) return 'Failed';
+    return 'Success';
   };
 
-  const operation = (toolCall.arguments as Record<string, unknown>)?.op ||
-                    (toolCall.arguments as Record<string, unknown>)?.operation;
+  const operation =
+    (toolCall.arguments as Record<string, unknown>)?.op ||
+    (toolCall.arguments as Record<string, unknown>)?.operation;
 
   const formatValueForDisplay = (value: unknown): string => {
     if (typeof value === 'string') {
@@ -250,7 +289,10 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
     }
     if (Array.isArray(value)) {
       if (value.length > 3) {
-        return `[${value.slice(0, 3).map(v => typeof v === 'string' ? `"${v}"` : String(v)).join(', ')}, ...] (${value.length} items)`;
+        return `[${value
+          .slice(0, 3)
+          .map((v) => (typeof v === 'string' ? `"${v}"` : String(v)))
+          .join(', ')}, ...] (${value.length} items)`;
       }
       return JSON.stringify(value);
     }
@@ -267,7 +309,14 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
   const getKeyParameters = () => {
     const args = toolCall.arguments || {};
     const entries = Object.entries(args);
-    const priorityKeys = ['op', 'operation', 'range', 'workbook', 'worksheet', 'data'];
+    const priorityKeys = [
+      'op',
+      'operation',
+      'range',
+      'workbook',
+      'worksheet',
+      'data',
+    ];
     return entries.sort(([a], [b]) => {
       const aIndex = priorityKeys.indexOf(a);
       const bIndex = priorityKeys.indexOf(b);
@@ -285,13 +334,13 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
     <div
       ref={cardRef}
       className={cn(
-        "rounded-lg border overflow-hidden transition-all",
-        isNested ? "border-border/30" : "border-border/50",
+        'rounded-lg border overflow-hidden transition-all',
+        isNested ? 'border-border/30' : 'border-border/50',
         toolResponse?.success === false
-          ? "border-red-200 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10"
+          ? 'border-red-200 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10'
           : toolResponse
-          ? "border-green-200 dark:border-green-800/50 bg-green-50/30 dark:bg-green-950/10"
-          : "border-blue-200 dark:border-blue-800/50 bg-blue-50/30 dark:bg-blue-950/10"
+            ? 'border-green-200 dark:border-green-800/50 bg-green-50/30 dark:bg-green-950/10'
+            : 'border-blue-200 dark:border-blue-800/50 bg-blue-50/30 dark:bg-blue-950/10',
       )}
     >
       {/* Tool execution header */}
@@ -305,7 +354,9 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
           <span className="font-medium text-sm truncate">{toolCall.name}</span>
           {operation != null && (
             <span className="font-mono text-xs text-muted-foreground truncate">
-              {typeof operation === 'string' ? operation : JSON.stringify(operation)}
+              {typeof operation === 'string'
+                ? operation
+                : JSON.stringify(operation)}
             </span>
           )}
 
@@ -316,7 +367,10 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                 .filter(([key]) => key !== 'op' && key !== 'operation')
                 .slice(0, 2)
                 .map(([key, value]) => (
-                  <span key={key} className="text-xs text-muted-foreground truncate">
+                  <span
+                    key={key}
+                    className="text-xs text-muted-foreground truncate"
+                  >
                     {key}: {formatValueForDisplay(value)}
                   </span>
                 ))}
@@ -344,7 +398,9 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
           {/* Tool call parameters */}
           {hasParams && (
             <div className="px-3 py-2 space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">Parameters:</div>
+              <div className="text-xs font-medium text-muted-foreground">
+                Parameters:
+              </div>
               <div className="space-y-1.5">
                 {keyParams.map(([key, value]) => (
                   <div key={key} className="flex items-start gap-2">
@@ -356,7 +412,9 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                         <pre className="text-xs bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap font-mono overflow-x-auto">
                           {JSON.stringify(value, null, 2)}
                         </pre>
-                      ) : key === 'code' || key === 'script' || key === 'query' ? (
+                      ) : key === 'code' ||
+                        key === 'script' ||
+                        key === 'query' ? (
                         <CodeHighlight code={String(value)} language="python" />
                       ) : (
                         <pre className="text-xs text-foreground/90 font-mono bg-muted/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto">
@@ -373,7 +431,9 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
           {/* Tool response */}
           {toolResponse && (
             <div className="border-t border-border/30 px-3 py-2 space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">Result:</div>
+              <div className="text-xs font-medium text-muted-foreground">
+                Result:
+              </div>
 
               {/* Structured response data */}
               {toolResponse.toolResponseData ? (
@@ -386,69 +446,106 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                   )}
 
                   {/* Metrics */}
-                  {toolResponse.toolResponseData.metrics && Object.keys(toolResponse.toolResponseData.metrics).length > 0 && (
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {toolResponse.toolResponseData.metrics.rowsAffected && (
-                        <span className="px-2 py-1 bg-muted/50 rounded">
-                          Rows: {toolResponse.toolResponseData.metrics.rowsAffected}
-                        </span>
-                      )}
-                      {toolResponse.toolResponseData.metrics.columnsAffected && (
-                        <span className="px-2 py-1 bg-muted/50 rounded">
-                          Columns: {toolResponse.toolResponseData.metrics.columnsAffected}
-                        </span>
-                      )}
-                      {toolResponse.toolResponseData.metrics.cellsAffected && (
-                        <span className="px-2 py-1 bg-muted/50 rounded">
-                          Cells: {toolResponse.toolResponseData.metrics.cellsAffected}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {toolResponse.toolResponseData.metrics &&
+                    Object.keys(toolResponse.toolResponseData.metrics).length >
+                      0 && (
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {toolResponse.toolResponseData.metrics.rowsAffected && (
+                          <span className="px-2 py-1 bg-muted/50 rounded">
+                            Rows:{' '}
+                            {toolResponse.toolResponseData.metrics.rowsAffected}
+                          </span>
+                        )}
+                        {toolResponse.toolResponseData.metrics
+                          .columnsAffected && (
+                          <span className="px-2 py-1 bg-muted/50 rounded">
+                            Columns:{' '}
+                            {
+                              toolResponse.toolResponseData.metrics
+                                .columnsAffected
+                            }
+                          </span>
+                        )}
+                        {toolResponse.toolResponseData.metrics
+                          .cellsAffected && (
+                          <span className="px-2 py-1 bg-muted/50 rounded">
+                            Cells:{' '}
+                            {
+                              toolResponse.toolResponseData.metrics
+                                .cellsAffected
+                            }
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                   {/* Files */}
                   {toolResponse.toolResponseData.files && (
                     <div className="space-y-1 text-xs">
                       {toolResponse.toolResponseData.files.workbook && (
                         <div className="flex items-center gap-1">
-                          <span className="font-medium text-muted-foreground">File:</span>
-                          <span className="font-mono truncate">{toolResponse.toolResponseData.files.workbook}</span>
+                          <span className="font-medium text-muted-foreground">
+                            File:
+                          </span>
+                          <span className="font-mono truncate">
+                            {toolResponse.toolResponseData.files.workbook}
+                          </span>
                         </div>
                       )}
                       {toolResponse.toolResponseData.files.worksheet && (
                         <div className="flex items-center gap-1">
-                          <span className="font-medium text-muted-foreground">Sheet:</span>
-                          <span className="font-mono">{toolResponse.toolResponseData.files.worksheet}</span>
+                          <span className="font-medium text-muted-foreground">
+                            Sheet:
+                          </span>
+                          <span className="font-mono">
+                            {toolResponse.toolResponseData.files.worksheet}
+                          </span>
                         </div>
                       )}
                     </div>
                   )}
 
                   {/* Next actions */}
-                  {toolResponse.toolResponseData.nextActions && toolResponse.toolResponseData.nextActions.length > 0 && (
-                    <div className="pt-2 border-t border-border/20">
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Suggested next actions:</div>
-                      <div className="space-y-1">
-                        {toolResponse.toolResponseData.nextActions.map((action: string, index: number) => (
-                          <div key={index} className="text-xs bg-muted/30 rounded px-2 py-1 font-mono">
-                            {action}
-                          </div>
-                        ))}
+                  {toolResponse.toolResponseData.nextActions &&
+                    toolResponse.toolResponseData.nextActions.length > 0 && (
+                      <div className="pt-2 border-t border-border/20">
+                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                          Suggested next actions:
+                        </div>
+                        <div className="space-y-1">
+                          {toolResponse.toolResponseData.nextActions.map(
+                            (action: string, index: number) => (
+                              <div
+                                key={index}
+                                className="text-xs bg-muted/30 rounded px-2 py-1 font-mono"
+                              >
+                                {action}
+                              </div>
+                            ),
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
                   {/* Visualizations */}
-                  {toolResponse.toolResponseData.visualizations && toolResponse.toolResponseData.visualizations.length > 0 && (
-                    <div className="pt-2 border-t border-border/20">
-                      <SmartVisualization visualizations={toolResponse.toolResponseData.visualizations} />
-                    </div>
-                  )}
+                  {toolResponse.toolResponseData.visualizations &&
+                    toolResponse.toolResponseData.visualizations.length > 0 && (
+                      <div className="pt-2 border-t border-border/20">
+                        <SmartVisualization
+                          visualizations={
+                            toolResponse.toolResponseData.visualizations
+                          }
+                        />
+                      </div>
+                    )}
                 </div>
               ) : (
                 /* Unstructured response */
                 <div className="text-sm">
-                  <MarkdownRenderer content={toolResponse.content} className="" />
+                  <MarkdownRenderer
+                    content={toolResponse.content}
+                    className=""
+                  />
                 </div>
               )}
             </div>
