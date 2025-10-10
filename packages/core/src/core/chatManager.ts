@@ -841,8 +841,9 @@ export class GeminiChatManager {
   /**
    * Utility: Get workspace directories
    */
-  getWorkspaceDirectories(): readonly string[] {
+  async getWorkspaceDirectories(): Promise<readonly string[]> {
     const workspaceManager = WorkspaceManager.getInstance(this.config);
+    await workspaceManager.ensureInitialized();
     return workspaceManager.getDirectories();
   }
 

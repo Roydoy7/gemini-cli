@@ -6,7 +6,11 @@
 
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { UniversalMessage, ModelProviderConfig, ModelProviderType } from '../providers/types.js';
+import type {
+  UniversalMessage,
+  ModelProviderConfig,
+  ModelProviderType,
+} from '../providers/types.js';
 import type { Config } from '../config/config.js';
 import type { ModelProviderFactory } from '../providers/ModelProviderFactory.js';
 
@@ -70,7 +74,7 @@ export class SessionManager {
       console.warn('[SessionManager] Already initialized');
       return;
     }
-    
+
     this.config = options.config;
     this.createModelProvider = options.createModelProvider;
     this.initialized = true; // Set before calling initialize to avoid circular dependency
@@ -89,7 +93,9 @@ export class SessionManager {
    */
   private ensureInitialized(): void {
     if (!this.initialized || !this.config) {
-      throw new Error('SessionManager not initialized. Call initializeWithConfig() first.');
+      throw new Error(
+        'SessionManager not initialized. Call initializeWithConfig() first.',
+      );
     }
   }
 
@@ -113,7 +119,7 @@ export class SessionManager {
    */
   private async loadSessions(): Promise<void> {
     const sessionsDir = this.getSessionsDir();
-    
+
     try {
       if (!fs.existsSync(sessionsDir)) {
         fs.mkdirSync(sessionsDir, { recursive: true });
@@ -121,26 +127,39 @@ export class SessionManager {
       }
 
       const files = fs.readdirSync(sessionsDir);
-      
+
       for (const file of files) {
         if (!file.endsWith('.json')) continue;
-        
+
         try {
           const sessionPath = path.join(sessionsDir, file);
           const sessionContent = fs.readFileSync(sessionPath, 'utf-8');
           const sessionData = JSON.parse(sessionContent) as SessionData;
-          
+
           // Convert date strings back to Date objects
           sessionData.lastUpdated = new Date(sessionData.lastUpdated);
           sessionData.createdAt = new Date(sessionData.createdAt);
-          
+
           this.sessions.set(sessionData.id, sessionData);
         } catch (error) {
           console.error(`Failed to load session file ${file}:`, error);
         }
       }
-      
-      console.log(`[SessionManager] Loaded ${this.sessions.size} sessions from disk`);
+
+      console.log(
+        `[SessionManager] Loaded ${this.sessions.size} sessions from disk`,
+      );
+
+      // Auto-restore the most recently updated session as current session
+      if (this.sessions.size > 0 && !this.currentSessionId) {
+        const sortedSessions = Array.from(this.sessions.values()).sort(
+          (a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime(),
+        );
+        this.currentSessionId = sortedSessions[0].id;
+        console.log(
+          `[SessionManager] Auto-restored current session: ${this.currentSessionId}`,
+        );
+      }
     } catch (error) {
       console.error('[SessionManager] Failed to load sessions:', error);
     }
@@ -157,18 +176,31 @@ export class SessionManager {
       }
 
       const sessionPath = this.getSessionPath(sessionData.id);
-      fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+      fs.writeFileSync(
+        sessionPath,
+        JSON.stringify(sessionData, null, 2),
+        'utf-8',
+      );
     } catch (error) {
-      console.error(`[SessionManager] Failed to save session ${sessionData.id}:`, error);
+      console.error(
+        `[SessionManager] Failed to save session ${sessionData.id}:`,
+        error,
+      );
     }
   }
 
   /**
    * Create a new session
    */
-  createSession(sessionId: string, title: string = 'New Chat', roleId?: string): void {
+  createSession(
+    sessionId: string,
+    title: string = 'New Chat',
+    roleId?: string,
+  ): void {
     this.ensureInitialized();
-    console.log(`[SessionManager] Creating session: ${sessionId} with roleId: ${roleId}`);
+    console.log(
+      `[SessionManager] Creating session: ${sessionId} with roleId: ${roleId}`,
+    );
 
     const newSession: SessionData = {
       id: sessionId,
@@ -177,17 +209,17 @@ export class SessionManager {
       createdAt: new Date(),
       conversationHistory: [],
       metadata: {
-        roleId
-      }
+        roleId,
+      },
     };
-    
+
     this.sessions.set(sessionId, newSession);
-    
+
     // Auto-switch to new session if no current session
     if (!this.currentSessionId) {
       this.switchSession(sessionId);
     }
-    
+
     // Save to disk
     this.saveSession(newSession);
   }
@@ -197,30 +229,34 @@ export class SessionManager {
    */
   switchSession(sessionId: string): void {
     this.ensureInitialized();
-    console.log(`[SessionManager] Switching from session ${this.currentSessionId} to ${sessionId}`);
-    
+    console.log(
+      `[SessionManager] Switching from session ${this.currentSessionId} to ${sessionId}`,
+    );
+
     // Update current session timestamp if exists
     if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
       const currentSession = this.sessions.get(this.currentSessionId)!;
       currentSession.lastUpdated = new Date();
       this.saveSession(currentSession);
     }
-    
+
     // Switch to new session
     this.currentSessionId = sessionId;
-    
+
     // Create session if it doesn't exist
     let targetSession = this.sessions.get(sessionId);
     if (!targetSession) {
       this.createSession(sessionId);
       targetSession = this.sessions.get(sessionId)!;
     }
-    
+
     targetSession.lastUpdated = new Date();
     this.saveSession(targetSession);
-    
+
     const sessionHistory = targetSession.conversationHistory;
-    console.log(`[SessionManager] Loaded session ${sessionId} with ${sessionHistory.length} messages`);
+    console.log(
+      `[SessionManager] Loaded session ${sessionId} with ${sessionHistory.length} messages`,
+    );
   }
 
   /**
@@ -235,10 +271,10 @@ export class SessionManager {
    */
   deleteSession(sessionId: string): void {
     console.log(`[SessionManager] Deleting session: ${sessionId}`);
-    
+
     // Remove from memory
     this.sessions.delete(sessionId);
-    
+
     // Remove from disk
     try {
       const sessionPath = this.getSessionPath(sessionId);
@@ -246,9 +282,12 @@ export class SessionManager {
         fs.unlinkSync(sessionPath);
       }
     } catch (error) {
-      console.error(`[SessionManager] Failed to delete session file ${sessionId}:`, error);
+      console.error(
+        `[SessionManager] Failed to delete session file ${sessionId}:`,
+        error,
+      );
     }
-    
+
     // If deleting current session, clear current state
     if (this.currentSessionId === sessionId) {
       this.currentSessionId = null;
@@ -266,21 +305,26 @@ export class SessionManager {
    * Get sessions info for frontend (sorted by lastUpdated)
    */
   getSessionsInfo(): SessionInfo[] {
-    const sessionsInfo = Array.from(this.sessions.values()).map(session => ({
+    const sessionsInfo = Array.from(this.sessions.values()).map((session) => ({
       id: session.id,
       title: session.title,
-      messageCount: session.conversationHistory.filter(msg =>
-        !msg.content.startsWith('Tool response:') &&
-        !msg.content.startsWith('Tool execution completed successfully')
+      messageCount: session.conversationHistory.filter(
+        (msg) =>
+          !msg.content.startsWith('Tool response:') &&
+          !msg.content.startsWith('Tool execution completed successfully'),
       ).length, // Count display messages only
       lastUpdated: session.lastUpdated,
-      roleId: session.metadata?.roleId
+      roleId: session.metadata?.roleId,
     }));
-    
+
     // Sort by lastUpdated (most recent first)
-    sessionsInfo.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
-    
-    console.log(`[SessionManager] Retrieved info for ${sessionsInfo.length} sessions`);
+    sessionsInfo.sort(
+      (a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime(),
+    );
+
+    console.log(
+      `[SessionManager] Retrieved info for ${sessionsInfo.length} sessions`,
+    );
     return sessionsInfo;
   }
 
@@ -292,7 +336,9 @@ export class SessionManager {
     if (session) {
       session.title = newTitle;
       session.lastUpdated = new Date();
-      console.log(`[SessionManager] Updated session ${sessionId} title to: ${newTitle}`);
+      console.log(
+        `[SessionManager] Updated session ${sessionId} title to: ${newTitle}`,
+      );
       this.saveSession(session);
     }
   }
@@ -300,7 +346,10 @@ export class SessionManager {
   /**
    * Update session metadata
    */
-  updateSessionMetadata(sessionId: string, metadata: Partial<SessionData['metadata']>): void {
+  updateSessionMetadata(
+    sessionId: string,
+    metadata: Partial<SessionData['metadata']>,
+  ): void {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.metadata = { ...session.metadata, ...metadata };
@@ -313,14 +362,16 @@ export class SessionManager {
    * Set session role
    */
   setSessionRole(sessionId: string, roleId: string): void {
-    console.log(`[SessionManager] Setting role ${roleId} for session ${sessionId}`);
+    console.log(
+      `[SessionManager] Setting role ${roleId} for session ${sessionId}`,
+    );
     this.updateSessionMetadata(sessionId, { roleId });
   }
 
   /**
    * Add a message to session history
    */
-  addHistory(message: UniversalMessage): void {   
+  addHistory(message: UniversalMessage): void {
     if (this.currentSessionId) {
       const session = this.sessions.get(this.currentSessionId);
       if (session) {
@@ -328,7 +379,7 @@ export class SessionManager {
         session.lastUpdated = new Date();
         this.saveSession(session);
       }
-    } 
+    }
   }
 
   /**
@@ -338,7 +389,7 @@ export class SessionManager {
     if (this.currentSessionId) {
       const session = this.sessions.get(this.currentSessionId);
       return session?.conversationHistory || [];
-    } 
+    }
     return [];
   }
 
@@ -383,11 +434,13 @@ export class SessionManager {
     }
 
     // Filter out "Please continue." continuation prompts from display
-    const displayMessages = session.conversationHistory.filter(msg =>
-      !(msg.role === 'user' && msg.content === 'Please continue.')
+    const displayMessages = session.conversationHistory.filter(
+      (msg) => !(msg.role === 'user' && msg.content === 'Please continue.'),
     );
 
-    console.log(`[SessionManager] Retrieved ${displayMessages.length} display messages (filtered ${session.conversationHistory.length - displayMessages.length} continuation prompts) for session ${targetSessionId}`);
+    console.log(
+      `[SessionManager] Retrieved ${displayMessages.length} display messages (filtered ${session.conversationHistory.length - displayMessages.length} continuation prompts) for session ${targetSessionId}`,
+    );
     return displayMessages;
   }
 
@@ -397,17 +450,18 @@ export class SessionManager {
   generateTitleFromMessage(message: string): string {
     // Remove line breaks and trim
     const cleanMessage = message.replace(/\n+/g, ' ').trim();
-    
+
     // Truncate to 30 characters
     if (cleanMessage.length <= 30) {
       return cleanMessage;
     }
-    
+
     // Find a good break point (space) near 30 chars
     const truncated = cleanMessage.substring(0, 30);
     const lastSpaceIndex = truncated.lastIndexOf(' ');
-    
-    if (lastSpaceIndex > 15) { // If there's a space reasonably close to the end
+
+    if (lastSpaceIndex > 15) {
+      // If there's a space reasonably close to the end
       return cleanMessage.substring(0, lastSpaceIndex) + '...';
     } else {
       return truncated + '...';
@@ -418,8 +472,8 @@ export class SessionManager {
    * Generate intelligent title using LLM when user sends exactly 3rd message
    */
   async generateIntelligentTitle(
-    sessionId: string, 
-    currentProvider?: { type: string; model: string }
+    sessionId: string,
+    currentProvider?: { type: string; model: string },
   ): Promise<string | null> {
     if (!this.createModelProvider || !currentProvider) {
       return null;
@@ -430,20 +484,21 @@ export class SessionManager {
       if (!session) return null;
 
       // Get display messages (without tool messages)
-      const displayMessages = session.conversationHistory.filter(msg => 
-        !msg.content.startsWith('Tool response:') && 
-        !msg.content.startsWith('Tool execution completed successfully')
+      const displayMessages = session.conversationHistory.filter(
+        (msg) =>
+          !msg.content.startsWith('Tool response:') &&
+          !msg.content.startsWith('Tool execution completed successfully'),
       );
 
       // Only generate when user has exactly 3 messages (after 3rd message is sent)
-      const userMessages = displayMessages.filter(msg => msg.role === 'user');
+      const userMessages = displayMessages.filter((msg) => msg.role === 'user');
       if (userMessages.length !== 3) {
         return null;
       }
 
       // Create a conversation summary prompt
       const conversationText = displayMessages
-        .map(msg => `${msg.role}: ${msg.content}`)
+        .map((msg) => `${msg.role}: ${msg.content}`)
         .join('\n');
 
       const titlePrompt = `Based on this conversation, generate a short, descriptive title (max 40 characters). Only respond with the title, no explanation:
@@ -455,28 +510,39 @@ Title:`;
       // Use current provider to generate title
       const providerConfig: ModelProviderConfig = {
         type: currentProvider.type as ModelProviderType,
-        model: currentProvider.model
+        model: currentProvider.model,
       };
-      
+
       const provider = this.createModelProvider!(providerConfig, this.config!);
-      
+
       const titleResponse = await provider.sendMessage(
         [{ role: 'user', content: titlePrompt }],
-        new AbortController().signal
+        new AbortController().signal,
       );
 
-      const generatedTitle = titleResponse.content.trim().replace(/^["']|["']$/g, ''); // Remove quotes if any
-      
+      const generatedTitle = titleResponse.content
+        .trim()
+        .replace(/^["']|["']$/g, ''); // Remove quotes if any
+
       // Validate and clean the generated title
-      if (generatedTitle && generatedTitle.length > 0 && generatedTitle.length <= 50) {
-        console.log(`[SessionManager] LLM generated title for session ${sessionId}: ${generatedTitle}`);
+      if (
+        generatedTitle &&
+        generatedTitle.length > 0 &&
+        generatedTitle.length <= 50
+      ) {
+        console.log(
+          `[SessionManager] LLM generated title for session ${sessionId}: ${generatedTitle}`,
+        );
         this.updateSessionTitle(sessionId, generatedTitle);
         return generatedTitle;
       }
 
       return null;
     } catch (error) {
-      console.error('[SessionManager] Failed to generate intelligent title:', error);
+      console.error(
+        '[SessionManager] Failed to generate intelligent title:',
+        error,
+      );
       return null;
     }
   }
@@ -484,12 +550,14 @@ Title:`;
   /**
    * Handle auto-title generation based on message flow
    */
-  handleAutoTitleGeneration(
-    message: UniversalMessage
-  ): void {
+  handleAutoTitleGeneration(message: UniversalMessage): void {
     if (message.role === 'user' && this.currentSessionId) {
       const session = this.sessions.get(this.currentSessionId);
-      if (session && session.title === 'New Chat' && session.conversationHistory.length === 1) {
+      if (
+        session &&
+        session.title === 'New Chat' &&
+        session.conversationHistory.length === 1
+      ) {
         // This is the first message in a new session
         const newTitle = this.generateTitleFromMessage(message.content);
         this.updateSessionTitle(this.currentSessionId, newTitle);
@@ -502,15 +570,21 @@ Title:`;
    */
   async triggerIntelligentTitleGeneration(
     sessionId: string,
-    currentProvider?: { type: string; model: string }
+    currentProvider?: { type: string; model: string },
   ): Promise<void> {
     try {
-      const intelligentTitle = await this.generateIntelligentTitle(sessionId, currentProvider);
+      const intelligentTitle = await this.generateIntelligentTitle(
+        sessionId,
+        currentProvider,
+      );
       if (intelligentTitle) {
         this.updateSessionTitle(sessionId, intelligentTitle);
       }
     } catch (error) {
-      console.error('[SessionManager] Error generating intelligent title:', error);
+      console.error(
+        '[SessionManager] Error generating intelligent title:',
+        error,
+      );
     }
   }
 }
