@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { ModelProviderType } from '@/types';
 import type {
   AppState,
@@ -54,13 +54,21 @@ interface AppStore extends AppState {
 
 export const useAppStore = create<AppStore>()(
   persist(
-    (set) => ({
+    (
+      set: (
+        partial: Partial<AppStore> | ((state: AppStore) => Partial<AppStore>),
+      ) => void,
+    ) => ({
       // Initial state
       sessions: [],
       activeSessionId: null,
-      currentProvider: ModelProviderType.LM_STUDIO,
-      currentModel: 'openai/gpt-oss-20b',
-      authConfig: {},
+      currentProvider: ModelProviderType.GEMINI,
+      currentModel: 'gemini-2.5-flash',
+      authConfig: {
+        gemini: {
+          type: 'oauth',
+        },
+      },
       currentWorkspace: null,
       workspaces: [],
       language: 'en',
@@ -212,7 +220,7 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'gemini-cli-gui',
-      partialize: (state) => ({
+      partialize: (state: AppStore) => ({
         language: state.language,
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
@@ -224,7 +232,7 @@ export const useAppStore = create<AppStore>()(
         currentProvider: state.currentProvider,
         currentModel: state.currentModel,
       }),
-      onRehydrateStorage: () => (state) => {
+      onRehydrateStorage: () => (state: AppStore | undefined) => {
         // Mark as hydrated when storage is restored
         if (state) {
           state.isHydrated = true;
