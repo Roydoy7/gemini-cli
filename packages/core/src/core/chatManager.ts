@@ -335,11 +335,27 @@ export class GeminiChatManager {
                         'Tool execution failed';
                       toolResponseContent = `Tool execution failed: ${errorMsg}`;
 
+                      // Create error response parts if not provided
+                      const errorResponseParts = toolCall.response
+                        .responseParts || [
+                        {
+                          functionResponse: {
+                            name: toolCall.request.name,
+                            response: {
+                              error: errorMsg,
+                            },
+                          },
+                        },
+                      ];
+
+                      // Add error response parts to continue conversation
+                      toolResponseParts.push(...errorResponseParts);
+
                       collectedEvents.push({
                         type: GeminiEventType.ToolCallResponse,
                         value: {
                           callId: toolCall.request.callId,
-                          responseParts: toolCall.response.responseParts || [],
+                          responseParts: errorResponseParts,
                           resultDisplay: toolResponseContent,
                           error: toolCall.response.error,
                           errorType: toolCall.response.errorType,
@@ -355,11 +371,27 @@ export class GeminiChatManager {
                         'Tool execution cancelled';
                       toolResponseContent = `Tool cancelled: ${cancelMsg}`;
 
+                      // Create cancellation response parts if not provided
+                      const cancelResponseParts = toolCall.response
+                        .responseParts || [
+                        {
+                          functionResponse: {
+                            name: toolCall.request.name,
+                            response: {
+                              error: cancelMsg,
+                            },
+                          },
+                        },
+                      ];
+
+                      // Add cancellation response parts to continue conversation
+                      toolResponseParts.push(...cancelResponseParts);
+
                       collectedEvents.push({
                         type: GeminiEventType.ToolCallResponse,
                         value: {
                           callId: toolCall.request.callId,
-                          responseParts: toolCall.response.responseParts || [],
+                          responseParts: cancelResponseParts,
                           resultDisplay: toolResponseContent,
                           error: toolCall.response.error,
                           errorType: toolCall.response.errorType,
