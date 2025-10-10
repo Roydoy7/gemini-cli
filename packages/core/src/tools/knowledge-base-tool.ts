@@ -11,7 +11,12 @@ import { BasePythonTool } from './base-python-tool.js';
 /**
  * Knowledge base operations
  */
-export type KnowledgeBaseOperation = 'store' | 'search' | 'get' | 'list_collections' | 'advanced_search';
+export type KnowledgeBaseOperation =
+  | 'store'
+  | 'search'
+  | 'get'
+  | 'list_collections'
+  | 'advanced_search';
 
 /**
  * Parameters for knowledge base operations
@@ -45,23 +50,26 @@ export interface KnowledgeBaseParams {
   collection?: string;
 
   /** Advanced search and retrieval options */
-  where?: Record<string, unknown>;  // Metadata filtering: {"author": "John", "page": {"$gt": 10}}
-  where_document?: Record<string, unknown>;  // Full-text search: {"$contains": "search term"}
-  content_mode?: 'chunks' | 'full' | 'metadata_only';  // Content inclusion level
-  similarity_threshold?: number;  // Minimum similarity score (0-1)
+  where?: Record<string, unknown>; // Metadata filtering: {"author": "John", "page": {"$gt": 10}}
+  where_document?: Record<string, unknown>; // Full-text search: {"$contains": "search term"}
+  content_mode?: 'chunks' | 'full' | 'metadata_only'; // Content inclusion level
+  similarity_threshold?: number; // Minimum similarity score (0-1)
 
   /** Document management */
-  document_ids?: string[];  // Specific document IDs to retrieve
+  document_ids?: string[]; // Specific document IDs to retrieve
 
   /** Result formatting */
-  include_metadata?: boolean;  // Include metadata in results (default: true)
-  include_distances?: boolean;  // Include similarity distances (default: true)
+  include_metadata?: boolean; // Include metadata in results (default: true)
+  include_distances?: boolean; // Include similarity distances (default: true)
 }
 
 /**
  * Knowledge Base Tool - Simple storage and retrieval for markdown content
  */
-export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolResult> {
+export class KnowledgeBaseTool extends BasePythonTool<
+  KnowledgeBaseParams,
+  ToolResult
+> {
   static readonly Name = 'knowledge_base';
 
   constructor(config: Config) {
@@ -77,10 +85,12 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
 - Search for previously saved solutions when facing similar problems
 - Preserve context and learnings that should persist beyond the current conversation
 
-# USAGE EXAMPLES
+# USAGE PATTERNS
 
-## Example 1: Save a successful code snippet
-\`\`\`
+## Quick Examples
+
+### Save a code snippet
+\`\`\`json
 {
   "op": "store",
   "content": "# Excel Data Export\\n\\nSuccessfully exported data using xlwings:\\n\\n\`\`\`python\\nimport xlwings as xw\\nbook = xw.Book('data.xlsx')\\nsheet = book.sheets[0]\\ndata = sheet.range('A1').expand('table').value\\n\`\`\`",
@@ -92,21 +102,8 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
 }
 \`\`\`
 
-## Example 2: Store a markdown file
-\`\`\`
-{
-  "op": "store",
-  "file_path": "C:\\\\docs\\\\api-reference.md",
-  "metadata": {
-    "title": "API Reference Documentation",
-    "source": "company_docs",
-    "date": "2025-01-15"
-  }
-}
-\`\`\`
-
-## Example 3: Search for relevant content
-\`\`\`
+### Search for solutions
+\`\`\`json
 {
   "op": "search",
   "query": "how to read excel file with xlwings",
@@ -114,8 +111,8 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
 }
 \`\`\`
 
-## Example 4: Advanced search with filters
-\`\`\`
+### Advanced search with filters
+\`\`\`json
 {
   "op": "advanced_search",
   "query": "data visualization",
@@ -124,6 +121,97 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
   "limit": 5
 }
 \`\`\`
+
+## Document to Knowledge Base Workflows (Token-Efficient)
+
+### Workflow 1: PDF/Book → Knowledge Base
+**Use Case**: Convert entire PDF documents into searchable knowledge base
+**Efficiency**: Zero token overhead, no LLM involvement in conversion
+\`\`\`
+Step 1: markitdown-tools(op="convert_path_only", file_path="book.pdf")
+        → Returns: {"md_path": "book.md"}
+
+Step 2: knowledge_base(op="store", file_path="book.md",
+        metadata={
+          "title": "Python Programming Guide",
+          "source": "PDF",
+          "type": "book",
+          "author": "John Doe"
+        },
+        collection="books")
+
+Step 3: knowledge_base(op="search",
+        query="how to use async functions",
+        collection="books")
+\`\`\`
+
+**Benefits**:
+- Direct file-to-file conversion (no content loading)
+- Automatic semantic chunking for optimal retrieval
+- Preserves document structure and formatting
+- Immediate searchability across entire document
+
+### Workflow 2: Excel/CSV → Knowledge Base
+**Use Case**: Convert structured data files into queryable knowledge
+**Rich Metadata**: Tag with department, date, data type for precise filtering
+\`\`\`
+Step 1: markitdown-tools(op="convert_path_only", file_path="Q4_report.xlsx")
+        → Returns: {"md_path": "Q4_report.md"}
+
+Step 2: knowledge_base(op="store", file_path="Q4_report.md",
+        metadata={
+          "title": "Financial Report Q4 2024",
+          "source": "Excel",
+          "type": "spreadsheet",
+          "department": "Finance",
+          "author": "Data Team",
+          "date": "2024-12-31",
+          "sheets": "Summary,Details,Charts",
+          "data_type": "financial_data"
+        },
+        collection="excel_data")
+
+Step 3: knowledge_base(op="advanced_search",
+        query="Q4 revenue trends",
+        where={"department": "Finance", "type": "spreadsheet"},
+        collection="excel_data")
+\`\`\`
+
+### Workflow 3: Multi-Document Collection
+**Use Case**: Build comprehensive knowledge base from multiple sources
+**Batch Processing**: Convert all documents first, then store together
+\`\`\`
+# Convert all documents
+docs = ["api-ref.pdf", "user-guide.docx", "data.xlsx", "readme.md"]
+md_paths = []
+
+for doc in docs:
+    result = markitdown-tools(op="convert_path_only", file_path=doc)
+    md_paths.append(result["md_path"])
+
+# Store all with appropriate metadata
+for md_path in md_paths:
+    knowledge_base(op="store",
+                  file_path=md_path,
+                  metadata={
+                    "project": "ProjectX",
+                    "imported_date": "2025-01-15"
+                  },
+                  collection="project_docs")
+
+# Search across entire collection
+knowledge_base(op="search",
+              query="API authentication methods",
+              collection="project_docs",
+              limit=5)
+\`\`\`
+
+## Efficiency Principles
+- **convert_path_only**: Returns only file path, avoids loading content into memory
+- **Batch processing**: Convert all documents first, then store multiple at once
+- **Rich metadata**: Add title, source, type, author, date for better filtering
+- **Collection organization**: Group related documents (books, excel_data, project_docs)
+- **Search-driven retrieval**: Only load content when actively needed by queries
 
 # OPERATIONS GUIDE
 
@@ -171,86 +259,104 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
       {
         properties: {
           op: {
-            description: 'Operation to perform: store (save content), search (semantic search), get (retrieve by ID), list_collections (show all collections), advanced_search (combined semantic + metadata + full-text search)',
+            description:
+              'Operation to perform: store (save content), search (semantic search), get (retrieve by ID), list_collections (show all collections), advanced_search (combined semantic + metadata + full-text search)',
             type: 'string',
-            enum: ['store', 'search', 'get', 'list_collections', 'advanced_search']
+            enum: [
+              'store',
+              'search',
+              'get',
+              'list_collections',
+              'advanced_search',
+            ],
           },
           content: {
-            description: 'Markdown content to store (for store operation, either content or file_path required)',
-            type: 'string'
+            description:
+              'Markdown content to store (for store operation, either content or file_path required)',
+            type: 'string',
           },
           file_path: {
-            description: 'Path to markdown file to store (for store operation, alternative to content)',
-            type: 'string'
+            description:
+              'Path to markdown file to store (for store operation, alternative to content)',
+            type: 'string',
           },
           query: {
             description: 'Search query text (required for search operation)',
-            type: 'string'
+            type: 'string',
           },
           limit: {
-            description: 'Maximum number of search results to return (default: 5)',
+            description:
+              'Maximum number of search results to return (default: 5)',
             type: 'number',
             minimum: 1,
-            maximum: 20
+            maximum: 20,
           },
           metadata: {
-            description: 'Optional metadata for the content (source_file, title, author, date, etc.)',
+            description:
+              'Optional metadata for the content (source_file, title, author, date, etc.)',
             type: 'object',
             properties: {
               source_file: { type: 'string' },
               title: { type: 'string' },
               author: { type: 'string' },
-              date: { type: 'string' }
+              date: { type: 'string' },
             },
-            additionalProperties: { type: 'string' }
+            additionalProperties: { type: 'string' },
           },
           collection: {
-            description: 'Collection name to store/search in (default: "default")',
-            type: 'string'
+            description:
+              'Collection name to store/search in (default: "default")',
+            type: 'string',
           },
           where: {
-            description: 'Metadata filtering (advanced_search): {"author": "John", "page": {"$gt": 10}}',
-            type: 'object'
+            description:
+              'Metadata filtering (advanced_search): {"author": "John", "page": {"$gt": 10}}',
+            type: 'object',
           },
           where_document: {
-            description: 'Full-text search filtering (advanced_search): {"$contains": "search term"}',
-            type: 'object'
+            description:
+              'Full-text search filtering (advanced_search): {"$contains": "search term"}',
+            type: 'object',
           },
           content_mode: {
-            description: 'Content inclusion level: chunks (default, semantic chunks), full (complete documents), metadata_only (just metadata)',
+            description:
+              'Content inclusion level: chunks (default, semantic chunks), full (complete documents), metadata_only (just metadata)',
             type: 'string',
-            enum: ['chunks', 'full', 'metadata_only']
+            enum: ['chunks', 'full', 'metadata_only'],
           },
           similarity_threshold: {
             description: 'Minimum similarity score 0-1 (advanced_search)',
             type: 'number',
             minimum: 0,
-            maximum: 1
+            maximum: 1,
           },
           document_ids: {
             description: 'Specific document IDs to retrieve (get operation)',
             type: 'array',
-            items: { type: 'string' }
+            items: { type: 'string' },
           },
           include_metadata: {
             description: 'Include metadata in results (default: true)',
-            type: 'boolean'
+            type: 'boolean',
           },
           include_distances: {
-            description: 'Include similarity distances in results (default: true)',
-            type: 'boolean'
-          }
+            description:
+              'Include similarity distances in results (default: true)',
+            type: 'boolean',
+          },
         },
         required: ['op'],
-        type: 'object'
+        type: 'object',
       },
       config,
       true, // isOutputMarkdown
-      false // canUpdateOutput
+      false, // canUpdateOutput
     );
   }
 
-  protected override validateToolParamValues(params: KnowledgeBaseParams): string | null {
+  protected override validateToolParamValues(
+    params: KnowledgeBaseParams,
+  ): string | null {
     const { op, content, file_path, query, document_ids } = params;
 
     switch (op) {
@@ -292,7 +398,10 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
     return null;
   }
 
-  protected parseResult(pythonOutput: string, params: KnowledgeBaseParams): ToolResult {
+  protected parseResult(
+    pythonOutput: string,
+    params: KnowledgeBaseParams,
+  ): ToolResult {
     try {
       // Clean the output to handle potential non-JSON prefixes
       let cleanOutput = pythonOutput.trim();
@@ -301,7 +410,7 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
       if (cleanOutput.startsWith('Error:')) {
         return {
           returnDisplay: `❌ **Python Error:** ${cleanOutput}`,
-          llmContent: `Knowledge base operation failed: ${cleanOutput}`
+          llmContent: `Knowledge base operation failed: ${cleanOutput}`,
         };
       }
 
@@ -317,7 +426,7 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
       if (result.status === 'error' || result.error) {
         return {
           returnDisplay: `❌ **Error:** ${result.error}`,
-          llmContent: `Knowledge base operation failed: ${result.error}`
+          llmContent: `Knowledge base operation failed: ${result.error}`,
         };
       }
 
@@ -329,31 +438,35 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
 🗂️ **Collection:** ${params.collection || 'default'}
 📊 **Chunks:** ${result.chunks_stored || 0}
 📝 **Characters:** ${result.total_characters || 0}`,
-          llmContent: `Content successfully stored in knowledge base. ${result.chunks_stored || 0} chunks created from ${result.total_characters || 0} characters.`
+          llmContent: `Content successfully stored in knowledge base. ${result.chunks_stored || 0} chunks created from ${result.total_characters || 0} characters.`,
         };
       } else if (params.op === 'search') {
         const results = Array.isArray(result) ? result : [];
         if (results.length === 0) {
           return {
             returnDisplay: `🔍 **No results found**\n\nNo matching content found for: "${params.query}"`,
-            llmContent: `No results found in knowledge base for query: "${params.query}"`
+            llmContent: `No results found in knowledge base for query: "${params.query}"`,
           };
         }
 
-        const displayResults = results.slice(0, 3).map((r, i) =>
-          `**Result ${i + 1}** (similarity: ${r.similarity || 0})\n${r.content?.substring(0, 200) || ''}${r.content?.length > 200 ? '...' : ''}`
-        ).join('\n\n');
+        const displayResults = results
+          .slice(0, 3)
+          .map(
+            (r, i) =>
+              `**Result ${i + 1}** (similarity: ${r.similarity || 0})\n${r.content?.substring(0, 200) || ''}${r.content?.length > 200 ? '...' : ''}`,
+          )
+          .join('\n\n');
 
         return {
           returnDisplay: `🔍 **Found ${results.length} results**\n\n${displayResults}`,
-          llmContent: JSON.stringify(results, null, 2)
+          llmContent: JSON.stringify(results, null, 2),
         };
       } else if (params.op === 'advanced_search') {
         const results = result.results || [];
         if (results.length === 0) {
           return {
             returnDisplay: `🔍 **No results found**\n\nQuery: "${result.query || params.query}"\nFilters applied: ${JSON.stringify(result.filters || {})}`,
-            llmContent: `No results found for advanced search query: "${params.query}"`
+            llmContent: `No results found for advanced search query: "${params.query}"`,
           };
         }
 
@@ -362,13 +475,17 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
           content?: string;
           metadata?: Record<string, unknown>;
         }
-        const displayResults = results.slice(0, 3).map((r: SearchResult, i: number) =>
-          `**Result ${i + 1}** (similarity: ${r.similarity || 0})\n${params.content_mode === 'full' ? r.content : r.content?.substring(0, 200) + '...' || ''}${r.metadata ? `\n*Metadata: ${JSON.stringify(r.metadata)}*` : ''}`
-        ).join('\n\n');
+        const displayResults = results
+          .slice(0, 3)
+          .map(
+            (r: SearchResult, i: number) =>
+              `**Result ${i + 1}** (similarity: ${r.similarity || 0})\n${params.content_mode === 'full' ? r.content : r.content?.substring(0, 200) + '...' || ''}${r.metadata ? `\n*Metadata: ${JSON.stringify(r.metadata)}*` : ''}`,
+          )
+          .join('\n\n');
 
         return {
           returnDisplay: `🔍 **Advanced Search Results** (${results.length} found)\n\n${displayResults}`,
-          llmContent: JSON.stringify(results, null, 2)
+          llmContent: JSON.stringify(results, null, 2),
         };
       } else if (params.op === 'get') {
         const documents = result.documents || [];
@@ -377,10 +494,13 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
           content?: string;
         }
         return {
-          returnDisplay: `📄 **Retrieved ${documents.length} documents**\n\n${documents.map((doc: Document, i: number) =>
-            `**Document ${i + 1}**: ${doc.id}\n${params.content_mode !== 'metadata_only' ? (doc.content?.substring(0, 200) + '...' || 'No content') : 'Metadata only'}`
-          ).join('\n\n')}`,
-          llmContent: JSON.stringify(documents, null, 2)
+          returnDisplay: `📄 **Retrieved ${documents.length} documents**\n\n${documents
+            .map(
+              (doc: Document, i: number) =>
+                `**Document ${i + 1}**: ${doc.id}\n${params.content_mode !== 'metadata_only' ? doc.content?.substring(0, 200) + '...' || 'No content' : 'Metadata only'}`,
+            )
+            .join('\n\n')}`,
+          llmContent: JSON.stringify(documents, null, 2),
         };
       } else if (params.op === 'list_collections') {
         const collections = result.collections || [];
@@ -389,21 +509,24 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
           metadata?: Record<string, unknown>;
         }
         return {
-          returnDisplay: `📚 **Available Collections** (${collections.length})\n\n${collections.map((col: Collection) =>
-            `• **${col.name}**${col.metadata ? ` - ${JSON.stringify(col.metadata)}` : ''}`
-          ).join('\n')}`,
-          llmContent: JSON.stringify(collections, null, 2)
+          returnDisplay: `📚 **Available Collections** (${collections.length})\n\n${collections
+            .map(
+              (col: Collection) =>
+                `• **${col.name}**${col.metadata ? ` - ${JSON.stringify(col.metadata)}` : ''}`,
+            )
+            .join('\n')}`,
+          llmContent: JSON.stringify(collections, null, 2),
         };
       }
 
       return {
         returnDisplay: `✅ Operation completed: ${params.op}`,
-        llmContent: JSON.stringify(result, null, 2)
+        llmContent: JSON.stringify(result, null, 2),
       };
     } catch (error) {
       return {
         returnDisplay: `❌ **Failed to parse results**\n\nError: ${error}\n\nRaw output:\n\`\`\`\n${pythonOutput.substring(0, 500)}...\n\`\`\``,
-        llmContent: `Error parsing knowledge base results: ${error}`
+        llmContent: `Error parsing knowledge base results: ${error}`,
       };
     }
   }
@@ -423,7 +546,7 @@ export class KnowledgeBaseTool extends BasePythonTool<KnowledgeBaseParams, ToolR
       similarity_threshold = 0,
       document_ids = [],
       include_metadata = true,
-      include_distances = true
+      include_distances = true,
     } = params;
 
     return `
