@@ -317,11 +317,21 @@ function parseToolResponse(message: ChatMessage): ParsedToolResponse | null {
     };
   }
 
-  // Check for OpenAI format: role='tool' with tool_call_id and name
+  // Check for OpenAI/Gemini format: role='tool' with tool_call_id and name
   if (message.role === 'tool') {
-    // For OpenAI format, we should have the tool name from message properties
-    // Since we don't have direct access to tool_call_id and name in ChatMessage,
-    // we'll extract from content if it's JSON, otherwise use content directly
+    // First try to use message properties (tool_call_id and name)
+    if (message.tool_call_id || message.name) {
+      return {
+        toolName: message.name || 'Tool',
+        content,
+        format: 'openai',
+        toolCallId: message.tool_call_id,
+        success: message.toolSuccess,
+        structuredData: message.toolResponseData,
+      };
+    }
+
+    // Fallback: extract from content if it's JSON
     try {
       const jsonContent = JSON.parse(content);
       return {
@@ -329,8 +339,8 @@ function parseToolResponse(message: ChatMessage): ParsedToolResponse | null {
         content: jsonContent.result || jsonContent.output || content,
         format: 'openai',
         toolCallId: jsonContent.tool_call_id,
-        success: message.toolSuccess, // Get success status from message
-        structuredData: message.toolResponseData, // Get structured data from message
+        success: message.toolSuccess,
+        structuredData: message.toolResponseData,
       };
     } catch {
       return {

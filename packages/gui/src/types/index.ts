@@ -212,6 +212,8 @@ export interface ChatMessage {
   error?: string;
   toolSuccess?: boolean; // Added to indicate tool execution success/failure
   toolResponseData?: ToolResponseData; // Structured tool response data
+  tool_call_id?: string; // For tool response messages - links to the tool call
+  name?: string; // For tool response messages - the tool name
 }
 
 export interface ToolCall {
