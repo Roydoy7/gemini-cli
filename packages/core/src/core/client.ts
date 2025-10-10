@@ -152,7 +152,7 @@ export class GeminiClient {
   constructor(private readonly config: Config) {
     this.loopDetector = new LoopDetectionService(config);
     this.lastPromptId = this.config.getSessionId();
-    
+
     // Initialize role management
     this.roleManager = RoleManager.getInstance();
   }
@@ -203,6 +203,57 @@ export class GeminiClient {
     this.getChat().setTools(tools);
   }
 
+  /**
+   * Updates tools based on the current role.
+   * This should be called when the role changes to ensure the correct toolset is loaded.
+   */
+  async updateToolsForCurrentRole(): Promise<void> {
+    if (!this.chat) {
+      return;
+    }
+
+    // Check if role system is enabled
+    if (!this.roleManager.isRoleSystemEnabled()) {
+      // Role system disabled, use all tools
+      await this.setTools();
+      console.log('[GeminiClient] Role system disabled, using all tools');
+      return;
+    }
+
+    const currentRole = this.roleManager.getCurrentRole();
+
+    // Special handling for software_engineer: use original gemini-cli behavior
+    if (currentRole.id === 'software_engineer') {
+      // Use all registered tools from ToolRegistry (original gemini-cli behavior)
+      await this.setTools();
+      console.log(
+        '[GeminiClient] Software engineer role - using all registered tools (original gemini-cli behavior)',
+      );
+      return;
+    }
+
+    // For other roles, use tools from ToolsetManager
+    // Note: We use ToolsetManager directly instead of ToolRegistry.
+    // ToolRegistry is for the original gemini-cli, while ToolsetManager manages role-specific toolsets.
+    const { ToolsetManager } = await import('../tools/ToolsetManager.js');
+    const toolsetManager = new ToolsetManager();
+    const roleToolClasses = toolsetManager.getToolsForRole(currentRole.id);
+
+    // Create tool instances and get their schemas (FunctionDeclaration)
+    const toolDeclarations = roleToolClasses.map((ToolClass) => {
+      const toolInstance = new ToolClass(this.config);
+      return toolInstance.schema;
+    });
+
+    // Set tools on GeminiChat
+    const tools = [{ functionDeclarations: toolDeclarations }];
+    this.chat.setTools(tools);
+
+    console.log(
+      `[GeminiClient] Loaded ${toolDeclarations.length} tools for role: ${currentRole.id}`,
+    );
+  }
+
   async resetChat(): Promise<void> {
     this.chat = await this.startChat();
   }
@@ -228,6 +279,53 @@ export class GeminiClient {
       role: 'user',
       parts: [{ text: await getDirectoryContextString(this.config) }],
     });
+  }
+
+  /**
+   * Updates the GenerateContentConfig with the latest system prompt and workspace context.
+   * This should be called before sending each message to ensure the LLM has
+   * the most up-to-date workspace and role information.
+   */
+  async updateGenerateContentConfig(): Promise<void> {
+    if (!this.chat) {
+      return;
+    }
+
+    try {
+      // Get latest role system prompt
+      const userMemory = this.config.getUserMemory();
+      const currentRoleId = this.roleManager.getCurrentRole().id;
+      const roleSystemPrompt = this.roleManager.getRoleAwareSystemPrompt(
+        this.config,
+        userMemory,
+        currentRoleId,
+      );
+
+      // Get latest workspace context
+      const { WorkspaceManager } = await import('../utils/WorkspaceManager.js');
+      const workspaceManager = WorkspaceManager.getInstance(this.config);
+      const workspaceContext = await workspaceManager.getEnvironmentContext();
+      const workspaceContextText = workspaceContext
+        .map((part) =>
+          typeof part === 'object' && 'text' in part ? part.text : '',
+        )
+        .join('\n');
+
+      // Combine role prompt with workspace context
+      const combinedSystemInstruction = `${roleSystemPrompt}\n\n${workspaceContextText}`;
+
+      // Update the chat's system instruction in GenerateContentConfig
+      this.chat.setSystemInstruction(combinedSystemInstruction);
+
+      console.log(
+        '[GeminiClient] Updated GenerateContentConfig with latest system prompt and workspace context',
+      );
+    } catch (error) {
+      console.error(
+        '[GeminiClient] Failed to update GenerateContentConfig:',
+        error,
+      );
+    }
   }
 
   async startChat(extraHistory?: Content[]): Promise<GeminiChat> {
@@ -267,7 +365,11 @@ My setup is complete. I will provide my first command in the next turn.
     try {
       const userMemory = this.config.getUserMemory();
       const currentRoleId = this.roleManager.getCurrentRole().id;
-      const systemInstruction = this.roleManager.getCombinedSystemPrompt(this.config, userMemory, currentRoleId);
+      const systemInstruction = this.roleManager.getCombinedSystemPrompt(
+        this.config,
+        userMemory,
+        currentRoleId,
+      );
       const model = this.config.getModel();
 
       const config: GenerateContentConfig = { ...this.generateContentConfig };
@@ -598,7 +700,7 @@ My setup is complete. I will provide my first command in the next turn.
       if (event.type === GeminiEventType.Error) {
         return turn;
       }
-    }    
+    }
     if (!turn.pendingToolCalls.length && signal && !signal.aborted) {
       // Check if next speaker check is needed
       if (this.config.getQuotaErrorOccurred()) {
@@ -651,7 +753,11 @@ My setup is complete. I will provide my first command in the next turn.
     try {
       const userMemory = this.config.getUserMemory();
       const currentRoleId = this.roleManager.getCurrentRole().id;
-      const systemInstruction = this.roleManager.getCombinedSystemPrompt(this.config, userMemory, currentRoleId);
+      const systemInstruction = this.roleManager.getCombinedSystemPrompt(
+        this.config,
+        userMemory,
+        currentRoleId,
+      );
       await this.setTools();
 
       const requestConfig = {
@@ -766,7 +872,11 @@ My setup is complete. I will provide my first command in the next turn.
     try {
       const userMemory = this.config.getUserMemory();
       const currentRoleId = this.roleManager.getCurrentRole().id;
-      const systemInstruction = this.roleManager.getCombinedSystemPrompt(this.config, userMemory, currentRoleId);
+      const systemInstruction = this.roleManager.getCombinedSystemPrompt(
+        this.config,
+        userMemory,
+        currentRoleId,
+      );
       await this.setTools();
 
       const requestConfig: GenerateContentConfig = {

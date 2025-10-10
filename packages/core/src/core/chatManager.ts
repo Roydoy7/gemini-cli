@@ -68,6 +68,15 @@ export class GeminiChatManager {
     const roleId = initialRoleId || 'software_engineer';
     await this.switchRole(roleId);
 
+    // Load current session history into GeminiClient if there's an active session
+    const currentSessionId = this.sessionManager.getCurrentSessionId();
+    if (currentSessionId) {
+      await this.loadSessionIntoClient(currentSessionId);
+      console.log(
+        '[GeminiChatManager] Loaded existing session history into GeminiClient',
+      );
+    }
+
     console.log('[GeminiChatManager] Initialized with role:', roleId);
   }
 
@@ -94,6 +103,10 @@ export class GeminiChatManager {
     signal: AbortSignal,
     prompt_id: string,
   ): AsyncGenerator<ServerGeminiStreamEvent> {
+    // Update GenerateContentConfig with latest system prompt and workspace context
+    // This ensures the LLM always has the most up-to-date workspace information
+    await this.client.updateGenerateContentConfig();
+
     let currentRequest = request;
     let isFirstIteration = true;
 
@@ -727,59 +740,10 @@ export class GeminiChatManager {
     const success = await this.roleManager.setCurrentRole(roleId);
     if (success) {
       // Update tools when role changes - filter based on role
-      await this.setToolsForCurrentRole();
+      await this.client.updateToolsForCurrentRole();
       console.log(`[GeminiChatManager] Switched to role: ${roleId}`);
     }
     return success;
-  }
-
-  /**
-   * Set tools for the current role using ToolsetManager
-   */
-  private async setToolsForCurrentRole(): Promise<void> {
-    // Check if role system is enabled
-    if (!this.roleManager.isRoleSystemEnabled()) {
-      // Role system disabled, use default client.setTools()
-      await this.client.setTools();
-      console.log('[GeminiChatManager] Role system disabled, using all tools');
-      return;
-    }
-
-    const currentRole = this.roleManager.getCurrentRole();
-
-    // Special handling for software_engineer: use original gemini-cli behavior
-    if (currentRole.id === 'software_engineer') {
-      // Use all registered tools from ToolRegistry (original gemini-cli behavior)
-      await this.client.setTools();
-      console.log(
-        '[GeminiChatManager] Software engineer role - using all registered tools (original gemini-cli behavior)',
-      );
-      return;
-    }
-
-    // For other roles, use tools from ToolsetManager
-    // Note: We use ToolsetManager directly instead of ToolRegistry.
-    // ToolRegistry is for the original gemini-cli, while ToolsetManager manages role-specific toolsets.
-    const { ToolsetManager } = await import('../tools/ToolsetManager.js');
-    const toolsetManager = new ToolsetManager();
-    const roleToolClasses = toolsetManager.getToolsForRole(currentRole.id);
-
-    // Create tool instances and get their schemas (FunctionDeclaration)
-    const toolDeclarations = roleToolClasses.map((ToolClass) => {
-      const toolInstance = new ToolClass(this.config);
-      return toolInstance.schema;
-    });
-
-    // Set tools on GeminiChat
-    const tools = [{ functionDeclarations: toolDeclarations }];
-    const chat = this.client['chat'];
-    if (chat && typeof chat.setTools === 'function') {
-      chat.setTools(tools);
-    }
-
-    console.log(
-      `[GeminiChatManager] Loaded ${toolDeclarations.length} tools for role: ${currentRole.id}`,
-    );
   }
 
   getCurrentRole() {
