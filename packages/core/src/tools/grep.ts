@@ -10,6 +10,8 @@ import path from 'node:path';
 import { EOL } from 'node:os';
 import { spawn } from 'node:child_process';
 import { globStream } from 'glob';
+import chardet from 'chardet';
+import iconv from 'iconv-lite';
 import type { ToolInvocation, ToolResult } from './tools.js';
 import { BaseDeclarativeTool, BaseToolInvocation, Kind } from './tools.js';
 import { makeRelative, shortenPath } from '../utils/paths.js';
@@ -509,7 +511,21 @@ class GrepToolInvocation extends BaseToolInvocation<
       for await (const filePath of filesStream) {
         const fileAbsolutePath = filePath as string;
         try {
-          const content = await fsPromises.readFile(fileAbsolutePath, 'utf8');
+          // Read file as buffer first
+          const buffer = await fsPromises.readFile(fileAbsolutePath);
+
+          // Detect encoding using chardet
+          const detectedEncoding = chardet.detect(buffer);
+
+          // Decode content with detected encoding, fallback to utf8
+          let content: string;
+          if (detectedEncoding && iconv.encodingExists(detectedEncoding)) {
+            content = iconv.decode(buffer, detectedEncoding);
+          } else {
+            // Fallback to utf8 if detection failed
+            content = buffer.toString('utf8');
+          }
+
           const lines = content.split(/\r?\n/);
           lines.forEach((line, index) => {
             if (regex.test(line)) {

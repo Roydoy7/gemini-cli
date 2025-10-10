@@ -294,6 +294,8 @@ class GrepToolInvocation extends BaseToolInvocation<
       '--no-heading',
       '--with-filename',
       '--ignore-case',
+      '--encoding',
+      'auto', // Auto-detect encoding (handles UTF-8, UTF-16, Shift-JIS, etc.)
       '--regexp',
       pattern,
     ];
