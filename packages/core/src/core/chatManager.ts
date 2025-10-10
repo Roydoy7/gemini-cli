@@ -63,15 +63,12 @@ export class GeminiChatManager {
   async initialize(initialRoleId?: string): Promise<void> {
     await this.client.initialize();
 
-    // Switch to initial role if provided
-    if (initialRoleId) {
-      await this.switchRole(initialRoleId);
-    } else {
-      // Otherwise just set tools for current role
-      await this.setToolsForCurrentRole();
-    }
+    // Always switch to the specified role (defaults to software_engineer if not provided)
+    // This ensures the role is set correctly and tools are configured
+    const roleId = initialRoleId || 'software_engineer';
+    await this.switchRole(roleId);
 
-    console.log('[GeminiChatManager] Initialized with GeminiClient');
+    console.log('[GeminiChatManager] Initialized with role:', roleId);
   }
 
   /**

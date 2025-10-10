@@ -26,7 +26,7 @@ const electronAPI = {
   
   // GeminiChat System API
   geminiChat: {
-    initialize: (config) => ipcRenderer.invoke('geminiChat-initialize', config),
+    initialize: (config, initialRoleId) => ipcRenderer.invoke('geminiChat-initialize', config, initialRoleId),
     switchProvider: (providerType, model) => ipcRenderer.invoke('geminiChat-switch-provider', providerType, model),
     switchRole: (roleId) => ipcRenderer.invoke('geminiChat-switch-role', roleId),
     sendMessage: (messages) => ipcRenderer.invoke('geminiChat-send-message', messages),
@@ -98,13 +98,10 @@ const electronAPI = {
     getAllRoles: () => ipcRenderer.invoke('geminiChat-get-all-roles'),
     getCurrentRole: () => ipcRenderer.invoke('geminiChat-get-current-role'),
     getAllTemplates: () => ipcRenderer.invoke('geminiChat-get-all-templates'),
-    renderTemplate: (templateId, variables) => ipcRenderer.invoke('geminiChat-render-template', templateId, variables),
     addWorkspaceDirectory: (directory, basePath) => ipcRenderer.invoke('geminiChat-add-workspace-directory', directory, basePath),
     getWorkspaceDirectories: () => ipcRenderer.invoke('geminiChat-get-workspace-directories'),
     getDirectoryContents: (directoryPath) => ipcRenderer.invoke('geminiChat-get-directory-contents', directoryPath),
     setWorkspaceDirectories: (directories) => ipcRenderer.invoke('geminiChat-set-workspace-directories', directories),
-    getCurrentToolset: () => ipcRenderer.invoke('geminiChat-get-current-toolset'),
-    addCustomRole: (role) => ipcRenderer.invoke('geminiChat-add-custom-role', role),
     addCustomTemplate: (template) => ipcRenderer.invoke('geminiChat-add-custom-template', template),
     updateCustomTemplate: (id, updates) => ipcRenderer.invoke('geminiChat-update-custom-template', id, updates),
     deleteCustomTemplate: (id) => ipcRenderer.invoke('geminiChat-delete-custom-template', id),

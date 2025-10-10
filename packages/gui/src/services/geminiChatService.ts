@@ -55,10 +55,6 @@ interface ElectronAPI {
     getAllRoles: () => Promise<RoleDefinition[]>;
     getCurrentRole: () => Promise<RoleDefinition | null>;
     getAllTemplates: () => Promise<PresetTemplate[]>;
-    renderTemplate: (
-      templateId: string,
-      variables: Record<string, string | number | boolean>,
-    ) => Promise<string>;
     addWorkspaceDirectory: (
       directory: string,
       basePath?: string,
@@ -74,8 +70,6 @@ interface ElectronAPI {
       }>
     >;
     setWorkspaceDirectories: (directories: readonly string[]) => Promise<void>;
-    getCurrentToolset: () => Promise<string[]>;
-    addCustomRole: (role: RoleDefinition) => Promise<void>;
     addCustomTemplate: (
       template: Omit<PresetTemplate, 'isBuiltin'>,
     ) => Promise<void>;
@@ -547,17 +541,6 @@ class GeminiChatService {
     return await this.api.getAllTemplates();
   }
 
-  async renderTemplate(
-    templateId: string,
-    variables: Record<string, string | number | boolean>,
-  ): Promise<string> {
-    if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
-    }
-
-    return await this.api.renderTemplate(templateId, variables);
-  }
-
   async addWorkspaceDirectory(
     directory: string,
     basePath?: string,
@@ -610,22 +593,6 @@ class GeminiChatService {
       console.error('Failed to get directory contents:', error);
       return [];
     }
-  }
-
-  async getCurrentToolset(): Promise<string[]> {
-    if (!this.initialized) {
-      return [];
-    }
-
-    return await this.api.getCurrentToolset();
-  }
-
-  async addCustomRole(role: RoleDefinition): Promise<void> {
-    if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
-    }
-
-    await this.api.addCustomRole(role);
   }
 
   async addCustomTemplate(
