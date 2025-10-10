@@ -890,6 +890,52 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             if (thoughtText) {
               assistantContent += thoughtText;
               setStreamingMessage(assistantContent);
+
+              // Create assistant message immediately on first thought if not created yet
+              // This ensures thoughts are saved even when there's no content (e.g., only tool calls)
+              if (!hasCreatedInitialMessage && assistantContent.trim()) {
+                const assistantMessage: ChatMessage = {
+                  id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-assistant`,
+                  role: 'assistant',
+                  content: assistantContent,
+                  timestamp: new Date(),
+                };
+                currentAssistantMessageId = assistantMessage.id;
+                hasCreatedInitialMessage = true;
+
+                // Add initial assistant message to session immediately
+                const currentSession = useAppStore
+                  .getState()
+                  .sessions.find((s) => s.id === activeSessionId);
+                if (currentSession) {
+                  updateSession(activeSessionId, {
+                    messages: [...currentSession.messages, assistantMessage],
+                    updatedAt: new Date(),
+                  });
+                }
+              } else if (currentAssistantMessageId) {
+                // Update existing assistant message with new thought content
+                const currentSession = useAppStore
+                  .getState()
+                  .sessions.find((s) => s.id === activeSessionId);
+                if (currentSession) {
+                  const messageIndex = currentSession.messages.findIndex(
+                    (m) => m.id === currentAssistantMessageId,
+                  );
+                  if (messageIndex >= 0) {
+                    const updatedMessages = [...currentSession.messages];
+                    updatedMessages[messageIndex] = {
+                      ...updatedMessages[messageIndex],
+                      content: assistantContent,
+                    };
+
+                    updateSession(activeSessionId, {
+                      messages: updatedMessages,
+                      updatedAt: new Date(),
+                    });
+                  }
+                }
+              }
             }
           } else if (
             event.type === 'content' ||
