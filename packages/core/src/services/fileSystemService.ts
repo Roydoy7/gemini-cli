@@ -7,6 +7,7 @@
 import fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { globSync } from 'glob';
+import { getCachedEncodingForBuffer } from '../utils/systemEncoding.js';
 
 /**
  * Interface for file system operations that may be delegated to different implementations
@@ -43,7 +44,25 @@ export interface FileSystemService {
  */
 export class StandardFileSystemService implements FileSystemService {
   async readTextFile(filePath: string): Promise<string> {
-    return fs.readFile(filePath, 'utf-8');
+    // Read file as buffer first to detect encoding
+    const buffer = await fs.readFile(filePath);
+
+    // Detect encoding from buffer
+    const encoding = getCachedEncodingForBuffer(buffer);
+
+    // Convert buffer to string using detected encoding
+    // Node.js TextDecoder supports various encodings including UTF-16LE
+    try {
+      const decoder = new TextDecoder(encoding);
+      return decoder.decode(buffer);
+    } catch (error) {
+      // Fallback to utf-8 if encoding is not supported
+      console.warn(
+        `Failed to decode file with encoding ${encoding}, falling back to utf-8:`,
+        error,
+      );
+      return buffer.toString('utf-8');
+    }
   }
 
   async writeTextFile(filePath: string, content: string): Promise<void> {
