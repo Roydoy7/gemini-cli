@@ -369,7 +369,42 @@ export class SessionManager {
   }
 
   /**
+   * Save history for a specific session (called by GeminiClient)
+   * This replaces the session's entire conversation history
+   */
+  saveSessionHistory(sessionId: string, history: UniversalMessage[]): void {
+    this.ensureInitialized();
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.conversationHistory = [...history];
+      session.lastUpdated = new Date();
+      this.saveSession(session);
+
+      // Log thinking content summary
+      const messagesWithThinking = history.filter((msg) =>
+        msg.content.includes('<think>'),
+      );
+      console.log(
+        `[SessionManager] Saved ${history.length} messages to session ${sessionId} (${messagesWithThinking.length} with thinking)`,
+      );
+      messagesWithThinking.forEach((msg, idx) => {
+        const thinkingMatch = msg.content.match(/<think>([\s\S]*?)<\/think>/);
+        if (thinkingMatch) {
+          console.log(
+            `[SessionManager]   Message ${idx + 1}: ${thinkingMatch[1].substring(0, 50)}...`,
+          );
+        }
+      });
+    } else {
+      console.warn(
+        `[SessionManager] Cannot save history: session ${sessionId} not found`,
+      );
+    }
+  }
+
+  /**
    * Add a message to session history
+   * @deprecated Use saveSessionHistory instead for better consistency
    */
   addHistory(message: UniversalMessage): void {
     if (this.currentSessionId) {
@@ -438,9 +473,17 @@ export class SessionManager {
       (msg) => !(msg.role === 'user' && msg.content === 'Please continue.'),
     );
 
+    // Log thinking content summary
+    const messagesWithThinking = displayMessages.filter((msg) =>
+      msg.content.includes('<think>'),
+    );
     console.log(
       `[SessionManager] Retrieved ${displayMessages.length} display messages (filtered ${session.conversationHistory.length - displayMessages.length} continuation prompts) for session ${targetSessionId}`,
     );
+    console.log(
+      `[SessionManager]   ${messagesWithThinking.length} messages contain thinking content`,
+    );
+
     return displayMessages;
   }
 
@@ -548,43 +591,47 @@ Title:`;
   }
 
   /**
-   * Handle auto-title generation based on message flow
+   * Auto-generate session title based on message count
+   * - First user message: Use message content (first 30 chars)
+   * - Third user message: Use LLM (gemini-2.5-flash) to generate intelligent title
    */
-  handleAutoTitleGeneration(message: UniversalMessage): void {
-    if (message.role === 'user' && this.currentSessionId) {
-      const session = this.sessions.get(this.currentSessionId);
-      if (
-        session &&
-        session.title === 'New Chat' &&
-        session.conversationHistory.length === 1
-      ) {
-        // This is the first message in a new session
-        const newTitle = this.generateTitleFromMessage(message.content);
-        this.updateSessionTitle(this.currentSessionId, newTitle);
-      }
+  async autoGenerateTitle(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.title !== 'New Chat') {
+      return; // Skip if session doesn't exist or already has custom title
     }
-  }
 
-  /**
-   * Trigger intelligent title generation if conditions are met
-   */
-  async triggerIntelligentTitleGeneration(
-    sessionId: string,
-    currentProvider?: { type: string; model: string },
-  ): Promise<void> {
-    try {
-      const intelligentTitle = await this.generateIntelligentTitle(
-        sessionId,
-        currentProvider,
+    // Count user messages (excluding continuation prompts)
+    const userMessages = session.conversationHistory.filter(
+      (msg) => msg.role === 'user' && msg.content !== 'Please continue.',
+    );
+
+    if (userMessages.length === 0) {
+      // First message: use simple extraction
+      const title = this.generateTitleFromMessage(userMessages[0].content);
+      console.log(
+        `[SessionManager] Auto-generated title from first message: ${title}`,
       );
-      if (intelligentTitle) {
-        this.updateSessionTitle(sessionId, intelligentTitle);
+      this.updateSessionTitle(sessionId, title);
+    } else if (userMessages.length === 3) {
+      // Third message: use LLM (always use gemini-2.5-flash for cost efficiency)
+      try {
+        const intelligentTitle = await this.generateIntelligentTitle(
+          sessionId,
+          {
+            type: 'gemini',
+            model: 'gemini-2.5-flash',
+          },
+        );
+        if (intelligentTitle) {
+          this.updateSessionTitle(sessionId, intelligentTitle);
+        }
+      } catch (error) {
+        console.error(
+          '[SessionManager] Error generating intelligent title:',
+          error,
+        );
       }
-    } catch (error) {
-      console.error(
-        '[SessionManager] Error generating intelligent title:',
-        error,
-      );
     }
   }
 }

@@ -7,7 +7,8 @@
 import type { Config } from '../config/config.js';
 import { ApprovalMode } from '../config/config.js';
 import type { Content, Part } from '@google/genai';
-import { GeminiClient } from './client.js';
+import type { GeminiClient } from './client.js';
+import { GeminiClientPool } from './clientPool.js';
 import { SessionManager } from '../sessions/SessionManager.js';
 import { RoleManager } from '../roles/RoleManager.js';
 import { WorkspaceManager } from '../utils/WorkspaceManager.js';
@@ -40,7 +41,7 @@ import type {
  * This replaces the MultiModelSystem approach, focusing solely on Gemini.
  */
 export class GeminiChatManager {
-  private client: GeminiClient;
+  private clientPool: GeminiClientPool;
   private sessionManager: SessionManager;
   private roleManager: RoleManager;
   private config: Config;
@@ -51,9 +52,13 @@ export class GeminiChatManager {
 
   constructor(config: Config) {
     this.config = config;
-    this.client = new GeminiClient(config);
     this.sessionManager = SessionManager.getInstance();
     this.roleManager = RoleManager.getInstance();
+
+    // Create client pool with save callback
+    this.clientPool = new GeminiClientPool(config, (sessionId, client) => {
+      this.saveSessionFromClient(sessionId, client);
+    });
   }
 
   /**
@@ -61,8 +66,6 @@ export class GeminiChatManager {
    * @param initialRoleId - Optional role ID to set during initialization
    */
   async initialize(initialRoleId?: string): Promise<void> {
-    await this.client.initialize();
-
     // Always switch to the specified role (defaults to software_engineer if not provided)
     // This ensures the role is set correctly and tools are configured
     const roleId = initialRoleId || 'software_engineer';
@@ -78,6 +81,16 @@ export class GeminiChatManager {
     }
 
     console.log('[GeminiChatManager] Initialized with role:', roleId);
+  }
+
+  /**
+   * Save session history from GeminiClient to SessionManager
+   * This is called automatically by the client pool
+   */
+  private saveSessionFromClient(sessionId: string, client: GeminiClient): void {
+    const geminiHistory = client.getHistory();
+    const messages = this.convertGeminiToUniversal(geminiHistory);
+    this.sessionManager.saveSessionHistory(sessionId, messages);
   }
 
   /**
@@ -103,516 +116,457 @@ export class GeminiChatManager {
     signal: AbortSignal,
     prompt_id: string,
   ): AsyncGenerator<ServerGeminiStreamEvent> {
-    // Update GenerateContentConfig with latest system prompt and workspace context
-    // This ensures the LLM always has the most up-to-date workspace information
-    await this.client.updateGenerateContentConfig();
-
-    let currentRequest = request;
-    let isFirstIteration = true;
-
-    // Save initial user message to SessionManager (only on first iteration)
-    if (isFirstIteration && request.length > 0) {
-      const userContent = request
-        .map((part) => {
-          if ('text' in part) {
-            return part.text;
-          }
-          return '';
-        })
-        .join('\n')
-        .trim();
-
-      if (userContent) {
-        const userMessage: UniversalMessage = {
-          role: 'user',
-          content: userContent,
-          timestamp: new Date(),
-        };
-        this.sessionManager.addHistory(userMessage);
-        console.log(
-          `[GeminiChatManager] Saved user message (${userContent.length} chars)`,
-        );
-
-        // Auto-update title if this is the first user message in the session
-        this.sessionManager.handleAutoTitleGeneration(userMessage);
-      }
+    // Get current session ID
+    const sessionId = this.sessionManager.getCurrentSessionId();
+    if (!sessionId) {
+      throw new Error('No active session');
     }
 
-    // Agentic loop - continue until no tool calls are made
-    // Note: Each iteration's assistant response is saved independently
-    while (true) {
-      const toolCallRequests: ToolCallRequestInfo[] = [];
-      let assistantContent = '';
-      const assistantToolCalls: Array<{
-        id: string;
-        name: string;
-        arguments: Record<string, unknown>;
-      }> = [];
+    // Get or create client for this session
+    const client = await this.clientPool.getOrCreate(sessionId);
 
-      // Send message to GeminiClient and collect tool calls + content
-      const responseStream = this.client.sendMessageStream(
-        currentRequest,
-        signal,
-        prompt_id,
-      );
+    // Update GenerateContentConfig with latest system prompt and workspace context
+    // This ensures the LLM always has the most up-to-date workspace information
+    await client.updateGenerateContentConfig();
 
-      for await (const event of responseStream) {
-        if (signal.aborted) {
-          return;
-        }
+    let currentRequest = request;
 
-        // Collect assistant content for SessionManager
-        if (event.type === GeminiEventType.Content) {
-          assistantContent += event.value;
-        }
+    // Note: Title generation will be handled at the end of the conversation
 
-        // Collect tool call requests
-        if (event.type === GeminiEventType.ToolCallRequest) {
-          toolCallRequests.push(event.value);
+    // Note: We don't save to SessionManager during streaming anymore
+    // The client pool will auto-save when the stream completes
 
-          // Also collect for SessionManager history
-          assistantToolCalls.push({
-            id: event.value.callId,
-            name: event.value.name,
-            arguments: event.value.args,
-          });
+    try {
+      // Agentic loop - continue until no tool calls are made
+      while (true) {
+        const toolCallRequests: ToolCallRequestInfo[] = [];
+        const assistantToolCalls: Array<{
+          id: string;
+          name: string;
+          arguments: Record<string, unknown>;
+        }> = [];
 
-          // Yield the tool call request event
-          yield {
-            type: GeminiEventType.ToolCallRequest,
-            value: {
-              callId: event.value.callId,
+        // Send message to GeminiClient and collect tool calls + content
+        const responseStream = client.sendMessageStream(
+          currentRequest,
+          signal,
+          prompt_id,
+        );
+
+        for await (const event of responseStream) {
+          if (signal.aborted) {
+            return;
+          }
+
+          // Collect tool call requests
+          if (event.type === GeminiEventType.ToolCallRequest) {
+            toolCallRequests.push(event.value);
+
+            // Also collect for SessionManager history
+            assistantToolCalls.push({
+              id: event.value.callId,
               name: event.value.name,
-              args: event.value.args,
-              isClientInitiated: event.value.isClientInitiated,
-              prompt_id: event.value.prompt_id,
-            },
-          };
-          continue; // Don't yield the original event
+              arguments: event.value.args,
+            });
+
+            // Yield the tool call request event
+            yield {
+              type: GeminiEventType.ToolCallRequest,
+              value: {
+                callId: event.value.callId,
+                name: event.value.name,
+                args: event.value.args,
+                isClientInitiated: event.value.isClientInitiated,
+                prompt_id: event.value.prompt_id,
+              },
+            };
+            continue; // Don't yield the original event
+          }
+
+          // Yield all other events to frontend
+          yield event;
         }
 
-        // Yield all other events to frontend
-        yield event;
-      }
+        // If there are tool calls, execute them and continue the loop
+        if (toolCallRequests.length > 0) {
+          const toolResponseParts: Part[] = [];
+          const executedToolResponses: UniversalMessage[] = [];
 
-      // If there are tool calls, execute them and continue the loop
-      if (toolCallRequests.length > 0) {
-        const toolResponseParts: Part[] = [];
-        const executedToolResponses: UniversalMessage[] = [];
+          // Use CoreToolScheduler with confirmation support if handler is available
+          if (this.toolConfirmationHandler) {
+            console.log(
+              `[GeminiChatManager] Executing ${toolCallRequests.length} tool calls`,
+            );
+            console.log(
+              `[GeminiChatManager] Current approval mode: ${this.config.getApprovalMode()}`,
+            );
+            console.log(
+              `[GeminiChatManager] Tool confirmation handler set: ${!!this.toolConfirmationHandler}`,
+            );
 
-        // Use CoreToolScheduler with confirmation support if handler is available
-        if (this.toolConfirmationHandler) {
-          console.log(
-            `[GeminiChatManager] Executing ${toolCallRequests.length} tool calls`,
-          );
-          console.log(
-            `[GeminiChatManager] Current approval mode: ${this.config.getApprovalMode()}`,
-          );
-          console.log(
-            `[GeminiChatManager] Tool confirmation handler set: ${!!this.toolConfirmationHandler}`,
-          );
+            const yieldedToolCallIds = new Set<string>();
+            const collectedEvents: ServerGeminiStreamEvent[] = [];
 
-          const yieldedToolCallIds = new Set<string>();
-          const collectedEvents: ServerGeminiStreamEvent[] = [];
+            await new Promise<void>((resolve, reject) => {
+              const scheduler = new CoreToolScheduler({
+                config: this.config,
+                getPreferredEditor: () => undefined,
+                onEditorClose: () => {},
 
-          await new Promise<void>((resolve, reject) => {
-            const scheduler = new CoreToolScheduler({
-              config: this.config,
-              getPreferredEditor: () => undefined,
-              onEditorClose: () => {},
-
-              // This is called every time any tool's status changes
-              onToolCallsUpdate: async (
-                toolCallsUpdate: SchedulerToolCall[],
-              ) => {
-                for (const toolCall of toolCallsUpdate) {
-                  // Handle confirmation requests
-                  if (toolCall.status === 'awaiting_approval') {
-                    console.log(
-                      `[GeminiChatManager] Tool ${toolCall.request.name} awaiting approval`,
-                    );
-                    console.log(
-                      `[GeminiChatManager] Current approval mode: ${this.config.getApprovalMode()}`,
-                    );
-                    console.log(
-                      `[GeminiChatManager] Has confirmation handler: ${!!this.toolConfirmationHandler}`,
-                    );
-
-                    if (
-                      'confirmationDetails' in toolCall &&
-                      this.toolConfirmationHandler
-                    ) {
+                // This is called every time any tool's status changes
+                onToolCallsUpdate: async (
+                  toolCallsUpdate: SchedulerToolCall[],
+                ) => {
+                  for (const toolCall of toolCallsUpdate) {
+                    // Handle confirmation requests
+                    if (toolCall.status === 'awaiting_approval') {
                       console.log(
-                        `[GeminiChatManager] Requesting user confirmation for ${toolCall.request.name}`,
-                      );
-                      const outcome = await this.toolConfirmationHandler(
-                        toolCall.confirmationDetails,
+                        `[GeminiChatManager] Tool ${toolCall.request.name} awaiting approval`,
                       );
                       console.log(
-                        `[GeminiChatManager] User confirmation outcome: ${outcome}`,
+                        `[GeminiChatManager] Current approval mode: ${this.config.getApprovalMode()}`,
                       );
-                      await toolCall.confirmationDetails.onConfirm(outcome);
-                    }
-                  }
+                      console.log(
+                        `[GeminiChatManager] Has confirmation handler: ${!!this.toolConfirmationHandler}`,
+                      );
 
-                  // Collect completed tool responses
-                  if (
-                    (toolCall.status === 'success' ||
-                      toolCall.status === 'error' ||
-                      toolCall.status === 'cancelled') &&
-                    !yieldedToolCallIds.has(toolCall.request.callId)
-                  ) {
-                    yieldedToolCallIds.add(toolCall.request.callId);
-
-                    // Extract tool response content and parts
-                    let toolResponseContent: string;
-
-                    if (
-                      toolCall.status === 'success' &&
-                      'response' in toolCall
-                    ) {
-                      const response = toolCall.response;
-
-                      // Collect response parts for next iteration
-                      if (response.responseParts) {
-                        toolResponseParts.push(...response.responseParts);
-                      }
-
-                      // Extract content for display
                       if (
-                        response.responseParts &&
-                        response.responseParts.length > 0
+                        'confirmationDetails' in toolCall &&
+                        this.toolConfirmationHandler
                       ) {
-                        const responsePart = response.responseParts[0];
-                        if ('text' in responsePart) {
-                          toolResponseContent = responsePart.text || '';
-                        } else if (
-                          'functionResponse' in responsePart &&
-                          responsePart.functionResponse
+                        console.log(
+                          `[GeminiChatManager] Requesting user confirmation for ${toolCall.request.name}`,
+                        );
+                        const outcome = await this.toolConfirmationHandler(
+                          toolCall.confirmationDetails,
+                        );
+                        console.log(
+                          `[GeminiChatManager] User confirmation outcome: ${outcome}`,
+                        );
+                        await toolCall.confirmationDetails.onConfirm(outcome);
+                      }
+                    }
+
+                    // Collect completed tool responses
+                    if (
+                      (toolCall.status === 'success' ||
+                        toolCall.status === 'error' ||
+                        toolCall.status === 'cancelled') &&
+                      !yieldedToolCallIds.has(toolCall.request.callId)
+                    ) {
+                      yieldedToolCallIds.add(toolCall.request.callId);
+
+                      // Extract tool response content and parts
+                      let toolResponseContent: string;
+
+                      if (
+                        toolCall.status === 'success' &&
+                        'response' in toolCall
+                      ) {
+                        const response = toolCall.response;
+
+                        // Collect response parts for next iteration
+                        if (response.responseParts) {
+                          toolResponseParts.push(...response.responseParts);
+                        }
+
+                        // Extract content for display
+                        if (
+                          response.responseParts &&
+                          response.responseParts.length > 0
                         ) {
-                          const funcResponse =
-                            responsePart.functionResponse.response;
-                          if (
-                            funcResponse &&
-                            typeof funcResponse === 'object' &&
-                            'output' in funcResponse
+                          const responsePart = response.responseParts[0];
+                          if ('text' in responsePart) {
+                            toolResponseContent = responsePart.text || '';
+                          } else if (
+                            'functionResponse' in responsePart &&
+                            responsePart.functionResponse
                           ) {
-                            toolResponseContent = funcResponse[
-                              'output'
-                            ] as string;
+                            const funcResponse =
+                              responsePart.functionResponse.response;
+                            if (
+                              funcResponse &&
+                              typeof funcResponse === 'object' &&
+                              'output' in funcResponse
+                            ) {
+                              toolResponseContent = funcResponse[
+                                'output'
+                              ] as string;
+                            } else {
+                              toolResponseContent = JSON.stringify(
+                                funcResponse,
+                                null,
+                                2,
+                              );
+                            }
                           } else {
-                            toolResponseContent = JSON.stringify(
-                              funcResponse,
-                              null,
-                              2,
-                            );
+                            toolResponseContent = 'Tool executed successfully';
                           }
                         } else {
                           toolResponseContent = 'Tool executed successfully';
                         }
+
+                        // Collect tool response event in correct format
+                        collectedEvents.push({
+                          type: GeminiEventType.ToolCallResponse,
+                          value: {
+                            callId: toolCall.request.callId,
+                            name: toolCall.request.name,
+                            responseParts: response.responseParts,
+                            resultDisplay: toolResponseContent,
+                            error: undefined,
+                            errorType: undefined,
+                            structuredData: response.structuredData,
+                          },
+                        });
+                      } else if (
+                        toolCall.status === 'error' &&
+                        'response' in toolCall
+                      ) {
+                        const errorMsg =
+                          toolCall.response.error?.message ||
+                          'Tool execution failed';
+                        toolResponseContent = `Tool execution failed: ${errorMsg}`;
+
+                        // Create error response parts if not provided
+                        const errorResponseParts = toolCall.response
+                          .responseParts || [
+                          {
+                            functionResponse: {
+                              name: toolCall.request.name,
+                              response: {
+                                error: errorMsg,
+                              },
+                            },
+                          },
+                        ];
+
+                        // Add error response parts to continue conversation
+                        toolResponseParts.push(...errorResponseParts);
+
+                        collectedEvents.push({
+                          type: GeminiEventType.ToolCallResponse,
+                          value: {
+                            callId: toolCall.request.callId,
+                            name: toolCall.request.name,
+                            responseParts: errorResponseParts,
+                            resultDisplay: toolResponseContent,
+                            error: toolCall.response.error,
+                            errorType: toolCall.response.errorType,
+                            structuredData: toolCall.response.structuredData,
+                          },
+                        });
+                      } else if (
+                        toolCall.status === 'cancelled' &&
+                        'response' in toolCall
+                      ) {
+                        const cancelMsg =
+                          toolCall.response.error?.message ||
+                          'Tool execution cancelled';
+                        toolResponseContent = `Tool cancelled: ${cancelMsg}`;
+
+                        // Create cancellation response parts if not provided
+                        const cancelResponseParts = toolCall.response
+                          .responseParts || [
+                          {
+                            functionResponse: {
+                              name: toolCall.request.name,
+                              response: {
+                                error: cancelMsg,
+                              },
+                            },
+                          },
+                        ];
+
+                        // Add cancellation response parts to continue conversation
+                        toolResponseParts.push(...cancelResponseParts);
+
+                        collectedEvents.push({
+                          type: GeminiEventType.ToolCallResponse,
+                          value: {
+                            callId: toolCall.request.callId,
+                            name: toolCall.request.name,
+                            responseParts: cancelResponseParts,
+                            resultDisplay: toolResponseContent,
+                            error: toolCall.response.error,
+                            errorType: toolCall.response.errorType,
+                            structuredData: toolCall.response.structuredData,
+                          },
+                        });
                       } else {
-                        toolResponseContent = 'Tool executed successfully';
+                        toolResponseContent = 'Unknown tool status';
                       }
 
-                      // Collect tool response event in correct format
-                      collectedEvents.push({
-                        type: GeminiEventType.ToolCallResponse,
-                        value: {
-                          callId: toolCall.request.callId,
-                          responseParts: response.responseParts,
-                          resultDisplay: toolResponseContent,
-                          error: undefined,
-                          errorType: undefined,
-                          structuredData: response.structuredData,
-                        },
+                      // Build tool response message for SessionManager
+                      executedToolResponses.push({
+                        role: 'tool',
+                        content: toolResponseContent,
+                        tool_call_id: toolCall.request.callId,
+                        name: toolCall.request.name,
+                        timestamp: new Date(),
                       });
-                    } else if (
-                      toolCall.status === 'error' &&
-                      'response' in toolCall
-                    ) {
-                      const errorMsg =
-                        toolCall.response.error?.message ||
-                        'Tool execution failed';
-                      toolResponseContent = `Tool execution failed: ${errorMsg}`;
 
-                      // Create error response parts if not provided
-                      const errorResponseParts = toolCall.response
-                        .responseParts || [
-                        {
-                          functionResponse: {
-                            name: toolCall.request.name,
-                            response: {
-                              error: errorMsg,
-                            },
-                          },
-                        },
-                      ];
-
-                      // Add error response parts to continue conversation
-                      toolResponseParts.push(...errorResponseParts);
-
-                      collectedEvents.push({
-                        type: GeminiEventType.ToolCallResponse,
-                        value: {
-                          callId: toolCall.request.callId,
-                          responseParts: errorResponseParts,
-                          resultDisplay: toolResponseContent,
-                          error: toolCall.response.error,
-                          errorType: toolCall.response.errorType,
-                          structuredData: toolCall.response.structuredData,
-                        },
-                      });
-                    } else if (
-                      toolCall.status === 'cancelled' &&
-                      'response' in toolCall
-                    ) {
-                      const cancelMsg =
-                        toolCall.response.error?.message ||
-                        'Tool execution cancelled';
-                      toolResponseContent = `Tool cancelled: ${cancelMsg}`;
-
-                      // Create cancellation response parts if not provided
-                      const cancelResponseParts = toolCall.response
-                        .responseParts || [
-                        {
-                          functionResponse: {
-                            name: toolCall.request.name,
-                            response: {
-                              error: cancelMsg,
-                            },
-                          },
-                        },
-                      ];
-
-                      // Add cancellation response parts to continue conversation
-                      toolResponseParts.push(...cancelResponseParts);
-
-                      collectedEvents.push({
-                        type: GeminiEventType.ToolCallResponse,
-                        value: {
-                          callId: toolCall.request.callId,
-                          responseParts: cancelResponseParts,
-                          resultDisplay: toolResponseContent,
-                          error: toolCall.response.error,
-                          errorType: toolCall.response.errorType,
-                          structuredData: toolCall.response.structuredData,
-                        },
-                      });
-                    } else {
-                      toolResponseContent = 'Unknown tool status';
+                      console.log(
+                        `[GeminiChatManager] Collected tool response for ${toolCall.request.name} (status: ${toolCall.status})`,
+                      );
                     }
-
-                    // Build tool response message for SessionManager
-                    executedToolResponses.push({
-                      role: 'tool',
-                      content: toolResponseContent,
-                      tool_call_id: toolCall.request.callId,
-                      name: toolCall.request.name,
-                      timestamp: new Date(),
-                    });
-
-                    console.log(
-                      `[GeminiChatManager] Collected tool response for ${toolCall.request.name} (status: ${toolCall.status})`,
-                    );
                   }
-                }
-              },
+                },
 
-              // All tools completed
-              onAllToolCallsComplete: async (completedToolCalls) => {
-                this.activeToolScheduler = undefined;
-                console.log(
-                  `[GeminiChatManager] All ${completedToolCalls.length} tool calls completed`,
+                // All tools completed
+                onAllToolCallsComplete: async (completedToolCalls) => {
+                  this.activeToolScheduler = undefined;
+                  console.log(
+                    `[GeminiChatManager] All ${completedToolCalls.length} tool calls completed`,
+                  );
+                  resolve();
+                },
+              });
+
+              // Save reference to active scheduler for potential approval mode changes
+              this.activeToolScheduler = scheduler;
+
+              // Check for abort
+              if (signal.aborted) {
+                console.warn(
+                  `[GeminiChatManager] Aborted before tool execution.`,
                 );
                 resolve();
-              },
+                return;
+              }
+
+              // Schedule all tools at once - they will execute in parallel
+              scheduler.schedule(toolCallRequests, signal).catch((error) => {
+                console.error(`[GeminiChatManager] Scheduler error:`, error);
+                reject(error);
+              });
             });
 
-            // Save reference to active scheduler for potential approval mode changes
-            this.activeToolScheduler = scheduler;
-
-            // Check for abort
-            if (signal.aborted) {
-              console.warn(
-                `[GeminiChatManager] Aborted before tool execution.`,
-              );
-              resolve();
-              return;
+            // Now yield all collected tool response events
+            for (const event of collectedEvents) {
+              yield event;
             }
-
-            // Schedule all tools at once - they will execute in parallel
-            scheduler.schedule(toolCallRequests, signal).catch((error) => {
-              console.error(`[GeminiChatManager] Scheduler error:`, error);
-              reject(error);
-            });
-          });
-
-          // Now yield all collected tool response events
-          for (const event of collectedEvents) {
-            yield event;
-          }
-        } else {
-          // Fallback: execute without confirmation (not recommended for GUI)
-          console.warn(
-            '[GeminiChatManager] No tool confirmation handler set, tools will auto-execute!',
-          );
-
-          const { executeToolCall } = await import(
-            './nonInteractiveToolExecutor.js'
-          );
-
-          for (const requestInfo of toolCallRequests) {
-            const toolResponse = await executeToolCall(
-              this.config,
-              requestInfo,
-              signal,
+          } else {
+            // Fallback: execute without confirmation (not recommended for GUI)
+            console.warn(
+              '[GeminiChatManager] No tool confirmation handler set, tools will auto-execute!',
             );
 
-            if (toolResponse.responseParts) {
-              toolResponseParts.push(...toolResponse.responseParts);
+            const { executeToolCall } = await import(
+              './nonInteractiveToolExecutor.js'
+            );
+
+            for (const requestInfo of toolCallRequests) {
+              const toolResponse = await executeToolCall(
+                this.config,
+                requestInfo,
+                signal,
+              );
+
+              if (toolResponse.responseParts) {
+                toolResponseParts.push(...toolResponse.responseParts);
+              }
+
+              const responseContent = toolResponse.resultDisplay
+                ? typeof toolResponse.resultDisplay === 'string'
+                  ? toolResponse.resultDisplay
+                  : JSON.stringify(toolResponse.resultDisplay)
+                : 'Tool executed successfully';
+
+              executedToolResponses.push({
+                role: 'tool',
+                content: responseContent,
+                tool_call_id: requestInfo.callId,
+                name: requestInfo.name,
+                timestamp: new Date(),
+              });
+
+              yield {
+                type: GeminiEventType.ToolCallResponse,
+                value: {
+                  callId: requestInfo.callId,
+                  name: requestInfo.name,
+                  responseParts: toolResponse.responseParts || [],
+                  resultDisplay: toolResponse.resultDisplay,
+                  error: toolResponse.error,
+                  errorType: toolResponse.errorType,
+                },
+              };
             }
-
-            const responseContent = toolResponse.resultDisplay
-              ? typeof toolResponse.resultDisplay === 'string'
-                ? toolResponse.resultDisplay
-                : JSON.stringify(toolResponse.resultDisplay)
-              : 'Tool executed successfully';
-
-            executedToolResponses.push({
-              role: 'tool',
-              content: responseContent,
-              tool_call_id: requestInfo.callId,
-              name: requestInfo.name,
-              timestamp: new Date(),
-            });
-
-            yield {
-              type: GeminiEventType.ToolCallResponse,
-              value: {
-                callId: requestInfo.callId,
-                responseParts: toolResponse.responseParts || [],
-                resultDisplay: toolResponse.resultDisplay,
-                error: toolResponse.error,
-                errorType: toolResponse.errorType,
-              },
-            };
           }
-        }
 
-        // Save this iteration's assistant message with tool calls and responses
-        // Each iteration saves its own assistant response independently
-        this.saveAssistantWithToolCalls(
-          assistantContent,
-          assistantToolCalls,
-          executedToolResponses,
-        );
+          // Note: We don't save to SessionManager during tool execution anymore
+          // The client pool will auto-save the complete history when streaming completes
 
-        // Mark that we've completed the first iteration
-        isFirstIteration = false;
+          // Check if we have tool responses to continue with
+          if (toolResponseParts.length === 0) {
+            console.log(
+              `[GeminiChatManager] No tool response parts to continue with, ending conversation`,
+            );
+            break;
+          }
 
-        // Check if we have tool responses to continue with
-        if (toolResponseParts.length === 0) {
+          // CRITICAL: Validate that we have responses for all tool calls
+          // Gemini API requires: number of function responses == number of function calls
+          const functionResponseCount = toolResponseParts.filter(
+            (part) => 'functionResponse' in part,
+          ).length;
+          if (functionResponseCount !== toolCallRequests.length) {
+            const errorMsg = `Tool call/response mismatch: ${toolCallRequests.length} calls but ${functionResponseCount} responses. This will cause API errors.`;
+            console.error(`[GeminiChatManager] ${errorMsg}`);
+            console.error(
+              `[GeminiChatManager] Tool calls:`,
+              toolCallRequests.map((r) => r.name),
+            );
+            console.error(
+              `[GeminiChatManager] Response parts:`,
+              toolResponseParts.map((p) =>
+                'functionResponse' in p ? p.functionResponse?.name : 'other',
+              ),
+            );
+            throw new Error(errorMsg);
+          }
+
+          // Continue loop with tool responses as next request
+          currentRequest = toolResponseParts;
           console.log(
-            `[GeminiChatManager] No tool response parts to continue with, ending conversation`,
+            `[GeminiChatManager] Continuing conversation with ${toolResponseParts.length} tool response parts (${functionResponseCount} function responses for ${toolCallRequests.length} calls)`,
           );
+        } else {
+          // No tool calls - conversation complete
+          console.log(
+            '[GeminiChatManager] No tool calls, conversation complete',
+          );
+
+          // Auto-generate title (first message or third message with LLM)
+          // Always use gemini-2.5-flash for cost efficiency
+          this.sessionManager.autoGenerateTitle(sessionId).catch((error) => {
+            console.error(
+              '[GeminiChatManager] Failed to auto-generate title:',
+              error,
+            );
+          });
+
+          // Conversation complete
           break;
         }
-
-        // Continue loop with tool responses as next request
-        currentRequest = toolResponseParts;
-        console.log(
-          `[GeminiChatManager] Continuing conversation with ${toolResponseParts.length} tool response parts`,
-        );
-      } else {
-        // No tool calls - save assistant response and exit
-        if (assistantContent.trim()) {
-          const assistantMessage: UniversalMessage = {
-            role: 'assistant',
-            content: assistantContent,
-            timestamp: new Date(),
-          };
-          this.sessionManager.addHistory(assistantMessage);
-          console.log(
-            `[GeminiChatManager] Saved assistant response without tool calls (${assistantContent.length} chars)`,
-          );
-
-          // Trigger intelligent title generation if appropriate
-          const currentSessionId = this.sessionManager.getCurrentSessionId();
-          if (currentSessionId) {
-            this.sessionManager
-              .triggerIntelligentTitleGeneration(currentSessionId, {
-                type: 'gemini',
-                model: 'gemini-2.5-flash',
-              })
-              .catch((error) => {
-                console.error(
-                  '[GeminiChatManager] Failed to generate intelligent title:',
-                  error,
-                );
-              });
-          }
-        }
-
-        // Conversation complete
-        break;
       }
+    } finally {
+      // Auto-save session history after streaming completes
+      // This ensures tool calls and responses are always paired
+      await this.clientPool.save(sessionId);
     }
   }
 
   /**
-   * Save assistant message with tool calls and tool responses to SessionManager
-   * Mirrors MultiModelSystem.saveAssistantWithToolCalls()
+   * Get the GeminiClient instance for the current session
    */
-  private saveAssistantWithToolCalls(
-    assistantContent: string,
-    assistantToolCalls: Array<{
-      id: string;
-      name: string;
-      arguments: Record<string, unknown>;
-    }>,
-    executedToolResponses: UniversalMessage[],
-  ): void {
-    // Save assistant message with tool calls
-    const assistantMessage: UniversalMessage = {
-      role: 'assistant',
-      content: assistantContent,
-      timestamp: new Date(),
-      toolCalls: assistantToolCalls.length > 0 ? assistantToolCalls : undefined,
-    };
-
-    this.sessionManager.addHistory(assistantMessage);
-
-    // Save all tool responses
-    executedToolResponses.forEach((response) => {
-      this.sessionManager.addHistory(response);
-    });
-
-    console.log(
-      `[GeminiChatManager] Saved assistant message with ${assistantToolCalls.length} tool calls and ${executedToolResponses.length} responses`,
-    );
-
-    // Trigger intelligent title generation if appropriate
-    const currentSessionId = this.sessionManager.getCurrentSessionId();
-    if (currentSessionId && assistantContent.trim()) {
-      this.sessionManager
-        .triggerIntelligentTitleGeneration(currentSessionId, {
-          type: 'gemini',
-          model: 'gemini-2.5-flash',
-        })
-        .catch((error) => {
-          console.error(
-            '[GeminiChatManager] Failed to generate intelligent title:',
-            error,
-          );
-        });
+  getClient(): GeminiClient | undefined {
+    const sessionId = this.sessionManager.getCurrentSessionId();
+    if (!sessionId) {
+      return undefined;
     }
-  }
-
-  /**
-   * Get the GeminiClient instance for direct access if needed
-   */
-  getClient(): GeminiClient {
-    return this.client;
+    return this.clientPool.get(sessionId);
   }
 
   /**
@@ -635,6 +589,117 @@ export class GeminiChatManager {
       ) => Promise<ToolConfirmationOutcome>)
     | undefined {
     return this.toolConfirmationHandler;
+  }
+
+  /**
+   * Convert Content[] (Gemini format) to UniversalMessage[] (SessionManager format)
+   */
+  private convertGeminiToUniversal(contents: Content[]): UniversalMessage[] {
+    const messages: UniversalMessage[] = [];
+
+    console.log(
+      `[GeminiChatManager] Converting ${contents.length} Gemini contents to UniversalMessage`,
+    );
+
+    for (const content of contents) {
+      // Skip system messages (handled separately)
+      if (content.role !== 'user' && content.role !== 'model') {
+        continue;
+      }
+
+      // Map Gemini role to UniversalMessage role
+      const role = content.role === 'model' ? 'assistant' : 'user';
+
+      // Extract text content
+      let textContent = '';
+      const toolCalls: Array<{
+        id: string;
+        name: string;
+        arguments: Record<string, unknown>;
+      }> = [];
+      let toolCallId: string | undefined;
+      let toolName: string | undefined;
+
+      for (const part of content.parts || []) {
+        if ('text' in part && part.text) {
+          textContent += part.text;
+          // // Log if text contains thinking tags
+          // if (part.text.includes('<think>')) {
+          //   console.log(
+          //     `[GeminiChatManager] Found <think> tag in text part (${part.text.substring(0, 100)}...)`,
+          //   );
+          // }
+        }
+
+        // Extract function calls (tool calls from assistant)
+        if (
+          'functionCall' in part &&
+          part.functionCall &&
+          part.functionCall.name
+        ) {
+          toolCalls.push({
+            id: `call_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+            name: part.functionCall.name,
+            arguments:
+              (part.functionCall.args as Record<string, unknown>) || {},
+          });
+        }
+
+        // Extract function responses (tool responses)
+        if ('functionResponse' in part && part.functionResponse) {
+          toolName = part.functionResponse.name;
+          toolCallId = `call_${Date.now()}`;
+          const response = part.functionResponse.response;
+          if (
+            response &&
+            typeof response === 'object' &&
+            'output' in response
+          ) {
+            textContent += String(response['output']);
+          }
+        }
+      }
+
+      // Create UniversalMessage
+      if (toolCallId && toolName) {
+        // This is a tool response
+        messages.push({
+          role: 'tool',
+          content: textContent,
+          tool_call_id: toolCallId,
+          name: toolName,
+          timestamp: new Date(),
+        });
+      } else {
+        // Regular message (user or assistant)
+        const message: UniversalMessage = {
+          role,
+          content: textContent,
+          timestamp: new Date(),
+        };
+
+        if (toolCalls.length > 0) {
+          message.toolCalls = toolCalls;
+        }
+
+        // // Log message content summary
+        // const hasThinking = textContent.includes('<think>');
+        // const contentPreview =
+        //   textContent.length > 100
+        //     ? textContent.substring(0, 100) + '...'
+        //     : textContent;
+        // console.log(
+        //   `[GeminiChatManager] Created ${role} message (${textContent.length} chars, thinking: ${hasThinking}): ${contentPreview}`,
+        // );
+
+        messages.push(message);
+      }
+    }
+
+    // console.log(
+    //   `[GeminiChatManager] Converted to ${messages.length} UniversalMessages`,
+    // );
+    return messages;
   }
 
   /**
@@ -697,9 +762,12 @@ export class GeminiChatManager {
 
   /**
    * Load session history into GeminiClient
-   * Called when switching sessions
+   * Called when switching sessions or initializing
    */
   private async loadSessionIntoClient(sessionId: string): Promise<void> {
+    // Get or create client for this session
+    const client = await this.clientPool.getOrCreate(sessionId);
+
     // Get history from SessionManager (UniversalMessage[])
     const universalHistory = this.sessionManager.getDisplayMessages(sessionId);
 
@@ -709,13 +777,13 @@ export class GeminiChatManager {
     // Load into GeminiClient
     if (geminiHistory.length > 0) {
       // Restart chat with existing history
-      await this.client.startChat(geminiHistory);
+      await client.startChat(geminiHistory);
       console.log(
         `[GeminiChatManager] Loaded ${geminiHistory.length} messages into GeminiClient for session ${sessionId}`,
       );
     } else {
       // Fresh chat
-      await this.client.resetChat();
+      await client.resetChat();
       console.log(
         `[GeminiChatManager] Started fresh chat for session ${sessionId}`,
       );
@@ -730,13 +798,21 @@ export class GeminiChatManager {
   }
 
   async switchSession(sessionId: string): Promise<void> {
+    // Simply switch the session in SessionManager
+    // The client pool will handle getting/creating the appropriate client
     this.sessionManager.switchSession(sessionId);
 
-    // Load session history into GeminiClient
+    // Load session history into the client for this session
     await this.loadSessionIntoClient(sessionId);
+
+    console.log(`[GeminiChatManager] Switched to session: ${sessionId}`);
   }
 
   deleteSession(sessionId: string): void {
+    // Release the client from pool first
+    this.clientPool.release(sessionId);
+
+    // Then delete from SessionManager
     this.sessionManager.deleteSession(sessionId);
   }
 
@@ -771,8 +847,14 @@ export class GeminiChatManager {
   async switchRole(roleId: string): Promise<boolean> {
     const success = await this.roleManager.setCurrentRole(roleId);
     if (success) {
-      // Update tools when role changes - filter based on role
-      await this.client.updateToolsForCurrentRole();
+      // Update tools for current session's client if it exists
+      const sessionId = this.sessionManager.getCurrentSessionId();
+      if (sessionId) {
+        const client = this.clientPool.get(sessionId);
+        if (client) {
+          await client.updateToolsForCurrentRole();
+        }
+      }
       console.log(`[GeminiChatManager] Switched to role: ${roleId}`);
     }
     return success;
@@ -861,10 +943,14 @@ export class GeminiChatManager {
   }
 
   /**
-   * Cleanup
+   * Cleanup - saves all sessions and releases client pool
    */
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     console.log('[GeminiChatManager] Cleaning up...');
-    // No specific cleanup needed for GeminiClient currently
+
+    // Clear the client pool (this will save all sessions)
+    await this.clientPool.clear();
+
+    console.log('[GeminiChatManager] Cleanup complete');
   }
 }
