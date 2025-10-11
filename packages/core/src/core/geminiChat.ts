@@ -141,7 +141,7 @@ function extractCuratedHistory(comprehensiveHistory: Content[]): Content[] {
   let i = 0;
   while (i < length) {
     if (comprehensiveHistory[i].role === 'user') {
-      curatedHistory.push(comprehensiveHistory[i]);
+      curatedHistory.push(stripThoughtsFromContent(comprehensiveHistory[i]));
       i++;
     } else {
       const modelOutput: Content[] = [];
@@ -154,11 +154,39 @@ function extractCuratedHistory(comprehensiveHistory: Content[]): Content[] {
         i++;
       }
       if (isValid) {
-        curatedHistory.push(...modelOutput);
+        curatedHistory.push(...modelOutput.map(stripThoughtsFromContent));
       }
     }
   }
   return curatedHistory;
+}
+
+/**
+ * Strip thought parts from a Content object to save tokens when sending to LLM.
+ * Thought parts are internal reasoning and don't affect conversation flow.
+ */
+function stripThoughtsFromContent(content: Content): Content {
+  if (!content.parts || content.parts.length === 0) {
+    return content;
+  }
+
+  const filteredParts = content.parts.filter((part) => {
+    // Remove thought parts (original thought parts from API)
+    if ('thought' in part && part.thought) {
+      return false;
+    }
+    // Also remove text parts that contain thinking content (converted thought parts)
+    // These are identified by <think> tags
+    if ('text' in part && part.text && part.text.includes('<think>')) {
+      return false;
+    }
+    return true;
+  });
+
+  return {
+    ...content,
+    parts: filteredParts,
+  };
 }
 
 /**
@@ -501,9 +529,10 @@ export class GeminiChat {
             hasToolCall = true;
           }
 
-          modelResponseParts.push(
-            ...content.parts.filter((part) => !part.thought),
-          );
+          // Include all parts including thought parts
+          // Thought parts will be converted to <think> text format when saving to history
+          // and filtered out by stripThoughtsFromContent when sending to LLM
+          modelResponseParts.push(...content.parts);
         }
       }
 
@@ -571,7 +600,36 @@ export class GeminiChat {
       }
     }
 
-    this.history.push({ role: 'model', parts: consolidatedParts });
+    // Convert thought parts to <think> tagged text before saving to history
+    // This ensures thinking content persists when sessions are reloaded
+    const partsWithThinkingAsText: Part[] = [];
+    let thinkingPartsCount = 0;
+    for (const part of consolidatedParts) {
+      // Check if this is a thought part (has 'thought' field)
+      // When a part has 'thought' field, the actual text content is in 'text' field
+      const partWithThought = part as Part & { thought?: boolean | string };
+      if (partWithThought.thought && partWithThought.text) {
+        thinkingPartsCount++;
+        // Convert thought part to text part with <think> tags
+        // Use the text field which contains the actual thinking content
+        const thinkingText = `<think>\n${partWithThought.text}\n</think>\n\n`;
+        console.log(
+          `[GeminiChat] Converting thought part ${thinkingPartsCount} to text (${partWithThought.text.substring(0, 50)}...)`,
+        );
+        partsWithThinkingAsText.push({ text: thinkingText });
+      } else if (!partWithThought.thought) {
+        // Keep non-thought parts as-is (skip thought parts without text)
+        partsWithThinkingAsText.push(part);
+      }
+    }
+
+    if (thinkingPartsCount > 0) {
+      console.log(
+        `[GeminiChat] Converted ${thinkingPartsCount} thought parts to <think> tagged text`,
+      );
+    }
+
+    this.history.push({ role: 'model', parts: partsWithThinkingAsText });
   }
 
   /**
