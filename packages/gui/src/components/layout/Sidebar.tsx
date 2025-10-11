@@ -300,7 +300,17 @@ export const Sidebar: React.FC = () => {
         content: msg.content,
         timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(), // Convert to Date object
         toolCalls: msg.toolCalls,
+        tool_call_id: msg.tool_call_id,
+        name: msg.name,
       }));
+
+      // Log thinking content summary
+      const messagesWithThinking = chatMessages.filter((msg) =>
+        msg.content.includes('<think>'),
+      );
+      console.log(
+        `[Sidebar] Converted ${chatMessages.length} messages (${messagesWithThinking.length} with thinking)`,
+      );
 
       // Update the session with loaded messages (replace all messages, don't merge)
       updateSession(sessionId, { messages: chatMessages });

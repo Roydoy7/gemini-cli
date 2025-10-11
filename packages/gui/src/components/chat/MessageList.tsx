@@ -389,25 +389,37 @@ function processMessagesForToolGrouping(
     // Check if this message has tool calls
     if (message.toolCalls && message.toolCalls.length > 0) {
       const executions = message.toolCalls.map((toolCall) => {
-        // Look ahead for matching tool response
+        // First check if the toolCall itself has result/success fields (updated inline)
         let toolResponse;
-        for (let j = i + 1; j < messages.length; j++) {
-          const nextMsg = messages[j];
-          const parsedResponse = parseToolResponse(nextMsg);
 
-          // Match by tool call ID or tool name
-          if (
-            parsedResponse &&
-            (parsedResponse.toolCallId === toolCall.id ||
-              parsedResponse.toolName === toolCall.name)
-          ) {
-            toolResponse = {
-              content: parsedResponse.content,
-              success: parsedResponse.success,
-              toolResponseData: parsedResponse.structuredData,
-              timestamp: nextMsg.timestamp,
-            };
-            break;
+        if (toolCall.result !== undefined || toolCall.success !== undefined) {
+          // Use inline result from the toolCall object
+          toolResponse = {
+            content: toolCall.result || '',
+            success: toolCall.success,
+            toolResponseData: undefined, // TODO: Add to ToolCall type if needed
+            timestamp: message.timestamp,
+          };
+        } else {
+          // Fallback: Look ahead for matching tool response message (for backward compatibility)
+          for (let j = i + 1; j < messages.length; j++) {
+            const nextMsg = messages[j];
+            const parsedResponse = parseToolResponse(nextMsg);
+
+            // Match by tool call ID or tool name
+            if (
+              parsedResponse &&
+              (parsedResponse.toolCallId === toolCall.id ||
+                parsedResponse.toolName === toolCall.name)
+            ) {
+              toolResponse = {
+                content: parsedResponse.content,
+                success: parsedResponse.success,
+                toolResponseData: parsedResponse.structuredData,
+                timestamp: nextMsg.timestamp,
+              };
+              break;
+            }
           }
         }
 
@@ -1626,11 +1638,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Content and Tool calls */}
         <div className="flex-1 space-y-3">
+          {/* Thinking process - displayed independently, full width */}
+          {thinkingSections.length > 0 && (
+            <ThinkingSection thinkingSections={thinkingSections} />
+          )}
+
           {/* Display text content if present */}
           {contentWithoutSnapshot && (
             <Card className="bg-muted/50 border border-green-200/50 dark:border-green-700/30">
               <CardContent className="px-4 py-0">
-                <ThinkingSection thinkingSections={thinkingSections} />
                 {stateSnapshot && (
                   <StateSnapshotDisplay stateSnapshot={stateSnapshot} />
                 )}
@@ -1672,157 +1688,202 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
 
       {/* Message content */}
-      <div className={cn('flex-1 min-w-0', isUser ? 'text-right' : '')}>
-        <Card
-          className={cn(
-            'inline-block text-left max-w-full bg-muted/50',
-            'border',
-            isUser
-              ? 'border-blue-200/50 dark:border-blue-700/30'
-              : message.role === 'system'
-                ? 'border-yellow-200/50 dark:border-yellow-700/30'
-                : 'border-green-200/50 dark:border-green-700/30',
-          )}
-        >
-          <CardContent className="px-4 py-0">
-            {message.error ? (
-              <div className="flex items-center gap-2 text-destructive">
-                <AlertCircle size={16} />
-                <span className="text-sm">{message.error}</span>
-              </div>
-            ) : (
-              <div>
-                {(() => {
-                  // Parse thinking content for assistant messages and state snapshot for both user and assistant
-                  if (message.role === 'assistant') {
-                    const { thinkingSections, mainContent } =
-                      parseThinkingContent(message.content);
-                    const stateSnapshot = parseStateSnapshot(message.content);
+      <div
+        className={cn('flex-1 min-w-0 space-y-3', isUser ? 'text-right' : '')}
+      >
+        {/* Thinking sections - displayed independently before the main card */}
+        {message.role === 'assistant' &&
+          (() => {
+            const { thinkingSections } = parseThinkingContent(message.content);
+            if (thinkingSections.length > 0) {
+              return <ThinkingSection thinkingSections={thinkingSections} />;
+            }
+            return null;
+          })()}
 
-                    // Remove state_snapshot from main content if it exists
-                    const contentWithoutSnapshot = mainContent
-                      .replace(
-                        /<state_snapshot>[\s\S]*?<\/state_snapshot>/g,
-                        '',
-                      )
-                      .trim();
+        {/* Only show card if there's actual content (not just thinking) */}
+        {(() => {
+          // Check if there's any content besides thinking process
+          let hasContent = message.error !== undefined;
 
-                    return (
-                      <>
-                        {/* Show thinking sections if they exist */}
-                        <ThinkingSection thinkingSections={thinkingSections} />
+          if (!hasContent && message.role === 'assistant') {
+            const { mainContent } = parseThinkingContent(message.content);
+            const stateSnapshot = parseStateSnapshot(message.content);
+            const contentWithoutSnapshot = mainContent
+              .replace(/<state_snapshot>[\s\S]*?<\/state_snapshot>/g, '')
+              .trim();
+            hasContent =
+              contentWithoutSnapshot.length > 0 || stateSnapshot !== null;
+          } else if (!hasContent && message.role !== 'assistant') {
+            const stateSnapshot = parseStateSnapshot(message.content);
+            const contentWithoutSnapshot = message.content
+              .replace(/<state_snapshot>[\s\S]*?<\/state_snapshot>/g, '')
+              .trim();
+            hasContent =
+              contentWithoutSnapshot.length > 0 || stateSnapshot !== null;
+          }
 
-                        {/* Show state snapshot if it exists */}
-                        {stateSnapshot && (
-                          <StateSnapshotDisplay stateSnapshot={stateSnapshot} />
-                        )}
+          if (!hasContent) return null;
 
-                        {/* Show main content */}
-                        {contentWithoutSnapshot && (
-                          <MarkdownRenderer
-                            content={contentWithoutSnapshot}
-                            className="px-3 py-2"
-                          />
-                        )}
-                      </>
-                    );
-                  } else {
-                    // For non-assistant messages, check for state_snapshot (from compression)
-                    const stateSnapshot = parseStateSnapshot(message.content);
-                    const contentWithoutSnapshot = message.content
-                      .replace(
-                        /<state_snapshot>[\s\S]*?<\/state_snapshot>/g,
-                        '',
-                      )
-                      .trim();
-
-                    return (
-                      <>
-                        {/* Show state snapshot if it exists */}
-                        {stateSnapshot && (
-                          <StateSnapshotDisplay stateSnapshot={stateSnapshot} />
-                        )}
-
-                        {/* Show main content only if there's content left after removing state_snapshot */}
-                        {contentWithoutSnapshot && (
-                          <MarkdownRenderer
-                            content={contentWithoutSnapshot}
-                            className="px-3 py-0"
-                          />
-                        )}
-                      </>
-                    );
-                  }
-                })()}
-              </div>
-            )}
-
-            {/* Timestamp and Actions */}
-            <div
+          return (
+            <Card
               className={cn(
-                'text-xs mt-2 pt-2 pb-3 border-t border-border/20 text-muted-foreground',
+                'inline-block text-left max-w-full bg-muted/50',
+                'border',
+                isUser
+                  ? 'border-blue-200/50 dark:border-blue-700/30'
+                  : message.role === 'system'
+                    ? 'border-yellow-200/50 dark:border-yellow-700/30'
+                    : 'border-green-200/50 dark:border-green-700/30',
               )}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1">
-                  <time
-                    dateTime={message.timestamp.toISOString()}
-                    title={format(message.timestamp, 'yyyy-MM-dd HH:mm:ss')}
-                  >
-                    {format(message.timestamp, 'MM-dd HH:mm')}
-                  </time>
-                  {isStreaming && <span className="animate-pulse">●</span>}
-                </div>
+              <CardContent className="px-4 py-0">
+                {message.error ? (
+                  <div className="flex items-center gap-2 text-destructive">
+                    <AlertCircle size={16} />
+                    <span className="text-sm">{message.error}</span>
+                  </div>
+                ) : (
+                  <div>
+                    {(() => {
+                      // Parse thinking content for assistant messages and state snapshot for both user and assistant
+                      if (message.role === 'assistant') {
+                        const { mainContent } = parseThinkingContent(
+                          message.content,
+                        );
+                        const stateSnapshot = parseStateSnapshot(
+                          message.content,
+                        );
 
-                {/* Action buttons */}
-                <div className="flex items-center gap-1">
-                  {/* Save as Template Button - only for user messages */}
-                  {isUser && onSaveAsTemplate && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onSaveAsTemplate(message)}
-                      className={cn(
-                        'h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted',
-                      )}
-                      title="Save as template"
-                    >
-                      <BookTemplate size={12} />
-                    </Button>
+                        // Remove state_snapshot from main content if it exists
+                        const contentWithoutSnapshot = mainContent
+                          .replace(
+                            /<state_snapshot>[\s\S]*?<\/state_snapshot>/g,
+                            '',
+                          )
+                          .trim();
+
+                        return (
+                          <>
+                            {/* Show state snapshot if it exists */}
+                            {stateSnapshot && (
+                              <StateSnapshotDisplay
+                                stateSnapshot={stateSnapshot}
+                              />
+                            )}
+
+                            {/* Show main content */}
+                            {contentWithoutSnapshot && (
+                              <MarkdownRenderer
+                                content={contentWithoutSnapshot}
+                                className="px-3 py-2"
+                              />
+                            )}
+                          </>
+                        );
+                      } else {
+                        // For non-assistant messages, check for state_snapshot (from compression)
+                        const stateSnapshot = parseStateSnapshot(
+                          message.content,
+                        );
+                        const contentWithoutSnapshot = message.content
+                          .replace(
+                            /<state_snapshot>[\s\S]*?<\/state_snapshot>/g,
+                            '',
+                          )
+                          .trim();
+
+                        return (
+                          <>
+                            {/* Show state snapshot if it exists */}
+                            {stateSnapshot && (
+                              <StateSnapshotDisplay
+                                stateSnapshot={stateSnapshot}
+                              />
+                            )}
+
+                            {/* Show main content only if there's content left after removing state_snapshot */}
+                            {contentWithoutSnapshot && (
+                              <MarkdownRenderer
+                                content={contentWithoutSnapshot}
+                                className="px-3 py-0"
+                              />
+                            )}
+                          </>
+                        );
+                      }
+                    })()}
+                  </div>
+                )}
+
+                {/* Timestamp and Actions */}
+                <div
+                  className={cn(
+                    'text-xs mt-2 pt-2 pb-3 border-t border-border/20 text-muted-foreground',
                   )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <time
+                        dateTime={message.timestamp.toISOString()}
+                        title={format(message.timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                      >
+                        {format(message.timestamp, 'MM-dd HH:mm')}
+                      </time>
+                      {isStreaming && <span className="animate-pulse">●</span>}
+                    </div>
 
-                  {/* Copy Button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleCopy}
-                    className={cn(
-                      'h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted',
-                    )}
-                    title={copied ? 'Copied!' : 'Copy message'}
-                  >
-                    {copied ? <Check size={12} /> : <Copy size={12} />}
-                  </Button>
-
-                  {/* Delete Button */}
-                  {onDelete && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(message.id)}
-                      className={cn(
-                        'h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive',
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1">
+                      {/* Save as Template Button - only for user messages */}
+                      {isUser && onSaveAsTemplate && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onSaveAsTemplate(message)}
+                          className={cn(
+                            'h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted',
+                          )}
+                          title="Save as template"
+                        >
+                          <BookTemplate size={12} />
+                        </Button>
                       )}
-                      title="Delete message"
-                    >
-                      <Trash2 size={12} />
-                    </Button>
-                  )}
+
+                      {/* Copy Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleCopy}
+                        className={cn(
+                          'h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted',
+                        )}
+                        title={copied ? 'Copied!' : 'Copy message'}
+                      >
+                        {copied ? <Check size={12} /> : <Copy size={12} />}
+                      </Button>
+
+                      {/* Delete Button */}
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(message.id)}
+                          className={cn(
+                            'h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive',
+                          )}
+                          title="Delete message"
+                        >
+                          <Trash2 size={12} />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          );
+        })()}
       </div>
     </div>
   );

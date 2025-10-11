@@ -168,15 +168,16 @@ const ensureInitialized = async (
 
       await config.initialize();
 
-      // Initialize GeminiChatManager with the proper Config instance
-      geminiChatManager = new GeminiChatManager(config);
-      await geminiChatManager.initialize(initialRoleId);
-
-      // Initialize SessionManager with config and ModelProviderFactory
+      // Initialize SessionManager FIRST (before GeminiChatManager)
+      // This ensures sessions are loaded when GeminiChatManager.initialize() tries to access them
       await SessionManager.getInstance().initializeWithConfig({
         config: config,
         createModelProvider: ModelProviderFactory.create,
       });
+
+      // Initialize GeminiChatManager with the proper Config instance
+      geminiChatManager = new GeminiChatManager(config);
+      await geminiChatManager.initialize(initialRoleId);
 
       // Initialize WorkspaceManager with config to ensure proper setup
       const workspaceManager = WorkspaceManager.getInstance(config);
@@ -815,8 +816,42 @@ ipcMain.handle(
           } else if (chunk.type === 'finished') {
             // Stream finished, don't send this to frontend
             // The completion signal will be sent after the loop
+          } else if (chunk.type === 'tool_call_request') {
+            // Handle tool call requests with proper field mapping
+            const requestValue = chunk.value || {};
+            const chunkData = {
+              streamId,
+              type: 'tool_call_request',
+              toolCall: {
+                id: requestValue.callId,
+                name: requestValue.name,
+                arguments: requestValue.args || {}, // Map 'args' to 'arguments' for frontend
+              },
+              role: 'assistant',
+              timestamp: Date.now(),
+            };
+            event.sender.send('geminiChat-stream-chunk', chunkData);
+          } else if (chunk.type === 'tool_call_response') {
+            // Handle tool call responses with proper field mapping
+            const responseValue = chunk.value || {};
+            // Tool is successful only if BOTH error and errorType are undefined
+            const isSuccess = !responseValue.error && !responseValue.errorType;
+            const chunkData = {
+              streamId,
+              type: 'tool_call_response',
+              toolCallId: responseValue.callId,
+              toolName: responseValue.name || 'unknown',
+              content: responseValue.resultDisplay || '',
+              toolSuccess: isSuccess,
+              toolResponseData: responseValue.structuredData,
+              error: responseValue.error,
+              errorType: responseValue.errorType,
+              role: 'assistant',
+              timestamp: Date.now(),
+            };
+            event.sender.send('geminiChat-stream-chunk', chunkData);
           } else {
-            // Handle other event types (tool_call, tool_response, etc.)
+            // Handle other event types
             const chunkData = {
               streamId,
               type: chunk.type,

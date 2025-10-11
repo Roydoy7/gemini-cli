@@ -1018,11 +1018,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   const updatedMessages = [...currentSession.messages];
                   const existingToolCalls =
                     updatedMessages[messageIndex].toolCalls || [];
+
+                  // Add tool call with 'executing' status
+                  const newToolCall = event.toolCall
+                    ? { ...event.toolCall, status: 'executing' as const }
+                    : null;
+
                   updatedMessages[messageIndex] = {
                     ...updatedMessages[messageIndex],
                     content: assistantContent,
-                    toolCalls: event.toolCall
-                      ? [...existingToolCalls, event.toolCall]
+                    toolCalls: newToolCall
+                      ? [...existingToolCalls, newToolCall]
                       : existingToolCalls,
                   };
 
@@ -1037,12 +1043,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 }
               }
 
-              // CRITICAL: Don't reset assistantContent or currentAssistantMessageId here
-              // The assistant message with tool calls has been saved to the session
-              // Keep the references so any future content updates to the same message
-              // Don't clear assistantContent - preserve it in case there's more content
-              // Don't reset currentAssistantMessageId - keep updating the same message
-              // Don't reset hasCreatedInitialMessage - the message still exists
+              // IMPORTANT: Reset message tracking after adding tool calls
+              // This ensures that any new content after tool response creates a NEW message
+              // The message with tool calls has been finalized and saved
+              assistantContent = '';
+              currentAssistantMessageId = null;
+              hasCreatedInitialMessage = false;
             } else if (event.toolCall) {
               // Create a new message for tool calls if there's no current assistant message
               const toolCallMessage: ChatMessage = {
@@ -1071,6 +1077,46 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               message: 'AI is thinking',
               details: 'Processing tool result...',
             });
+
+            // Update the tool call status in the assistant message
+            if (event.toolCallId) {
+              const currentSession = useAppStore
+                .getState()
+                .sessions.find((s) => s.id === activeSessionId);
+
+              if (currentSession) {
+                // Find the assistant message that contains this tool call
+                const messageIndex = currentSession.messages.findIndex((msg) =>
+                  msg.toolCalls?.some((tc) => tc.id === event.toolCallId),
+                );
+
+                if (messageIndex >= 0) {
+                  const updatedMessages = [...currentSession.messages];
+                  const message = updatedMessages[messageIndex];
+
+                  // Update the specific tool call's status and result
+                  if (message.toolCalls) {
+                    message.toolCalls = message.toolCalls.map((tc) =>
+                      tc.id === event.toolCallId
+                        ? {
+                            ...tc,
+                            status: event.toolSuccess ? 'completed' : 'failed',
+                            success: event.toolSuccess,
+                            result:
+                              event.content ||
+                              `Tool ${event.toolName} completed`,
+                          }
+                        : tc,
+                    );
+                  }
+
+                  updateSession(activeSessionId, {
+                    messages: updatedMessages,
+                    updatedAt: new Date(),
+                  });
+                }
+              }
+            }
 
             // Handle tool response events - create tool response message immediately
             if (event.toolCallId && event.toolName) {
@@ -1201,7 +1247,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               } catch (error) {
                 console.error('Failed to refresh session info:', error);
               }
-            }, 1000); // 1000ms delay to ensure backend title generation is complete
+            }, 2500); // 2500ms delay to ensure backend title generation (including LLM) is complete
             break;
           } else if (event.type === 'error') {
             const errorMessage =

@@ -187,6 +187,8 @@ export const App: React.FC = () => {
                 content: msg.content,
                 timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(), // Convert to Date object
                 toolCalls: msg.toolCalls,
+                tool_call_id: msg.tool_call_id, // Required for tool response messages
+                name: msg.name, // Required for tool response messages
               }));
 
               updateSession(mostRecentSessionId, { messages: chatMessages });
