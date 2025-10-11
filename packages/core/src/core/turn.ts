@@ -99,6 +99,7 @@ export interface ToolCallRequestInfo {
 
 export interface ToolCallResponseInfo {
   callId: string;
+  name: string;
   responseParts: Part[];
   resultDisplay: ToolResultDisplay | undefined;
   error: Error | undefined;

@@ -238,6 +238,7 @@ const createErrorResponse = (
   errorType: ToolErrorType | undefined,
 ): ToolCallResponseInfo => ({
   callId: request.callId,
+  name: request.name,
   error,
   responseParts: [
     {
@@ -346,7 +347,7 @@ export class CoreToolScheduler {
 
   constructor(options: CoreToolSchedulerOptions) {
     this.config = options.config;
-    this.toolRegistry =  options.config.getToolRegistry();
+    this.toolRegistry = options.config.getToolRegistry();
     this.outputUpdateHandler = options.outputUpdateHandler;
     this.onAllToolCallsComplete = options.onAllToolCallsComplete;
     this.onToolCallsUpdate = options.onToolCallsUpdate;
@@ -475,6 +476,7 @@ export class CoreToolScheduler {
             status: 'cancelled',
             response: {
               callId: currentCall.request.callId,
+              name: currentCall.request.name,
               responseParts: [
                 {
                   functionResponse: {
@@ -851,7 +853,7 @@ export class CoreToolScheduler {
       this.setStatusInternal(
         callId,
         'cancelled',
-        'Stop and wait for user\'s next instruction.',
+        "Stop and wait for user's next instruction.",
       );
     } else if (outcome === ToolConfirmationOutcome.ModifyWithEditor) {
       const waitingToolCall = toolCall as WaitingToolCall;
@@ -1011,7 +1013,11 @@ export class CoreToolScheduler {
           .then(async (toolResult: ToolResult) => {
             if (signal.aborted) {
               // Create a cancellation response to maintain function call/response count balance
-              this.setStatusInternal(callId, 'cancelled', 'Stop and wait for user\'s next instruction.');
+              this.setStatusInternal(
+                callId,
+                'cancelled',
+                "Stop and wait for user's next instruction.",
+              );
               return;
             }
 
@@ -1067,6 +1073,7 @@ export class CoreToolScheduler {
 
               const successResponse: ToolCallResponseInfo = {
                 callId,
+                name: toolName,
                 responseParts: response,
                 resultDisplay: toolResult.returnDisplay,
                 error: undefined,
@@ -1078,7 +1085,8 @@ export class CoreToolScheduler {
               this.setStatusInternal(callId, 'success', successResponse);
             } else {
               // It is a failure
-              const errorMessage = toolResult.error?.message || 'Tool execution failed';
+              const errorMessage =
+                toolResult.error?.message || 'Tool execution failed';
               const errorType = toolResult.error?.type || ToolErrorType.UNKNOWN;
               const error = new Error(errorMessage);
               const errorResponse = createErrorResponse(
@@ -1198,7 +1206,7 @@ export class CoreToolScheduler {
    */
   async reevaluateAllPendingTools(signal: AbortSignal): Promise<void> {
     const pendingTools = this.toolCalls.filter(
-      (call) => call.status === 'awaiting_approval'
+      (call) => call.status === 'awaiting_approval',
     ) as WaitingToolCall[];
 
     for (const pendingTool of pendingTools) {
@@ -1206,7 +1214,11 @@ export class CoreToolScheduler {
         const allowedTools = this.config.getAllowedTools() || [];
         const shouldAutoApprove =
           this.config.getApprovalMode() === ApprovalMode.YOLO ||
-          doesToolInvocationMatch(pendingTool.request.name, pendingTool.invocation, allowedTools);
+          doesToolInvocationMatch(
+            pendingTool.request.name,
+            pendingTool.invocation,
+            allowedTools,
+          );
 
         if (shouldAutoApprove) {
           this.setToolCallOutcome(
