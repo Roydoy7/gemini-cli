@@ -149,6 +149,16 @@ export class GeminiClient {
 
   private readonly roleManager: RoleManager;
 
+  /**
+   * Get system reminder text to be included in system instruction
+   */
+  private getSystemReminder(): string {
+    return `
+<system_reminder>
+Reminder: Do not return an empty response when a tool call is required.
+</system_reminder>`.trim();
+  }
+
   constructor(private readonly config: Config) {
     this.loopDetector = new LoopDetectionService(config);
     this.lastPromptId = this.config.getSessionId();
@@ -239,9 +249,16 @@ export class GeminiClient {
     const toolsetManager = new ToolsetManager();
     const roleToolClasses = toolsetManager.getToolsForRole(currentRole.id);
 
-    // Create tool instances and get their schemas (FunctionDeclaration)
+    // Get the tool registry
+    const toolRegistry = this.config.getToolRegistry();
+
+    // Create tool instances, register them, and get their schemas
     const toolDeclarations = roleToolClasses.map((ToolClass) => {
       const toolInstance = new ToolClass(this.config);
+
+      // Register tool instance to ToolRegistry so it can be invoked later
+      toolRegistry.registerTool(toolInstance);
+
       return toolInstance.schema;
     });
 
@@ -311,8 +328,14 @@ export class GeminiClient {
         )
         .join('\n');
 
-      // Combine role prompt with workspace context
-      const combinedSystemInstruction = `${roleSystemPrompt}\n\n${workspaceContextText}`;
+      // Combine role prompt with workspace context and system reminder
+      const combinedSystemInstruction = `${roleSystemPrompt}
+
+# Environment Context
+
+${workspaceContextText}
+
+${this.getSystemReminder()}`.trim();
 
       // Update the chat's system instruction in GenerateContentConfig
       this.chat.setSystemInstruction(combinedSystemInstruction);
@@ -336,40 +359,34 @@ export class GeminiClient {
     const toolDeclarations = toolRegistry.getFunctionDeclarations();
     const tools: Tool[] = [{ functionDeclarations: toolDeclarations }];
 
-    // 1. Get the environment context parts as an array
+    // Get environment context to append to system instruction
     const envParts = await getEnvironmentContext(this.config);
-
-    // 2. Convert the array of parts into a single string
     const envContextString = envParts
       .map((part) => part.text || '')
       .join('\n\n');
 
-    // 3. Combine the dynamic context with the static handshake instruction
-    const allSetupText = `
-${envContextString}
-
-Reminder: Do not return an empty response when a tool call is required.
-
-My setup is complete. I will provide my first command in the next turn.
-    `.trim();
-
-    // 4. Create the history with a single, comprehensive user turn
-    const history: Content[] = [
-      {
-        role: 'user',
-        parts: [{ text: allSetupText }],
-      },
-      ...(extraHistory ?? []),
-    ];
+    // Use provided history directly (no initial handshake message)
+    const history: Content[] = [...(extraHistory ?? [])];
 
     try {
       const userMemory = this.config.getUserMemory();
       const currentRoleId = this.roleManager.getCurrentRole().id;
-      const systemInstruction = this.roleManager.getCombinedSystemPrompt(
+      const baseSystemInstruction = this.roleManager.getCombinedSystemPrompt(
         this.config,
         userMemory,
         currentRoleId,
       );
+
+      // Append environment context and system reminder to system instruction
+      const systemInstruction = `
+${baseSystemInstruction}
+
+# Environment Context
+
+${envContextString}
+
+${this.getSystemReminder()}
+      `.trim();
       const model = this.config.getModel();
 
       const config: GenerateContentConfig = { ...this.generateContentConfig };
@@ -381,7 +398,8 @@ My setup is complete. I will provide my first command in the next turn.
         };
       }
 
-      return new GeminiChat(
+      // Create new chat instance and assign to this.chat
+      this.chat = new GeminiChat(
         this.config,
         {
           systemInstruction,
@@ -390,6 +408,8 @@ My setup is complete. I will provide my first command in the next turn.
         },
         history,
       );
+
+      return this.chat;
     } catch (error) {
       await reportError(
         error,
