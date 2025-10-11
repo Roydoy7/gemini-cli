@@ -221,6 +221,8 @@ export interface ToolCall {
   name: string;
   arguments: Record<string, unknown>;
   result?: string;
+  status?: 'executing' | 'completed' | 'failed';
+  success?: boolean;
 }
 
 export interface SessionConfig {

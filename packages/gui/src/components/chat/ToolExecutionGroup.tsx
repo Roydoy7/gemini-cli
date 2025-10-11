@@ -44,7 +44,7 @@ export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({
   timestamp,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set([0])); // First item expanded by default
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set()); // All items collapsed by default
   const headerRef = useRef<HTMLDivElement>(null);
 
   if (executions.length === 0) return null;
@@ -283,29 +283,6 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
     (toolCall.arguments as Record<string, unknown>)?.op ||
     (toolCall.arguments as Record<string, unknown>)?.operation;
 
-  const formatValueForDisplay = (value: unknown): string => {
-    if (typeof value === 'string') {
-      return value.length > 40 ? `"${value.slice(0, 37)}..."` : `"${value}"`;
-    }
-    if (Array.isArray(value)) {
-      if (value.length > 3) {
-        return `[${value
-          .slice(0, 3)
-          .map((v) => (typeof v === 'string' ? `"${v}"` : String(v)))
-          .join(', ')}, ...] (${value.length} items)`;
-      }
-      return JSON.stringify(value);
-    }
-    if (typeof value === 'object' && value !== null) {
-      const keys = Object.keys(value);
-      if (keys.length > 2) {
-        return `{${keys.slice(0, 2).join(', ')}, ...} (${keys.length} props)`;
-      }
-      return JSON.stringify(value);
-    }
-    return String(value);
-  };
-
   const getKeyParameters = () => {
     const args = toolCall.arguments || {};
     const entries = Object.entries(args);
@@ -358,23 +335,6 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                 ? operation
                 : JSON.stringify(operation)}
             </span>
-          )}
-
-          {/* Compact parameter preview when collapsed */}
-          {!isExpanded && hasParams && (
-            <div className="flex items-center gap-1 ml-2 flex-1 min-w-0">
-              {keyParams
-                .filter(([key]) => key !== 'op' && key !== 'operation')
-                .slice(0, 2)
-                .map(([key, value]) => (
-                  <span
-                    key={key}
-                    className="text-xs text-muted-foreground truncate"
-                  >
-                    {key}: {formatValueForDisplay(value)}
-                  </span>
-                ))}
-            </div>
           )}
         </div>
 
