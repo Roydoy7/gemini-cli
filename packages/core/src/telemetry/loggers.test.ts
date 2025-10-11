@@ -615,6 +615,7 @@ describe('loggers', () => {
         },
         response: {
           callId: 'test-call-id',
+          name: 'test-function',
           responseParts: [{ text: 'test-response' }],
           resultDisplay: {
             fileDiff: 'diff',
@@ -715,6 +716,7 @@ describe('loggers', () => {
         },
         response: {
           callId: 'test-call-id',
+          name: 'test-function',
           responseParts: [{ text: 'test-response' }],
           resultDisplay: undefined,
           error: undefined,
@@ -789,6 +791,7 @@ describe('loggers', () => {
         },
         response: {
           callId: 'test-call-id',
+          name: 'test-function',
           responseParts: [{ text: 'test-response' }],
           resultDisplay: undefined,
           error: undefined,
@@ -865,6 +868,7 @@ describe('loggers', () => {
         },
         response: {
           callId: 'test-call-id',
+          name: 'test-function',
           responseParts: [{ text: 'test-response' }],
           resultDisplay: undefined,
           error: undefined,
@@ -941,6 +945,7 @@ describe('loggers', () => {
         },
         response: {
           callId: 'test-call-id',
+          name: 'test-function',
           responseParts: [{ text: 'test-response' }],
           resultDisplay: undefined,
           error: new Error(errorMessage),
@@ -1028,6 +1033,7 @@ describe('loggers', () => {
         },
         response: {
           callId: 'test-call-id',
+          name: 'mock_mcp_tool',
           responseParts: [{ text: 'test-response' }],
           resultDisplay: undefined,
           error: undefined,

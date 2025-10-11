@@ -47,6 +47,7 @@ const createFakeCompletedToolCall = (
       invocation: tool.build({ param: 'test' }),
       response: {
         callId: request.callId,
+        name,
         responseParts: [
           {
             functionResponse: {
@@ -70,6 +71,7 @@ const createFakeCompletedToolCall = (
       tool,
       response: {
         callId: request.callId,
+        name,
         responseParts: [
           {
             functionResponse: {

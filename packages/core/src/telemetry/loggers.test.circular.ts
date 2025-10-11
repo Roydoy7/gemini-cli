@@ -53,6 +53,7 @@ describe('Circular Reference Handling', () => {
 
     const mockResponse: ToolCallResponseInfo = {
       callId: 'test-call-id',
+      name: 'ReadFile',
       responseParts: [{ text: 'test result' }],
       resultDisplay: undefined,
       error: undefined, // undefined means success
@@ -103,6 +104,7 @@ describe('Circular Reference Handling', () => {
 
     const mockResponse: ToolCallResponseInfo = {
       callId: 'test-call-id',
+      name: 'ReadFile',
       responseParts: [{ text: 'test result' }],
       resultDisplay: undefined,
       error: undefined, // undefined means success

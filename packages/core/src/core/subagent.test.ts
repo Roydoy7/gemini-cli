@@ -582,6 +582,7 @@ describe('subagent.ts', () => {
         // Mock the tool execution result
         vi.mocked(executeToolCall).mockResolvedValue({
           callId: 'call_1',
+          name: 'ListFiles',
           responseParts: [{ text: 'file1.txt\nfile2.ts' }],
           resultDisplay: 'Listed 2 files',
           error: undefined,
@@ -637,6 +638,7 @@ describe('subagent.ts', () => {
         // Mock the tool execution failure.
         vi.mocked(executeToolCall).mockResolvedValue({
           callId: 'call_fail',
+          name: 'FailingTool',
           responseParts: [{ text: 'ERROR: Tool failed catastrophically' }], // This should be sent to the model
           resultDisplay: 'Tool failed catastrophically',
           error: new Error('Failure'),

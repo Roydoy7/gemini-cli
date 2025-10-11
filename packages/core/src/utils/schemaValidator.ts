@@ -43,7 +43,26 @@ export class SchemaValidator {
     const validate = ajValidator.compile(schema);
     const valid = validate(data);
     if (!valid && validate.errors) {
-      return ajValidator.errorsText(validate.errors, { dataVar: 'params' });
+      // Generate more user-friendly error messages
+      const errors = validate.errors.map(
+        (err: { keyword: string; params?: Record<string, unknown> }) => {
+          let message = ajValidator.errorsText([err], { dataVar: 'params' });
+
+          // For enum errors, append the allowed values
+          if (
+            err.keyword === 'enum' &&
+            err.params &&
+            'allowedValues' in err.params
+          ) {
+            const allowed = err.params['allowedValues'] as unknown[];
+            message += `. Allowed values: ${allowed.map((v) => `"${v}"`).join(', ')}`;
+          }
+
+          return message;
+        },
+      );
+
+      return errors.join('; ');
     }
     return null;
   }
