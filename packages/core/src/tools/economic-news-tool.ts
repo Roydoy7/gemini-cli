@@ -9,8 +9,18 @@ import type { ToolResult } from './tools.js';
 import { BasePythonTool } from './base-python-tool.js';
 
 interface EconomicNewsParams {
-  op: 'get_latest_news' | 'get_category_news' | 'get_sentiment_analysis' | 'get_sources';
-  category?: 'general' | 'markets' | 'forex' | 'crypto' | 'central_banks' | 'commodities';
+  op:
+    | 'get_latest_news'
+    | 'get_category_news'
+    | 'get_sentiment_analysis'
+    | 'get_sources';
+  category?:
+    | 'general'
+    | 'markets'
+    | 'forex'
+    | 'crypto'
+    | 'central_banks'
+    | 'commodities';
   sources?: string[];
   hours_back?: number;
   max_articles?: number;
@@ -53,7 +63,10 @@ interface EconomicNewsResult extends ToolResult {
   };
 }
 
-export class EconomicNewsTool extends BasePythonTool<EconomicNewsParams, EconomicNewsResult> {
+export class EconomicNewsTool extends BasePythonTool<
+  EconomicNewsParams,
+  EconomicNewsResult
+> {
   static readonly Name: string = 'economic_news_tool';
   constructor(config: Config) {
     super(
@@ -66,18 +79,33 @@ export class EconomicNewsTool extends BasePythonTool<EconomicNewsParams, Economi
         properties: {
           op: {
             type: 'string',
-            enum: ['get_latest_news', 'get_category_news', 'get_sentiment_analysis', 'get_sources'],
-            description: 'Operation: get_latest_news (latest from all sources), get_category_news (filter by category), get_sentiment_analysis (with sentiment scoring), get_sources (list available sources)',
+            enum: [
+              'get_latest_news',
+              'get_category_news',
+              'get_sentiment_analysis',
+              'get_sources',
+            ],
+            description:
+              'Operation to perform. MUST be one of: get_latest_news (get latest news from all sources), get_category_news (filter by specific category), get_sentiment_analysis (include sentiment scoring), get_sources (list all available RSS sources)',
           },
           category: {
             type: 'string',
-            enum: ['general', 'markets', 'forex', 'crypto', 'central_banks', 'commodities'],
-            description: 'News category filter: general (broad financial), markets (stocks/trading), forex (currencies), crypto (digital assets), central_banks (monetary policy), commodities (oil/gold/etc)',
+            enum: [
+              'general',
+              'markets',
+              'forex',
+              'crypto',
+              'central_banks',
+              'commodities',
+            ],
+            description:
+              'News category filter: general (broad financial), markets (stocks/trading), forex (currencies), crypto (digital assets), central_banks (monetary policy), commodities (oil/gold/etc)',
           },
           sources: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Specific RSS sources to use (if not specified, uses category-appropriate sources)',
+            description:
+              'Specific RSS sources to use (if not specified, uses category-appropriate sources)',
           },
           hours_back: {
             type: 'number',
@@ -104,21 +132,25 @@ export class EconomicNewsTool extends BasePythonTool<EconomicNewsParams, Economi
           countries: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Filter by countries/regions (e.g., ["japan", "usa", "europe"])',
+            description:
+              'Filter by countries/regions (e.g., ["japan", "usa", "europe"])',
           },
           search_mode: {
             type: 'string',
             enum: ['simple', 'boolean', 'phrase'],
-            description: 'Search mode: simple (any keyword), boolean (AND/OR logic), phrase (exact phrase)',
+            description:
+              'Search mode: simple (any keyword), boolean (AND/OR logic), phrase (exact phrase)',
           },
           extract_full_content: {
             type: 'boolean',
-            description: 'Extract full article content from URL (slower but more comprehensive)',
+            description:
+              'Extract full article content from URL (slower but more comprehensive)',
           },
           sort_by: {
             type: 'string',
             enum: ['date', 'relevance'],
-            description: 'Sort results by: date (newest first) or relevance (best match first)',
+            description:
+              'Sort results by: date (newest first) or relevance (best match first)',
           },
         },
         required: ['op'],
@@ -129,13 +161,27 @@ export class EconomicNewsTool extends BasePythonTool<EconomicNewsParams, Economi
     );
   }
 
-  protected override requiresConfirmation(_params: EconomicNewsParams): boolean {
+  protected override requiresConfirmation(
+    _params: EconomicNewsParams,
+  ): boolean {
     // Economic news tool only reads news data, no confirmation needed
     return false;
   }
 
   protected generatePythonCode(params: EconomicNewsParams): string {
-    const { op, category, sources, hours_back, max_articles, sentiment_filter, keywords, countries, search_mode, extract_full_content, sort_by } = params;
+    const {
+      op,
+      category,
+      sources,
+      hours_back,
+      max_articles,
+      sentiment_filter,
+      keywords,
+      countries,
+      search_mode,
+      extract_full_content,
+      sort_by,
+    } = params;
 
     const categoryValue = category || 'general';
     const sourcesStr = sources ? JSON.stringify(sources) : '[]';
@@ -842,7 +888,10 @@ except Exception as e:
 `;
   }
 
-  protected parseResult(pythonOutput: string, params: EconomicNewsParams): EconomicNewsResult {
+  protected parseResult(
+    pythonOutput: string,
+    params: EconomicNewsParams,
+  ): EconomicNewsResult {
     try {
       // Extract result from Python output
       const startMarker = 'ECONOMIC_NEWS_RESULT_START';
@@ -853,22 +902,22 @@ except Exception as e:
 
       if (startIndex === -1 || endIndex === -1) {
         return {
-          llmContent: 'Economic News Tool: Failed to parse result from Python output',
-          returnDisplay: 'Failed to parse result from Python output'
+          llmContent:
+            'Economic News Tool: Failed to parse result from Python output',
+          returnDisplay: 'Failed to parse result from Python output',
         };
       }
 
-      const resultJson = pythonOutput.substring(
-        startIndex + startMarker.length,
-        endIndex
-      ).trim();
+      const resultJson = pythonOutput
+        .substring(startIndex + startMarker.length, endIndex)
+        .trim();
 
       const result = JSON.parse(resultJson);
 
       if (result.error) {
         return {
           llmContent: `Economic News Tool Error: ${result.error}`,
-          returnDisplay: `Error: ${result.error}`
+          returnDisplay: `Error: ${result.error}`,
         };
       }
 
@@ -893,9 +942,9 @@ except Exception as e:
         const total = positive + negative + neutral;
         if (total > 0) {
           content += `**Sentiment Analysis**:\n`;
-          content += `- Positive: ${positive} (${Math.round((positive/total)*100)}%)\n`;
-          content += `- Negative: ${negative} (${Math.round((negative/total)*100)}%)\n`;
-          content += `- Neutral: ${neutral} (${Math.round((neutral/total)*100)}%)\n\n`;
+          content += `- Positive: ${positive} (${Math.round((positive / total) * 100)}%)\n`;
+          content += `- Negative: ${negative} (${Math.round((negative / total) * 100)}%)\n`;
+          content += `- Neutral: ${neutral} (${Math.round((neutral / total) * 100)}%)\n\n`;
         }
       }
 
@@ -911,16 +960,21 @@ except Exception as e:
         if (result.categories) {
           content += `### Available Categories\n${result.categories.join(', ')}\n\n`;
         }
-
       } else if (result.articles && result.articles.length > 0) {
         content += '### Recent News Articles\n\n';
 
         // Show top 10 articles in detail
         const topArticles = result.articles.slice(0, 10);
         for (const article of topArticles) {
-          const publishedDate = new Date(article.published_date).toLocaleString();
-          const sentimentEmoji = article.sentiment?.label === 'positive' ? '📈' :
-                                article.sentiment?.label === 'negative' ? '📉' : '⚪';
+          const publishedDate = new Date(
+            article.published_date,
+          ).toLocaleString();
+          const sentimentEmoji =
+            article.sentiment?.label === 'positive'
+              ? '📈'
+              : article.sentiment?.label === 'negative'
+                ? '📉'
+                : '⚪';
 
           content += `#### ${sentimentEmoji} ${article.title}\n`;
           content += `**Source**: ${article.source} | **Published**: ${publishedDate}\n`;
@@ -945,7 +999,8 @@ except Exception as e:
         }
       }
 
-      content += '*Data aggregated from multiple verified RSS sources with sentiment analysis*\n';
+      content +=
+        '*Data aggregated from multiple verified RSS sources with sentiment analysis*\n';
 
       return {
         llmContent: content,
@@ -955,14 +1010,13 @@ except Exception as e:
           sources_used: result.sources_used || [],
           category_filter: result.category_filter,
           summary: result.summary,
-          sentiment_stats: result.sentiment_stats
-        }
+          sentiment_stats: result.sentiment_stats,
+        },
       };
-
     } catch (error) {
       return {
         llmContent: `Economic News Tool: Failed to parse result - ${error}`,
-        returnDisplay: `Failed to parse result: ${error}`
+        returnDisplay: `Failed to parse result: ${error}`,
       };
     }
   }

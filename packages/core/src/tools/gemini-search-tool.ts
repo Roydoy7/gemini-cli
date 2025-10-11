@@ -73,21 +73,8 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
 
   async execute(signal: AbortSignal): Promise<GeminiSearchToolResult> {
     try {
-      // Check if current provider is Gemini
-      const { ModelProviderFactory } = await import('../providers/ModelProviderFactory.js');
-      const { ModelProviderType } = await import('../providers/types.js');
-
-      const currentProviderType = ModelProviderFactory.getCurrentProviderType();
-      if (currentProviderType !== ModelProviderType.GEMINI) {
-        return {
-          llmContent: `❌ **Provider Error:** Gemini search tool is only available when using Gemini provider. Current provider: ${currentProviderType || 'unknown'}. Please switch to Gemini provider first.`,
-          returnDisplay: 'Switch to Gemini provider required.',
-          error: {
-            message: `Gemini search requires Gemini provider, but current provider is: ${currentProviderType || 'unknown'}`,
-            type: ToolErrorType.TOOL_NOT_AVAILABLE,
-          },
-        };
-      }
+      // Note: We now only use Gemini in GeminiChatManager, so no provider check needed
+      // The tool is always available since we're always using Gemini
 
       // Get existing Gemini authentication credentials
       const { AuthManager } = await import('../auth/AuthManager.js');
@@ -110,7 +97,6 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
       // Perform search using the authenticated credentials
       const searchResult = await this.performGeminiSearch(credentials, signal);
       return searchResult;
-
     } catch (error: unknown) {
       const errorMessage = `Error during Gemini web search for query "${
         this.params.query
@@ -133,15 +119,17 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
    */
   private async performGeminiSearch(
     credentials: { accessToken?: string; apiKey?: string },
-    signal: AbortSignal
+    signal: AbortSignal,
   ): Promise<GeminiSearchToolResult> {
-
     let response: GenerateContentResponse;
 
     try {
       if (credentials.accessToken) {
         // OAuth: Use CodeAssistServer approach (same as GeminiProvider)
-        response = await this.performOAuthSearch(credentials.accessToken, signal);
+        response = await this.performOAuthSearch(
+          credentials.accessToken,
+          signal,
+        );
       } else if (credentials.apiKey) {
         // API Key: Use GoogleGenAI SDK (simpler approach)
         response = await this.performApiKeySearch(credentials.apiKey, signal);
@@ -160,12 +148,18 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
   /**
    * Perform search using OAuth (CodeAssistServer approach)
    */
-  private async performOAuthSearch(accessToken: string, signal: AbortSignal): Promise<GenerateContentResponse> {
+  private async performOAuthSearch(
+    accessToken: string,
+    signal: AbortSignal,
+  ): Promise<GenerateContentResponse> {
     // For OAuth, we need to use the CodeAssistServer approach similar to GeminiProvider
     // First, get the OAuth client
     const { getOauthClient } = await import('../code_assist/oauth2.js');
     const { AuthType } = await import('../core/contentGenerator.js');
-    const oauthClient = await getOauthClient(AuthType.LOGIN_WITH_GOOGLE, this.config);
+    const oauthClient = await getOauthClient(
+      AuthType.LOGIN_WITH_GOOGLE,
+      this.config,
+    );
 
     // Setup user data
     const { setupUser } = await import('../code_assist/setup.js');
@@ -178,7 +172,7 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
       userData.projectId,
       { headers: { 'User-Agent': 'GeminiSearchTool/1.0.0' } },
       `search_${Date.now()}`,
-      userData.userTier
+      userData.userTier,
     );
 
     // Make the search request using user's selected model
@@ -188,24 +182,30 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
       contents: [
         {
           role: 'user',
-          parts: [{ text: this.params.query }]
-        }
+          parts: [{ text: this.params.query }],
+        },
       ],
       config: {
         tools: [{ googleSearch: {} }],
         temperature: 0.7,
         maxOutputTokens: 4096,
-        abortSignal: signal
-      }
+        abortSignal: signal,
+      },
     };
 
-    return await codeAssistServer.generateContent(request, `search_${Date.now()}`);
+    return await codeAssistServer.generateContent(
+      request,
+      `search_${Date.now()}`,
+    );
   }
 
   /**
    * Perform search using API Key (GoogleGenAI SDK approach)
    */
-  private async performApiKeySearch(apiKey: string, signal: AbortSignal): Promise<GenerateContentResponse> {
+  private async performApiKeySearch(
+    apiKey: string,
+    signal: AbortSignal,
+  ): Promise<GenerateContentResponse> {
     // Use GoogleGenAI SDK for API key authentication with user's selected model (same as GeminiProvider)
     const selectedModel = this.config.getModel();
     const googleAI = new GoogleGenAI({ apiKey });
@@ -216,15 +216,15 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
       contents: [
         {
           role: 'user',
-          parts: [{ text: this.params.query }]
-        }
+          parts: [{ text: this.params.query }],
+        },
       ],
       config: {
         tools: [{ googleSearch: {} }],
         temperature: 0.7,
         maxOutputTokens: 4096,
-        abortSignal: signal
-      }
+        abortSignal: signal,
+      },
     };
 
     return await googleAI.models.generateContent(request);
@@ -233,7 +233,9 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
   /**
    * Process the search response and extract results
    */
-  private processSearchResponse(response: GenerateContentResponse): GeminiSearchToolResult {
+  private processSearchResponse(
+    response: GenerateContentResponse,
+  ): GeminiSearchToolResult {
     // Extract response text
     let responseText = '';
     const candidate = response.candidates?.[0];
@@ -248,8 +250,12 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
 
     // Extract grounding metadata
     const groundingMetadata = candidate?.groundingMetadata;
-    const sources = groundingMetadata?.groundingChunks as GroundingChunkItem[] | undefined;
-    const groundingSupports = groundingMetadata?.groundingSupports as GroundingSupportItem[] | undefined;
+    const sources = groundingMetadata?.groundingChunks as
+      | GroundingChunkItem[]
+      | undefined;
+    const groundingSupports = groundingMetadata?.groundingSupports as
+      | GroundingSupportItem[]
+      | undefined;
 
     if (!responseText || !responseText.trim()) {
       return {
@@ -277,12 +283,16 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
 
       // Add inline citations based on grounding supports
       if (groundingSupports && groundingSupports.length > 0) {
-        modifiedResponseText = this.addInlineCitations(responseText, groundingSupports);
+        modifiedResponseText = this.addInlineCitations(
+          responseText,
+          groundingSupports,
+        );
       }
 
       // Add sources list at the end with better formatting
       if (sourceListFormatted.length > 0) {
-        modifiedResponseText += '\n\n---\n\n**📚 Sources:**\n' + sourceListFormatted.join('\n\n');
+        modifiedResponseText +=
+          '\n\n---\n\n**📚 Sources:**\n' + sourceListFormatted.join('\n\n');
       }
     }
 
@@ -298,7 +308,10 @@ class GeminiSearchToolInvocation extends BaseToolInvocation<
   /**
    * Add inline citations to text based on grounding supports
    */
-  private addInlineCitations(text: string, groundingSupports: GroundingSupportItem[]): string {
+  private addInlineCitations(
+    text: string,
+    groundingSupports: GroundingSupportItem[],
+  ): string {
     const insertions: Array<{ index: number; marker: string }> = [];
 
     groundingSupports.forEach((support: GroundingSupportItem) => {
@@ -364,11 +377,13 @@ export class GeminiSearchTool extends BaseDeclarativeTool<
         properties: {
           query: {
             type: 'string',
-            description: 'The search query to find information on the web. Be specific and clear for better results.',
+            description:
+              'The search query to find information on the web. Be specific and clear for better results.',
           },
           maxResults: {
             type: 'number',
-            description: 'Maximum number of search results to include in the response (optional, default: all)',
+            description:
+              'Maximum number of search results to include in the response (optional, default: all)',
             minimum: 1,
             maximum: 20,
           },
@@ -384,7 +399,9 @@ export class GeminiSearchTool extends BaseDeclarativeTool<
   async isAvailable(): Promise<boolean> {
     try {
       // Check if current provider is Gemini
-      const { ModelProviderFactory } = await import('../providers/ModelProviderFactory.js');
+      const { ModelProviderFactory } = await import(
+        '../providers/ModelProviderFactory.js'
+      );
       const { ModelProviderType } = await import('../providers/types.js');
 
       const currentProviderType = ModelProviderFactory.getCurrentProviderType();
@@ -414,7 +431,10 @@ export class GeminiSearchTool extends BaseDeclarativeTool<
       return "The 'query' parameter cannot be empty.";
     }
 
-    if (params.maxResults !== undefined && (params.maxResults < 1 || params.maxResults > 20)) {
+    if (
+      params.maxResults !== undefined &&
+      (params.maxResults < 1 || params.maxResults > 20)
+    ) {
       return "The 'maxResults' parameter must be between 1 and 20.";
     }
 
