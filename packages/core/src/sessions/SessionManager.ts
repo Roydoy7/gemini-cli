@@ -226,6 +226,7 @@ export class SessionManager {
 
   /**
    * Switch to a different session
+   * Note: Does NOT update lastUpdated timestamp - only actual messages update the timestamp
    */
   switchSession(sessionId: string): void {
     this.ensureInitialized();
@@ -233,14 +234,7 @@ export class SessionManager {
       `[SessionManager] Switching from session ${this.currentSessionId} to ${sessionId}`,
     );
 
-    // Update current session timestamp if exists
-    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
-      const currentSession = this.sessions.get(this.currentSessionId)!;
-      currentSession.lastUpdated = new Date();
-      this.saveSession(currentSession);
-    }
-
-    // Switch to new session
+    // Switch to new session (no timestamp update)
     this.currentSessionId = sessionId;
 
     // Create session if it doesn't exist
@@ -249,9 +243,6 @@ export class SessionManager {
       this.createSession(sessionId);
       targetSession = this.sessions.get(sessionId)!;
     }
-
-    targetSession.lastUpdated = new Date();
-    this.saveSession(targetSession);
 
     const sessionHistory = targetSession.conversationHistory;
     console.log(
