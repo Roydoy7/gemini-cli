@@ -336,16 +336,16 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
           !isExecuting && 'border',
           isNested ? 'border-border/30' : 'border-border/50',
           toolResponse?.success === false
-            ? 'border-red-200 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10'
+            ? 'border-red-300 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10'
             : toolResponse
-              ? 'border-green-200 dark:border-green-800/50 bg-green-50/30 dark:bg-green-950/10'
-              : 'bg-blue-50/30 dark:bg-blue-950/10',
+              ? 'border-green-300 dark:border-green-800/50'
+              : 'border-blue-300 dark:border-blue-800/50',
         )}
       >
         {/* Tool execution header */}
         <button
           onClick={handleToggle}
-          className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-muted/50 transition-colors"
+          className="w-full px-3 py-2.5 flex items-center justify-between bg-green-50 hover:bg-green-100 dark:bg-background/30 dark:hover:bg-muted/50 transition-colors"
         >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {isExpanded ? (
@@ -382,7 +382,7 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
 
         {/* Expanded content */}
         {isExpanded && (
-          <div className="border-t border-border/30 bg-background/30">
+          <div className="border-t border-border/30 bg-green-50 dark:bg-background/30">
             {/* Tool call parameters */}
             {hasParams && (
               <div className="px-3 py-2 space-y-2">
@@ -397,18 +397,20 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                       </div>
                       <div className="flex-1 min-w-0">
                         {typeof value === 'object' && value !== null ? (
-                          <pre className="text-xs bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap font-mono overflow-x-auto">
+                          <pre className="text-xs bg-green-100/50 dark:bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap font-mono overflow-x-auto border border-green-200 dark:border-border/50">
                             {JSON.stringify(value, null, 2)}
                           </pre>
                         ) : key === 'code' ||
                           key === 'script' ||
                           key === 'query' ? (
-                          <CodeHighlight
-                            code={String(value)}
-                            language="python"
-                          />
+                          <div className="bg-green-100/50 dark:bg-muted/50 rounded border border-green-200 dark:border-border/50">
+                            <CodeHighlight
+                              code={String(value)}
+                              language="python"
+                            />
+                          </div>
                         ) : (
-                          <pre className="text-xs text-foreground/90 font-mono bg-muted/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto">
+                          <pre className="text-xs text-foreground/90 font-mono bg-green-100/50 dark:bg-muted/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto border border-green-200 dark:border-border/50">
                             {String(value)}
                           </pre>
                         )}

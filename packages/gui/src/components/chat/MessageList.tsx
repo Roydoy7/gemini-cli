@@ -720,7 +720,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                       {/* Then show tool execution group */}
                       <div className="flex gap-3 max-w-4xl">
                         {/* LLM Avatar */}
-                        <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-secondary">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-avatar text-avatar-foreground border border-border">
                           <Brain size={20} />
                         </div>
 
@@ -823,34 +823,27 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
 MessageList.displayName = 'MessageList';
 
 // Component to display thinking sections in a collapsible format
-const ThinkingSection: React.FC<{ thinkingSections: string[] }> = ({
-  thinkingSections,
-}) => {
+const ThinkingSection: React.FC<{
+  thinkingSections: string[];
+  timestamp?: Date;
+}> = ({ thinkingSections, timestamp }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (thinkingSections.length === 0) return null;
 
   return (
     <div className="mb-3 mt-2">
-      <div className="bg-gradient-to-r from-purple-50/80 to-blue-50/80 dark:from-purple-950/30 dark:to-blue-950/30 border border-purple-200/50 dark:border-purple-700/30 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-700/30 rounded-lg overflow-hidden">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-white/50 dark:hover:bg-black/20 transition-all duration-200 group"
+          className="w-full px-3 py-2.5 flex items-center justify-between bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 dark:hover:bg-purple-900/50 transition-colors"
         >
-          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/50 group-hover:bg-purple-200 dark:group-hover:bg-purple-800/50 transition-colors">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             {isExpanded ? (
-              <ChevronDown
-                size={14}
-                className="text-purple-600 dark:text-purple-400"
-              />
+              <ChevronDown size={14} />
             ) : (
-              <ChevronRight
-                size={14}
-                className="text-purple-600 dark:text-purple-400"
-              />
+              <ChevronRight size={14} />
             )}
-          </div>
-          <div className="flex items-center gap-2">
             <svg
               className="w-4 h-4 text-purple-600 dark:text-purple-400"
               fill="none"
@@ -864,21 +857,32 @@ const ThinkingSection: React.FC<{ thinkingSections: string[] }> = ({
                 d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
               />
             </svg>
-            <span className="font-semibold text-sm text-purple-900 dark:text-purple-100">
+            <span className="font-medium text-sm truncate">
               Thinking Process
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-medium">
-              {thinkingSections.length} step
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold">
+              {thinkingSections.length} Step
               {thinkingSections.length > 1 ? 's' : ''}
             </span>
           </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {timestamp && (
+              <time
+                dateTime={timestamp.toISOString()}
+                title={format(timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                className="text-xs text-muted-foreground"
+              >
+                {format(timestamp, 'HH:mm')}
+              </time>
+            )}
+          </div>
         </button>
         {isExpanded && (
-          <div className="border-t border-purple-200/50 dark:border-purple-700/30 bg-white/50 dark:bg-black/20">
+          <div className="border-t border-border/30 bg-purple-50 dark:bg-purple-950/30">
             {thinkingSections.map((thinking, index) => (
               <div
                 key={index}
-                className="px-4 py-3 border-b border-purple-100/50 dark:border-purple-800/30 last:border-b-0 hover:bg-white/70 dark:hover:bg-black/30 transition-colors"
+                className="px-4 py-3 border-b border-purple-100/50 dark:border-purple-800/30 last:border-b-0"
               >
                 <div className="flex items-center gap-2 mb-2">
                   <div className="flex items-center justify-center w-5 h-5 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 text-xs font-bold">
@@ -979,9 +983,9 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall; timestamp?: Date }> = ({
 
   return (
     <div className="mb-3 last:mb-0">
-      <div className="bg-muted/20 rounded-lg border border-blue-200/50 dark:border-blue-700/30 overflow-hidden">
+      <div className="bg-green-50 dark:bg-muted/20 rounded-lg border border-blue-300 dark:border-blue-700/30 overflow-hidden">
         {/* Tool call header with tool name and operation */}
-        <div className="flex items-center justify-between p-3 bg-muted/30 border-b border-border/30">
+        <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-muted/30 border-b border-border/30">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm font-bold text-green-600 dark:text-green-400">
               <Hammer size={14} />
@@ -1034,7 +1038,7 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall; timestamp?: Date }> = ({
                       </div>
                       <div className="flex-1 min-w-0">
                         {typeof value === 'object' && value !== null ? (
-                          <pre className="text-xs bg-background/50 rounded px-3 py-2 whitespace-pre-wrap font-mono text-foreground/80 overflow-x-auto border">
+                          <pre className="text-xs bg-green-50 dark:bg-background/50 rounded px-3 py-2 whitespace-pre-wrap font-mono text-foreground/80 overflow-x-auto border">
                             {JSON.stringify(value, null, 2)}
                           </pre>
                         ) : key === 'code' ||
@@ -1045,7 +1049,7 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall; timestamp?: Date }> = ({
                             language="python"
                           />
                         ) : (
-                          <pre className="text-xs text-foreground/90 font-mono bg-background/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto">
+                          <pre className="text-xs text-foreground/90 font-mono bg-green-50 dark:bg-background/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto">
                             {String(value)}
                           </pre>
                         )}
@@ -1148,14 +1152,14 @@ const ToolResponseDisplay: React.FC<{
       <div className="mb-3 last:mb-0">
         <div className="flex gap-3 max-w-4xl ml-auto flex-row-reverse">
           {/* Avatar */}
-          <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-secondary">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-avatar text-avatar-foreground border border-border">
             <User size={20} />
           </div>
 
           {/* Tool response content */}
-          <div className="bg-muted/20 rounded-lg border border-green-200/50 dark:border-green-700/30 overflow-hidden max-w-3xl">
+          <div className="bg-muted/20 rounded-lg border border-green-300 dark:border-green-700/30 overflow-hidden max-w-3xl">
             {/* Tool response header - similar to tool call design */}
-            <div className="flex items-center justify-between p-3 bg-muted/30 border-b border-border/30">
+            <div className="flex items-center justify-between p-3 bg-white dark:bg-muted/30 border-b border-border/30">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 text-sm font-bold text-green-600 dark:text-green-400">
                   <Hammer size={14} />
@@ -1328,14 +1332,14 @@ const ToolResponseDisplay: React.FC<{
   return (
     <div className="flex gap-3 max-w-4xl ml-auto flex-row-reverse">
       {/* Avatar */}
-      <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-secondary">
+      <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-avatar text-avatar-foreground border border-border">
         <User size={20} />
       </div>
 
       {/* Tool response content */}
-      <div className="bg-muted/20 rounded-lg border border-green-200/50 dark:border-green-700/30 overflow-hidden max-w-3xl">
+      <div className="bg-muted/20 rounded-lg border border-green-300 dark:border-green-700/30 overflow-hidden max-w-3xl">
         {/* Enhanced tool response header */}
-        <div className="flex items-center justify-between p-3 bg-muted/30 border-b border-border/30">
+        <div className="flex items-center justify-between p-3 bg-white dark:bg-muted/30 border-b border-border/30">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm font-bold text-green-600 dark:text-green-400">
               <Hammer size={14} />
@@ -1604,7 +1608,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   if (isSystem) {
     return (
       <div className="flex justify-center">
-        <div className="bg-muted/50 rounded-lg px-3 py-2 text-sm text-muted-foreground max-w-2xl border border-yellow-200/50 dark:border-yellow-700/30">
+        <div className="bg-muted/50 rounded-lg px-3 py-2 text-sm text-muted-foreground max-w-2xl border border-yellow-300 dark:border-yellow-700/30">
           <MarkdownRenderer content={message.content} className="" />
         </div>
       </div>
@@ -1633,7 +1637,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     return (
       <div className="flex gap-3 max-w-4xl">
         {/* Avatar */}
-        <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-secondary">
+        <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-secondary border border-border">
           <Brain size={20} />
         </div>
 
@@ -1641,12 +1645,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
         <div className="flex-1 space-y-3">
           {/* Thinking process - displayed independently, full width */}
           {thinkingSections.length > 0 && (
-            <ThinkingSection thinkingSections={thinkingSections} />
+            <ThinkingSection
+              thinkingSections={thinkingSections}
+              timestamp={message.timestamp}
+            />
           )}
 
           {/* Display text content if present */}
           {contentWithoutSnapshot && (
-            <Card className="bg-muted/50 border border-green-200/50 dark:border-green-700/30">
+            <Card className="bg-card border border-blue-300 dark:border-blue-700/30">
               <CardContent className="px-4 py-0">
                 {stateSnapshot && (
                   <StateSnapshotDisplay stateSnapshot={stateSnapshot} />
@@ -1682,7 +1689,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       {/* Avatar */}
       <div
         className={cn(
-          'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-secondary',
+          'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center',
+          'bg-muted dark:bg-secondary text-foreground border border-border',
         )}
       >
         {isUser ? <User size={20} /> : <Brain size={20} />}
@@ -1697,7 +1705,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           (() => {
             const { thinkingSections } = parseThinkingContent(message.content);
             if (thinkingSections.length > 0) {
-              return <ThinkingSection thinkingSections={thinkingSections} />;
+              return (
+                <ThinkingSection
+                  thinkingSections={thinkingSections}
+                  timestamp={message.timestamp}
+                />
+              );
             }
             return null;
           })()}
@@ -1742,15 +1755,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             >
               <Card
                 className={cn(
-                  'inline-block text-left max-w-full bg-muted/50',
+                  'inline-block text-left max-w-full bg-card',
                   'border-0',
                   !isStreaming && 'border',
                   !isStreaming && isUser
-                    ? 'border-blue-200/50 dark:border-blue-700/30'
+                    ? 'border-blue-300 dark:border-blue-700/30'
                     : !isStreaming && message.role === 'system'
-                      ? 'border-yellow-200/50 dark:border-yellow-700/30'
+                      ? 'border-yellow-300 dark:border-yellow-700/30'
                       : !isStreaming
-                        ? 'border-green-200/50 dark:border-green-700/30'
+                        ? 'border-blue-300 dark:border-blue-700/30'
                         : '',
                 )}
               >
