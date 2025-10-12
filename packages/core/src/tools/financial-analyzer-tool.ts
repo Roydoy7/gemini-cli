@@ -6,12 +6,30 @@
 
 import type { Config } from '../config/config.js';
 import type { ToolResult } from './tools.js';
-import type { VisualizationData, ToolResponseData } from '../providers/types.js';
+import type {
+  VisualizationData,
+  ToolResponseData,
+} from '../core/message-types.js';
 import { BasePythonTool } from './base-python-tool.js';
 
 export interface FinancialAnalyzerParams {
-  op: 'get_quote' | 'get_historical' | 'search_symbols' | 'screen_stocks' | 'get_technical_indicators' | 'get_n225' | 'get_sp500' | 'get_nasdaq' | 'get_usdjpy'
-    | 'rolling_stats' | 'correlation_matrix' | 'regression_analysis' | 'var_analysis' | 'portfolio_optimization' | 'garch_model' | 'sharpe_ratio';
+  op:
+    | 'get_quote'
+    | 'get_historical'
+    | 'search_symbols'
+    | 'screen_stocks'
+    | 'get_technical_indicators'
+    | 'get_n225'
+    | 'get_sp500'
+    | 'get_nasdaq'
+    | 'get_usdjpy'
+    | 'rolling_stats'
+    | 'correlation_matrix'
+    | 'regression_analysis'
+    | 'var_analysis'
+    | 'portfolio_optimization'
+    | 'garch_model'
+    | 'sharpe_ratio';
   symbols?: string[];
   data_source?: 'auto' | 'tvscreener' | 'yfinance';
   markets?: string[];
@@ -26,19 +44,19 @@ export interface FinancialAnalyzerParams {
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
   limit?: number;
-  index_types?: string[];  // For get_indices operation
+  index_types?: string[]; // For get_indices operation
 
   // === Financial Analysis Parameters ===
   // Rolling statistics
-  window?: number;  // Rolling window size (e.g., 30, 60)
+  window?: number; // Rolling window size (e.g., 30, 60)
   stat_type?: 'mean' | 'std' | 'var' | 'corr' | 'beta';
 
   // Regression analysis
-  benchmark?: string;  // Benchmark symbol for regression (e.g., 'SPY', '^GSPC')
-  factors?: string[];  // Multi-factor regression
+  benchmark?: string; // Benchmark symbol for regression (e.g., 'SPY', '^GSPC')
+  factors?: string[]; // Multi-factor regression
 
   // VaR analysis
-  confidence_level?: number;  // 0.95, 0.99
+  confidence_level?: number; // 0.95, 0.99
   var_method?: 'historical' | 'parametric' | 'monte_carlo';
 
   // Portfolio optimization
@@ -48,8 +66,8 @@ export interface FinancialAnalyzerParams {
 
   // GARCH model
   forecast_periods?: number;
-  garch_p?: number;  // GARCH(p,q) p parameter
-  garch_q?: number;  // GARCH(p,q) q parameter
+  garch_p?: number; // GARCH(p,q) p parameter
+  garch_q?: number; // GARCH(p,q) q parameter
 }
 
 interface QuoteData {
@@ -172,7 +190,10 @@ interface FinancialAnalyzerResult extends ToolResult {
   structuredData?: ToolResponseData;
 }
 
-export class FinancialAnalyzer extends BasePythonTool<FinancialAnalyzerParams, FinancialAnalyzerResult> {
+export class FinancialAnalyzer extends BasePythonTool<
+  FinancialAnalyzerParams,
+  FinancialAnalyzerResult
+> {
   static readonly Name: string = 'financial_analyzer';
   constructor(config: Config) {
     super(
@@ -212,17 +233,39 @@ export class FinancialAnalyzer extends BasePythonTool<FinancialAnalyzerParams, F
 - Always verify symbols with search_symbols if unsure
 - Default period is 1y for analysis operations
       `,
-      ['tvscreener', 'pandas', 'numpy', 'yfinance', 'ta', 'selenium', 'scipy', 'statsmodels', 'arch'],
+      [
+        'tvscreener',
+        'pandas',
+        'numpy',
+        'yfinance',
+        'ta',
+        'selenium',
+        'scipy',
+        'statsmodels',
+        'arch',
+      ],
       {
         type: 'object',
         properties: {
           op: {
             type: 'string',
             enum: [
-              'get_quote', 'get_historical', 'search_symbols', 'screen_stocks', 'get_technical_indicators',
-              'get_n225', 'get_sp500', 'get_nasdaq', 'get_usdjpy',
-              'rolling_stats', 'correlation_matrix', 'regression_analysis', 'var_analysis',
-              'portfolio_optimization', 'garch_model', 'sharpe_ratio'
+              'get_quote',
+              'get_historical',
+              'search_symbols',
+              'screen_stocks',
+              'get_technical_indicators',
+              'get_n225',
+              'get_sp500',
+              'get_nasdaq',
+              'get_usdjpy',
+              'rolling_stats',
+              'correlation_matrix',
+              'regression_analysis',
+              'var_analysis',
+              'portfolio_optimization',
+              'garch_model',
+              'sharpe_ratio',
             ],
             description: `Operation type:
 DATA: get_quote, get_historical, search_symbols, screen_stocks, get_technical_indicators, get_n225, get_sp500, get_nasdaq, get_usdjpy
@@ -231,17 +274,20 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
           symbols: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Stock symbols to query (e.g., ["AAPL", "GOOGL", "TSLA", "NASDAQ:MSFT"])',
+            description:
+              'Stock symbols to query (e.g., ["AAPL", "GOOGL", "TSLA", "NASDAQ:MSFT"])',
           },
           data_source: {
             type: 'string',
             enum: ['auto', 'tvscreener', 'yfinance'],
-            description: 'Preferred data source: auto (try both), tvscreener (TradingView data), yfinance (Yahoo Finance). Default: auto',
+            description:
+              'Preferred data source: auto (try both), tvscreener (TradingView data), yfinance (Yahoo Finance). Default: auto',
           },
           markets: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Market filters: america, japan, europe, korea, china, india, crypto, forex',
+            description:
+              'Market filters: america, japan, europe, korea, china, india, crypto, forex',
           },
           interval: {
             type: 'string',
@@ -250,7 +296,8 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
           },
           period: {
             type: 'string',
-            description: 'Period for historical data (1d, 7d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, max)',
+            description:
+              'Period for historical data (1d, 7d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, max)',
           },
           timeframe: {
             type: 'number',
@@ -262,20 +309,24 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
           },
           include_indicators: {
             type: 'boolean',
-            description: 'Include technical indicators in results (default: false)',
+            description:
+              'Include technical indicators in results (default: false)',
           },
           indicator_types: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Technical indicators: SMA, EMA, RSI, MACD, Bollinger, Stochastic, ADX, ATR, VWAP, OBV, Williams_R, CCI, ROC',
+            description:
+              'Technical indicators: SMA, EMA, RSI, MACD, Bollinger, Stochastic, ADX, ATR, VWAP, OBV, Williams_R, CCI, ROC',
           },
           screener_filters: {
             type: 'object',
-            description: 'Advanced screener filters (market_cap_min, pe_ratio_max, volume_min, sector, etc.)',
+            description:
+              'Advanced screener filters (market_cap_min, pe_ratio_max, volume_min, sector, etc.)',
           },
           sort_by: {
             type: 'string',
-            description: 'Field to sort by (Price, Change %, Volume, Market Cap, PE Ratio, etc.)',
+            description:
+              'Field to sort by (Price, Change %, Volume, Market Cap, PE Ratio, etc.)',
           },
           sort_order: {
             type: 'string',
@@ -288,14 +339,18 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
           },
           index_types: {
             type: 'array',
-            items: { type: 'string', enum: ['SP500', 'NASDAQ', 'NIKKEI225', 'DJI', 'FTSE', 'DAX'] },
+            items: {
+              type: 'string',
+              enum: ['SP500', 'NASDAQ', 'NIKKEI225', 'DJI', 'FTSE', 'DAX'],
+            },
             description: 'Specific indices to retrieve',
           },
 
           // === Financial Analysis Parameters ===
           window: {
             type: 'number',
-            description: 'Rolling window size for rolling_stats (e.g., 30, 60 days)',
+            description:
+              'Rolling window size for rolling_stats (e.g., 30, 60 days)',
           },
           stat_type: {
             type: 'string',
@@ -304,7 +359,8 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
           },
           benchmark: {
             type: 'string',
-            description: 'Benchmark symbol for regression analysis (e.g., SPY, ^GSPC)',
+            description:
+              'Benchmark symbol for regression analysis (e.g., SPY, ^GSPC)',
           },
           factors: {
             type: 'array',
@@ -322,19 +378,23 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
           },
           target_return: {
             type: 'number',
-            description: 'Target return for portfolio optimization (annual return)',
+            description:
+              'Target return for portfolio optimization (annual return)',
           },
           risk_free_rate: {
             type: 'number',
-            description: 'Risk-free rate for Sharpe ratio and portfolio optimization (default: 0.02)',
+            description:
+              'Risk-free rate for Sharpe ratio and portfolio optimization (default: 0.02)',
           },
           constraints: {
             type: 'object',
-            description: 'Portfolio constraints (max_weight, min_weight, sector_limits, etc.)',
+            description:
+              'Portfolio constraints (max_weight, min_weight, sector_limits, etc.)',
           },
           forecast_periods: {
             type: 'number',
-            description: 'Number of periods to forecast for GARCH model (default: 5)',
+            description:
+              'Number of periods to forecast for GARCH model (default: 5)',
           },
           garch_p: {
             type: 'number',
@@ -353,7 +413,9 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
     );
   }
 
-  protected override requiresConfirmation(_params: FinancialAnalyzerParams): boolean {
+  protected override requiresConfirmation(
+    _params: FinancialAnalyzerParams,
+  ): boolean {
     // Financial analyzer only reads market data, no confirmation needed
     return false;
   }
@@ -394,11 +456,15 @@ ANALYSIS: rolling_stats, correlation_matrix, regression_analysis, var_analysis, 
     const marketsStr = markets ? JSON.stringify(markets) : '[]';
     const intervalValue = interval || '1d';
     const periodValue = period || '1mo';
-    const timeframeValue = timeframe || 60;  // Increased to 60 days for MACD calculation
+    const timeframeValue = timeframe || 60; // Increased to 60 days for MACD calculation
     const searchQueryValue = search_query || '';
     const includeIndicators = include_indicators ? 'True' : 'False';
-    const indicatorTypesStr = indicator_types ? JSON.stringify(indicator_types) : '[]';
-    const screenerFiltersStr = screener_filters ? JSON.stringify(screener_filters) : '{}';
+    const indicatorTypesStr = indicator_types
+      ? JSON.stringify(indicator_types)
+      : '[]';
+    const screenerFiltersStr = screener_filters
+      ? JSON.stringify(screener_filters)
+      : '{}';
     const sortByValue = sort_by || 'Market Capitalization';
     const sortOrderValue = sort_order === 'asc' ? 'True' : 'False';
     const limitValue = limit || 50;
@@ -2083,7 +2149,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 `;
   }
 
-  protected parseResult(pythonOutput: string, params: FinancialAnalyzerParams): FinancialAnalyzerResult {
+  protected parseResult(
+    pythonOutput: string,
+    params: FinancialAnalyzerParams,
+  ): FinancialAnalyzerResult {
     try {
       if (!pythonOutput.trim()) {
         return {
@@ -2102,13 +2171,47 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       }
 
       const data = JSON.parse(jsonMatch[0].trim());
-      const { quotes, bars, search_results, screener_results, indices, technical_indicators,
-              n225_data, sp500_data, nasdaq_data, usdjpy_data,
-              rolling_stats, correlation_matrix, alpha, beta, r_squared, p_values,
-              var: varValue, cvar, method, confidence, weights, expected_return, volatility,
-              sharpe_ratio, omega, forecast, aic, bic, annual_return, annual_volatility,
-              risk_free_rate, symbols, window, stat_type, current_volatility, note,
-              summary, metadata, error } = data;
+      const {
+        quotes,
+        bars,
+        search_results,
+        screener_results,
+        indices,
+        technical_indicators,
+        n225_data,
+        sp500_data,
+        nasdaq_data,
+        usdjpy_data,
+        rolling_stats,
+        correlation_matrix,
+        alpha,
+        beta,
+        r_squared,
+        p_values,
+        var: varValue,
+        cvar,
+        method,
+        confidence,
+        weights,
+        expected_return,
+        volatility,
+        sharpe_ratio,
+        omega,
+        forecast,
+        aic,
+        bic,
+        annual_return,
+        annual_volatility,
+        risk_free_rate,
+        symbols,
+        window,
+        stat_type,
+        current_volatility,
+        note,
+        summary,
+        metadata,
+        error,
+      } = data;
 
       if (error) {
         return {
@@ -2133,8 +2236,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       // Format real-time quotes
       if (quotes && quotes.length > 0) {
         displayContent += '### 📈 Real-time Quotes\n\n';
-        displayContent += '| Symbol | Price | Change | Change % | Volume | Market Cap | P/E | Source |\n';
-        displayContent += '|--------|-------|--------|----------|--------|------------|-----|--------|\n';
+        displayContent +=
+          '| Symbol | Price | Change | Change % | Volume | Market Cap | P/E | Source |\n';
+        displayContent +=
+          '|--------|-------|--------|----------|--------|------------|-----|--------|\n';
 
         for (const quote of quotes) {
           if (quote.error) {
@@ -2142,11 +2247,21 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
           } else {
             const changeSign = quote.change >= 0 ? '+' : '';
             const changePercentSign = quote.change_percent >= 0 ? '+' : '';
-            const price = quote.price > 0 ? `$${quote.price.toFixed(2)}` : 'N/A';
-            const change = quote.change !== undefined ? `${changeSign}${quote.change.toFixed(2)}` : 'N/A';
-            const changePercent = quote.change_percent !== undefined ? `${changePercentSign}${quote.change_percent.toFixed(2)}%` : 'N/A';
-            const volume = quote.volume > 0 ? quote.volume.toLocaleString() : 'N/A';
-            const marketCap = quote.market_cap ? `$${(quote.market_cap / 1e9).toFixed(1)}B` : 'N/A';
+            const price =
+              quote.price > 0 ? `$${quote.price.toFixed(2)}` : 'N/A';
+            const change =
+              quote.change !== undefined
+                ? `${changeSign}${quote.change.toFixed(2)}`
+                : 'N/A';
+            const changePercent =
+              quote.change_percent !== undefined
+                ? `${changePercentSign}${quote.change_percent.toFixed(2)}%`
+                : 'N/A';
+            const volume =
+              quote.volume > 0 ? quote.volume.toLocaleString() : 'N/A';
+            const marketCap = quote.market_cap
+              ? `$${(quote.market_cap / 1e9).toFixed(1)}B`
+              : 'N/A';
             const peRatio = quote.pe_ratio ? quote.pe_ratio.toFixed(1) : 'N/A';
 
             displayContent += `| **${quote.symbol}** | ${price} | ${change} | ${changePercent} | ${volume} | ${marketCap} | ${peRatio} | ${quote.source} |\n`;
@@ -2155,7 +2270,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         displayContent += '\n';
 
         // Show technical indicators if present
-        const quotesWithIndicators = quotes.filter((q: QuoteData) => q.indicators && Object.keys(q.indicators).length > 0);
+        const quotesWithIndicators = quotes.filter(
+          (q: QuoteData) =>
+            q.indicators && Object.keys(q.indicators).length > 0,
+        );
         if (quotesWithIndicators.length > 0) {
           displayContent += '#### 📊 Technical Indicators\n\n';
           for (const quote of quotesWithIndicators) {
@@ -2174,8 +2292,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       if (bars && bars.length > 0) {
         displayContent += '### 📊 Historical Data\n\n';
         displayContent += `*Showing latest 10 bars of ${bars.length} total*\n\n`;
-        displayContent += '| Symbol | DateTime | Open | High | Low | Close | Volume |\n';
-        displayContent += '|--------|----------|------|------|-----|-------|--------|\n';
+        displayContent +=
+          '| Symbol | DateTime | Open | High | Low | Close | Volume |\n';
+        displayContent +=
+          '|--------|----------|------|------|-----|-------|--------|\n';
 
         const recentBars = bars.slice(-10);
         for (const bar of recentBars) {
@@ -2189,7 +2309,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         displayContent += '\n';
 
         // Show technical indicators for historical data if present
-        const barsWithIndicators = bars.filter((b: HistoricalBar) => b.indicators && Object.keys(b.indicators).length > 0);
+        const barsWithIndicators = bars.filter(
+          (b: HistoricalBar) =>
+            b.indicators && Object.keys(b.indicators).length > 0,
+        );
         if (barsWithIndicators.length > 0) {
           displayContent += '#### 📊 Technical Indicators (Latest)\n\n';
           for (const bar of barsWithIndicators) {
@@ -2216,8 +2339,14 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
           } else {
             const changePercentSign = result.change_percent >= 0 ? '+' : '';
             const price = result.price ? `$${result.price.toFixed(2)}` : 'N/A';
-            const changePercent = result.change_percent !== undefined ? `${changePercentSign}${result.change_percent.toFixed(2)}%` : 'N/A';
-            const name = result.name.length > 30 ? result.name.slice(0, 30) + '...' : result.name;
+            const changePercent =
+              result.change_percent !== undefined
+                ? `${changePercentSign}${result.change_percent.toFixed(2)}%`
+                : 'N/A';
+            const name =
+              result.name.length > 30
+                ? result.name.slice(0, 30) + '...'
+                : result.name;
 
             displayContent += `| **${result.symbol}** | ${name} | ${price} | ${changePercent} | ${result.market} |\n`;
           }
@@ -2228,8 +2357,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       // Format screener results
       if (screener_results && screener_results.length > 0) {
         displayContent += '### 📊 Stock Screener Results\n\n';
-        displayContent += '| Symbol | Name | Price | Change % | Volume | Market Cap | P/E | Sector |\n';
-        displayContent += '|--------|------|-------|----------|--------|------------|-----|--------|\n';
+        displayContent +=
+          '| Symbol | Name | Price | Change % | Volume | Market Cap | P/E | Sector |\n';
+        displayContent +=
+          '|--------|------|-------|----------|--------|------------|-----|--------|\n';
 
         for (const result of screener_results.slice(0, 20)) {
           if (result.error) {
@@ -2237,11 +2368,23 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
           } else {
             const changePercentSign = result.change_percent >= 0 ? '+' : '';
             const price = result.price ? `$${result.price.toFixed(2)}` : 'N/A';
-            const changePercent = result.change_percent !== undefined ? `${changePercentSign}${result.change_percent.toFixed(2)}%` : 'N/A';
-            const volume = result.volume > 0 ? result.volume.toLocaleString() : 'N/A';
-            const marketCap = result.market_cap > 0 ? `$${(result.market_cap / 1e9).toFixed(1)}B` : 'N/A';
-            const peRatio = result.pe_ratio ? result.pe_ratio.toFixed(1) : 'N/A';
-            const name = result.name.length > 25 ? result.name.slice(0, 25) + '...' : result.name;
+            const changePercent =
+              result.change_percent !== undefined
+                ? `${changePercentSign}${result.change_percent.toFixed(2)}%`
+                : 'N/A';
+            const volume =
+              result.volume > 0 ? result.volume.toLocaleString() : 'N/A';
+            const marketCap =
+              result.market_cap > 0
+                ? `$${(result.market_cap / 1e9).toFixed(1)}B`
+                : 'N/A';
+            const peRatio = result.pe_ratio
+              ? result.pe_ratio.toFixed(1)
+              : 'N/A';
+            const name =
+              result.name.length > 25
+                ? result.name.slice(0, 25) + '...'
+                : result.name;
 
             displayContent += `| **${result.symbol}** | ${name} | ${price} | ${changePercent} | ${volume} | ${marketCap} | ${peRatio} | ${result.sector} |\n`;
           }
@@ -2252,8 +2395,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       // Format indices data
       if (indices && indices.length > 0) {
         displayContent += '### 📊 Major Indices\n\n';
-        displayContent += '| Index | Price | Change | Change % | Volume | Source |\n';
-        displayContent += '|-------|-------|--------|----------|--------|--------|\n';
+        displayContent +=
+          '| Index | Price | Change | Change % | Volume | Source |\n';
+        displayContent +=
+          '|-------|-------|--------|----------|--------|--------|\n';
 
         for (const index of indices) {
           if (index.error) {
@@ -2264,7 +2409,8 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
             const price = `$${index.price.toFixed(2)}`;
             const change = `${changeSign}${index.change.toFixed(2)}`;
             const changePercent = `${changePercentSign}${index.change_percent.toFixed(2)}%`;
-            const volume = index.volume > 0 ? index.volume.toLocaleString() : 'N/A';
+            const volume =
+              index.volume > 0 ? index.volume.toLocaleString() : 'N/A';
 
             displayContent += `| **${index.name}** | ${price} | ${change} | ${changePercent} | ${volume} | ${index.source} |\n`;
           }
@@ -2272,7 +2418,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         displayContent += '\n';
 
         // Show indicators for indices if present
-        const indicesWithIndicators = indices.filter((i: IndexData) => i.indicators && Object.keys(i.indicators).length > 0);
+        const indicesWithIndicators = indices.filter(
+          (i: IndexData) =>
+            i.indicators && Object.keys(i.indicators).length > 0,
+        );
         if (indicesWithIndicators.length > 0) {
           displayContent += '#### 📊 Index Technical Indicators\n\n';
           for (const index of indicesWithIndicators) {
@@ -2288,15 +2437,25 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       // Format technical indicators
       if (technical_indicators && technical_indicators.length > 0) {
         displayContent += '### 📊 Technical Analysis\n\n';
-        displayContent += '| Symbol | Indicator | Value | Signal | Timeframe |\n';
-        displayContent += '|--------|-----------|-------|--------|----------|\n';
+        displayContent +=
+          '| Symbol | Indicator | Value | Signal | Timeframe |\n';
+        displayContent +=
+          '|--------|-----------|-------|--------|----------|\n';
 
         for (const indicator of technical_indicators) {
           if (indicator.error) {
             displayContent += `| **${indicator.symbol}** | ❌ ${indicator.error} | - | - | - |\n`;
           } else {
-            const signalEmoji = indicator.signal === 'BUY' ? '🟢' : indicator.signal === 'SELL' ? '🔴' : '🟡';
-            const value = typeof indicator.value === 'number' ? indicator.value.toFixed(4) : indicator.value;
+            const signalEmoji =
+              indicator.signal === 'BUY'
+                ? '🟢'
+                : indicator.signal === 'SELL'
+                  ? '🔴'
+                  : '🟡';
+            const value =
+              typeof indicator.value === 'number'
+                ? indicator.value.toFixed(4)
+                : indicator.value;
 
             displayContent += `| **${indicator.symbol}** | ${indicator.indicator_name} | ${value} | ${signalEmoji} ${indicator.signal} | ${indicator.timeframe} |\n`;
           }
@@ -2314,7 +2473,7 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         Object.entries(rolling_stats).forEach(([symbol, values]) => {
           if (Array.isArray(values) && values.length > 0) {
             const recent = (values as number[]).slice(-5);
-            displayContent += `**${symbol}**: ${recent.map(v => v.toFixed(4)).join(', ')} (last 5 values)\n`;
+            displayContent += `**${symbol}**: ${recent.map((v) => v.toFixed(4)).join(', ')} (last 5 values)\n`;
           }
         });
         displayContent += '\n';
@@ -2325,10 +2484,11 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         displayContent += '### 📊 Correlation Matrix\n\n';
         if (symbols && Array.isArray(symbols)) {
           displayContent += '| Symbol | ' + symbols.join(' | ') + ' |\n';
-          displayContent += '|--------|' + symbols.map(() => '--------').join('|') + '|\n';
+          displayContent +=
+            '|--------|' + symbols.map(() => '--------').join('|') + '|\n';
 
           correlation_matrix.forEach((row: number[], i: number) => {
-            displayContent += `| **${symbols[i]}** | ${row.map(v => v.toFixed(3)).join(' | ')} |\n`;
+            displayContent += `| **${symbols[i]}** | ${row.map((v) => v.toFixed(3)).join(' | ')} |\n`;
           });
         } else {
           displayContent += `\`\`\`\n${JSON.stringify(correlation_matrix, null, 2)}\n\`\`\`\n`;
@@ -2340,10 +2500,11 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       if (alpha !== undefined && beta !== undefined) {
         displayContent += '### 📈 Regression Analysis (CAPM)\n\n';
         displayContent += `**Alpha**: ${alpha.toFixed(6)}\n`;
-        displayContent += `**Beta**: ${Array.isArray(beta) ? beta.map(b => b.toFixed(4)).join(', ') : beta.toFixed(4)}\n`;
-        if (r_squared !== undefined) displayContent += `**R²**: ${r_squared.toFixed(4)}\n`;
+        displayContent += `**Beta**: ${Array.isArray(beta) ? beta.map((b) => b.toFixed(4)).join(', ') : beta.toFixed(4)}\n`;
+        if (r_squared !== undefined)
+          displayContent += `**R²**: ${r_squared.toFixed(4)}\n`;
         if (p_values && Array.isArray(p_values)) {
-          displayContent += `**P-values**: ${p_values.map(p => p.toFixed(6)).join(', ')}\n`;
+          displayContent += `**P-values**: ${p_values.map((p) => p.toFixed(6)).join(', ')}\n`;
         }
         displayContent += '\n';
       }
@@ -2352,7 +2513,8 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       if (varValue !== undefined) {
         displayContent += '### ⚠️ Value at Risk (VaR)\n\n';
         displayContent += `**VaR (${(confidence || 0.95) * 100}% confidence)**: ${varValue.toFixed(6)}\n`;
-        if (cvar !== undefined) displayContent += `**CVaR (Expected Shortfall)**: ${cvar.toFixed(6)}\n`;
+        if (cvar !== undefined)
+          displayContent += `**CVaR (Expected Shortfall)**: ${cvar.toFixed(6)}\n`;
         displayContent += `**Method**: ${method || 'historical'}\n\n`;
       }
 
@@ -2365,9 +2527,12 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
             displayContent += `- ${sym}: ${(weights[i] * 100).toFixed(2)}%\n`;
           });
         }
-        if (expected_return !== undefined) displayContent += `\n**Expected Return**: ${(expected_return * 100).toFixed(2)}%\n`;
-        if (volatility !== undefined) displayContent += `**Volatility**: ${(volatility * 100).toFixed(2)}%\n`;
-        if (sharpe_ratio !== undefined) displayContent += `**Sharpe Ratio**: ${sharpe_ratio.toFixed(4)}\n`;
+        if (expected_return !== undefined)
+          displayContent += `\n**Expected Return**: ${(expected_return * 100).toFixed(2)}%\n`;
+        if (volatility !== undefined)
+          displayContent += `**Volatility**: ${(volatility * 100).toFixed(2)}%\n`;
+        if (sharpe_ratio !== undefined)
+          displayContent += `**Sharpe Ratio**: ${sharpe_ratio.toFixed(4)}\n`;
         if (note) displayContent += `\n*${note}*\n`;
         displayContent += '\n';
       }
@@ -2376,9 +2541,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       if (omega !== undefined) {
         displayContent += '### 📉 GARCH Model Results\n\n';
         displayContent += `**Omega**: ${omega.toFixed(6)}\n`;
-        if (current_volatility !== undefined) displayContent += `**Current Volatility**: ${current_volatility.toFixed(4)}\n`;
+        if (current_volatility !== undefined)
+          displayContent += `**Current Volatility**: ${current_volatility.toFixed(4)}\n`;
         if (forecast && Array.isArray(forecast)) {
-          displayContent += `**Volatility Forecast**: ${forecast.map(v => v.toFixed(4)).join(', ')}\n`;
+          displayContent += `**Volatility Forecast**: ${forecast.map((v) => v.toFixed(4)).join(', ')}\n`;
         }
         if (aic !== undefined) displayContent += `**AIC**: ${aic.toFixed(2)}\n`;
         if (bic !== undefined) displayContent += `**BIC**: ${bic.toFixed(2)}\n`;
@@ -2389,9 +2555,12 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
       if (sharpe_ratio !== undefined && !weights) {
         displayContent += '### 📊 Sharpe Ratio\n\n';
         displayContent += `**Sharpe Ratio**: ${sharpe_ratio.toFixed(4)}\n`;
-        if (annual_return !== undefined) displayContent += `**Annual Return**: ${(annual_return * 100).toFixed(2)}%\n`;
-        if (annual_volatility !== undefined) displayContent += `**Annual Volatility**: ${(annual_volatility * 100).toFixed(2)}%\n`;
-        if (risk_free_rate !== undefined) displayContent += `**Risk-Free Rate**: ${(risk_free_rate * 100).toFixed(2)}%\n`;
+        if (annual_return !== undefined)
+          displayContent += `**Annual Return**: ${(annual_return * 100).toFixed(2)}%\n`;
+        if (annual_volatility !== undefined)
+          displayContent += `**Annual Volatility**: ${(annual_volatility * 100).toFixed(2)}%\n`;
+        if (risk_free_rate !== undefined)
+          displayContent += `**Risk-Free Rate**: ${(risk_free_rate * 100).toFixed(2)}%\n`;
         displayContent += '\n';
       }
 
@@ -2417,7 +2586,8 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
           }
           displayContent += '\n';
         } else if (indexData.futures?.status === 'selenium_not_available') {
-          displayContent += '**Futures Data**: ⚠️ TradingView scraping not available (Selenium not installed)\n\n';
+          displayContent +=
+            '**Futures Data**: ⚠️ TradingView scraping not available (Selenium not installed)\n\n';
         } else if (indexData.futures?.note) {
           displayContent += `**Futures Data**: ⚠️ ${indexData.futures.note}\n\n`;
         } else if (indexData.futures?.error) {
@@ -2437,9 +2607,11 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
           displayContent += `- Volume: ${indexData.spot.volume?.toLocaleString() || 'N/A'}\n`;
           if (indexData.spot.indicators) {
             displayContent += '\n**Technical Indicators**:\n';
-            Object.entries(indexData.spot.indicators).forEach(([key, value]) => {
-              displayContent += `- ${key}: ${typeof value === 'number' ? value.toFixed(2) : value}\n`;
-            });
+            Object.entries(indexData.spot.indicators).forEach(
+              ([key, value]) => {
+                displayContent += `- ${key}: ${typeof value === 'number' ? value.toFixed(2) : value}\n`;
+              },
+            );
           }
           displayContent += '\n';
         }
@@ -2469,7 +2641,6 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         }
       }
 
-
       // displayContent += '\n*🚀 **Powered by**: tvscreener (real-time screening) + yfinance (historical data & indicators)*\n';
 
       // Generate visualizations for frontend
@@ -2490,12 +2661,12 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
               volume: q.volume,
               market_cap: q.market_cap || 0,
               pe_ratio: q.pe_ratio || 0,
-              source: q.source || 'unknown'
+              source: q.source || 'unknown',
             })),
             metadata: {
               symbols: validQuotes.map((q: QuoteData) => q.symbol),
-              source: 'market_data_tool'
-            }
+              source: 'market_data_tool',
+            },
           });
         }
       }
@@ -2516,19 +2687,26 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
               low: b.low,
               close: b.close,
               volume: b.volume,
-              source: b.source || 'yfinance'
+              source: b.source || 'yfinance',
             })),
             metadata: {
-              symbols: [...new Set(validBars.map((b: HistoricalBar) => b.symbol))].map(String),
+              symbols: [
+                ...new Set(validBars.map((b: HistoricalBar) => b.symbol)),
+              ].map(String),
               timeframe: params.period || '1d',
-              source: 'yfinance'
-            }
+              source: 'yfinance',
+            },
           });
 
           // Extract technical indicators from bars if present
-          const barsWithIndicators = validBars.filter((b: HistoricalBar) => b.indicators && Object.keys(b.indicators).length > 0);
+          const barsWithIndicators = validBars.filter(
+            (b: HistoricalBar) =>
+              b.indicators && Object.keys(b.indicators).length > 0,
+          );
           if (barsWithIndicators.length > 0) {
-            const indicatorData: Array<Record<string, string | number | boolean>> = [];
+            const indicatorData: Array<
+              Record<string, string | number | boolean>
+            > = [];
 
             barsWithIndicators.forEach((bar: HistoricalBar) => {
               if (bar.indicators) {
@@ -2537,7 +2715,7 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
                     date: bar.datetime,
                     indicator,
                     value,
-                    symbol: bar.symbol
+                    symbol: bar.symbol,
                   });
                 });
               }
@@ -2549,10 +2727,18 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
                 title: 'Technical Indicators',
                 data: indicatorData,
                 metadata: {
-                  symbols: [...new Set(barsWithIndicators.map((b: HistoricalBar) => b.symbol))].map(String),
-                  indicators: [...new Set(indicatorData.map(d => String(d['indicator'])))],
-                  source: 'calculated'
-                }
+                  symbols: [
+                    ...new Set(
+                      barsWithIndicators.map((b: HistoricalBar) => b.symbol),
+                    ),
+                  ].map(String),
+                  indicators: [
+                    ...new Set(
+                      indicatorData.map((d) => String(d['indicator'])),
+                    ),
+                  ],
+                  source: 'calculated',
+                },
               });
             }
           }
@@ -2573,28 +2759,32 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
             market_cap: r.market_cap,
             sector: r.sector || 'Unknown',
             pe_ratio: r.pe_ratio || 0,
-            market: r.market || 'stocks'
+            market: r.market || 'stocks',
           })),
           metadata: {
             symbols: screener_results.map((r: ScreenerResult) => r.symbol),
-            source: 'tvscreener'
-          }
+            source: 'tvscreener',
+          },
         });
       }
 
       // Convert standalone technical indicators to visualization
       if (technical_indicators && technical_indicators.length > 0) {
-        const indicatorData = technical_indicators.map((ti: TechnicalIndicator) => ({
-          date: new Date().toISOString(),
-          indicator: ti.indicator_name,
-          value: ti.value,
-          symbol: ti.symbol,
-          signal: ti.signal || 'NEUTRAL',
-          timeframe: ti.timeframe
-        }));
+        const indicatorData = technical_indicators.map(
+          (ti: TechnicalIndicator) => ({
+            date: new Date().toISOString(),
+            indicator: ti.indicator_name,
+            value: ti.value,
+            symbol: ti.symbol,
+            signal: ti.signal || 'NEUTRAL',
+            timeframe: ti.timeframe,
+          }),
+        );
 
         // Check if we already have technical indicators visualization from bars
-        const hasIndicatorsFromBars = visualizations.some(v => v.type === 'technical_indicators');
+        const hasIndicatorsFromBars = visualizations.some(
+          (v) => v.type === 'technical_indicators',
+        );
 
         if (!hasIndicatorsFromBars) {
           visualizations.push({
@@ -2602,10 +2792,22 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
             title: 'Technical Analysis',
             data: indicatorData,
             metadata: {
-              symbols: [...new Set(technical_indicators.map((ti: TechnicalIndicator) => ti.symbol))].map(String),
-              indicators: [...new Set(technical_indicators.map((ti: TechnicalIndicator) => ti.indicator_name))].map(String),
-              timeframe: technical_indicators[0]?.timeframe || '30d'
-            }
+              symbols: [
+                ...new Set(
+                  technical_indicators.map(
+                    (ti: TechnicalIndicator) => ti.symbol,
+                  ),
+                ),
+              ].map(String),
+              indicators: [
+                ...new Set(
+                  technical_indicators.map(
+                    (ti: TechnicalIndicator) => ti.indicator_name,
+                  ),
+                ),
+              ].map(String),
+              timeframe: technical_indicators[0]?.timeframe || '30d',
+            },
           });
         }
       }
@@ -2625,12 +2827,12 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
             open: idx.open,
             high: idx.high,
             low: idx.low,
-            source: idx.source || 'mixed'
+            source: idx.source || 'mixed',
           })),
           metadata: {
             symbols: indices.map((idx: IndexData) => idx.symbol),
-            source: 'market_data_tool'
-          }
+            source: 'market_data_tool',
+          },
         });
       }
 
@@ -2642,7 +2844,8 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
         if (data && !data.error) {
           // Add futures/spot data as quotes
-          const quoteData: Array<Record<string, string | number | boolean>> = [];
+          const quoteData: Array<Record<string, string | number | boolean>> =
+            [];
 
           if (data.futures && !data.futures.error) {
             quoteData.push({
@@ -2651,7 +2854,7 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
               change: data.futures.change || 0,
               change_percent: data.futures.change_percent || 0,
               volume: data.futures.volume || 0,
-              source: 'tradingview_futures'
+              source: 'tradingview_futures',
             });
           }
 
@@ -2662,7 +2865,7 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
               change: data.spot.change || 0,
               change_percent: data.spot.change_percent || 0,
               volume: data.spot.volume || 0,
-              source: 'yfinance_spot'
+              source: 'yfinance_spot',
             });
           }
 
@@ -2673,7 +2876,7 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
               change: data.forex.change || 0,
               change_percent: data.forex.change_percent || 0,
               volume: data.forex.volume || 0,
-              source: 'forex'
+              source: 'forex',
             });
           }
 
@@ -2684,8 +2887,8 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
               data: quoteData,
               metadata: {
                 symbols: [data.symbol],
-                source: 'mixed'
-              }
+                source: 'mixed',
+              },
             });
           }
         }
@@ -2702,9 +2905,10 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
           hasBars: bars && bars.length > 0,
           hasScreenerResults: screener_results && screener_results.length > 0,
           hasIndices: indices && indices.length > 0,
-          hasTechnicalIndicators: technical_indicators && technical_indicators.length > 0,
-          timestamp: new Date().toISOString()
-        }
+          hasTechnicalIndicators:
+            technical_indicators && technical_indicators.length > 0,
+          timestamp: new Date().toISOString(),
+        },
       };
 
       return {
@@ -2712,7 +2916,6 @@ print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         returnDisplay: displayContent,
         structuredData,
       };
-
     } catch (error) {
       return {
         llmContent: `Failed to parse result: ${error}\n\nRaw output:\n${pythonOutput}`,

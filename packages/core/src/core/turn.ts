@@ -19,7 +19,7 @@ import type {
   ToolResultDisplay,
 } from '../tools/tools.js';
 import type { ToolErrorType } from '../tools/tool-error.js';
-import type { ToolResponseData } from '../providers/types.js';
+import type { ToolResponseData } from './message-types.js';
 import { getResponseText } from '../utils/partUtils.js';
 import { reportError } from '../utils/errorReporting.js';
 import {

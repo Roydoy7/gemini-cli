@@ -12,7 +12,7 @@ import { GeminiClientPool } from './clientPool.js';
 import { SessionManager } from '../sessions/SessionManager.js';
 import { RoleManager } from '../roles/RoleManager.js';
 import { WorkspaceManager } from '../utils/WorkspaceManager.js';
-import type { UniversalMessage } from '../providers/types.js';
+import type { UniversalMessage } from './message-types.js';
 import type { RoleDefinition } from '../roles/types.js';
 import {
   GeminiEventType,
@@ -538,15 +538,6 @@ export class GeminiChatManager {
             '[GeminiChatManager] No tool calls, conversation complete',
           );
 
-          // Auto-generate title (first message or third message with LLM)
-          // Always use gemini-2.5-flash for cost efficiency
-          this.sessionManager.autoGenerateTitle(sessionId).catch((error) => {
-            console.error(
-              '[GeminiChatManager] Failed to auto-generate title:',
-              error,
-            );
-          });
-
           // Conversation complete
           break;
         }
@@ -555,6 +546,15 @@ export class GeminiChatManager {
       // Auto-save session history after streaming completes
       // This ensures tool calls and responses are always paired
       await this.clientPool.save(sessionId);
+
+      // Auto-generate title AFTER saving history
+      // This ensures conversationHistory has the latest messages
+      this.sessionManager.autoGenerateTitle(sessionId).catch((error) => {
+        console.error(
+          '[GeminiChatManager] Failed to auto-generate title:',
+          error,
+        );
+      });
     }
   }
 
@@ -835,6 +835,10 @@ export class GeminiChatManager {
 
   updateSessionTitle(sessionId: string, newTitle: string): void {
     this.sessionManager.updateSessionTitle(sessionId, newTitle);
+  }
+
+  toggleTitleLock(sessionId: string, locked: boolean): void {
+    this.sessionManager.toggleTitleLock(sessionId, locked);
   }
 
   updateSessionMessages(sessionId: string, messages: UniversalMessage[]): void {

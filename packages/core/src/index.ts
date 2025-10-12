@@ -38,7 +38,11 @@ export * from './code_assist/types.js';
 
 // Export auth system
 export { AuthManager } from './auth/AuthManager.js';
-export type { AuthProvider, AuthStatus, AuthCredentials } from './auth/AuthManager.js';
+export type {
+  AuthProvider,
+  AuthStatus,
+  AuthCredentials,
+} from './auth/AuthManager.js';
 
 // Export utilities
 export * from './utils/paths.js';
@@ -128,34 +132,29 @@ export type {
 } from './mcp/oauth-utils.js';
 export { OAuthUtils } from './mcp/oauth-utils.js';
 
-// Export multi-model system
-export { MultiModelSystem } from './multimodel/index.js';
+// Export message types
+export type {
+  UniversalMessage,
+  MessageToolCall,
+  VisualizationData,
+  ToolResponseData,
+  CompressionInfo,
+} from './core/message-types.js';
 
 // Export session system
-export type { SessionData, SessionInfo, SessionManagerOptions } from './sessions/index.js';
+export type {
+  SessionData,
+  SessionInfo,
+  SessionManagerOptions,
+} from './sessions/index.js';
 export { SessionManager } from './sessions/index.js';
 
-// Export provider system
+// Export role system
 export type {
-  ModelProviderConfig,
-  UniversalMessage,
-  UniversalResponse,
-  UniversalStreamEvent,
-  ProviderCapabilities,
-  ConnectionStatus
-} from './providers/index.js';
-export { 
-  ModelProviderType,
-  BaseModelProvider,
-  OpenAIProvider,
-  LMStudioProvider,
-  GeminiProvider,
-  ModelProviderFactory,
-  ProviderConfigManager
-} from './providers/index.js';
-
-// Export role system  
-export type { RoleDefinition, RoleContext, RoleCategory } from './roles/index.js';
+  RoleDefinition,
+  RoleContext,
+  RoleCategory,
+} from './roles/index.js';
 export { BUILTIN_ROLES, RoleManager } from './roles/index.js';
 
 // Export telemetry functions

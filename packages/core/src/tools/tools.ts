@@ -478,7 +478,7 @@ export interface ToolResult {
   /**
    * Optional structured data for enhanced frontend display
    */
-  structuredData?: import('../providers/types.js').ToolResponseData;
+  structuredData?: import('../core/message-types.js').ToolResponseData;
 }
 
 /**
