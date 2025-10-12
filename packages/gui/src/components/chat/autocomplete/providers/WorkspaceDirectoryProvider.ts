@@ -5,8 +5,22 @@
  */
 
 import {
-  Folder, FolderOpen, File, FileText, FileCode, FileImage, FileVideo, FileAudio, FileArchive,
-  FileSpreadsheet, FileType, FileCheck, Database, Presentation, Mail, Calculator
+  Folder,
+  FolderOpen,
+  File,
+  FileText,
+  FileCode,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  FileArchive,
+  FileSpreadsheet,
+  FileType,
+  FileCheck,
+  Database,
+  Presentation,
+  Mail,
+  Calculator,
 } from 'lucide-react';
 import type { AutocompleteProvider, AutocompleteItem } from '../types';
 import { geminiChatService } from '@/services/geminiChatService';
@@ -20,34 +34,21 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
   private lastCacheTime = 0;
   private cacheTimeout = 5000; // 5 seconds for more responsive updates
   private isLoading = false;
-  private filterMode: 'all' | 'folders' | 'files' = 'all';
 
   async getItems(query: string): Promise<AutocompleteItem[]> {
     await this.refreshCacheIfNeeded();
 
-    // Filter based on current filter mode
-    let filteredItems = this.cachedItems.filter(item => {
-      switch (this.filterMode) {
-        case 'folders':
-          // Show only folders and workspace directories
-          return item.type === 'workspace' || item.type === 'folder';
-        case 'files':
-          // Show only files
-          return item.type === 'file';
-        case 'all':
-        default:
-          // Show everything
-          return true;
-      }
-    });
+    // Start with all cached items
+    let filteredItems = this.cachedItems;
 
     // Filter based on query
     if (query) {
       const lowercaseQuery = query.toLowerCase();
-      filteredItems = filteredItems.filter(item =>
-        item.label.toLowerCase().includes(lowercaseQuery) ||
-        item.value.toLowerCase().includes(lowercaseQuery) ||
-        item.description?.toLowerCase().includes(lowercaseQuery)
+      filteredItems = filteredItems.filter(
+        (item) =>
+          item.label.toLowerCase().includes(lowercaseQuery) ||
+          item.value.toLowerCase().includes(lowercaseQuery) ||
+          item.description?.toLowerCase().includes(lowercaseQuery),
       );
     }
 
@@ -60,20 +61,15 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
       return a.label.localeCompare(b.label);
     });
 
-    return filteredItems.slice(0, 30);
-  }
-
-  setFilterMode(mode: 'all' | 'folders' | 'files'): void {
-    this.filterMode = mode;
-  }
-
-  getFilterMode(): 'all' | 'folders' | 'files' {
-    return this.filterMode;
+    return filteredItems.slice(0, 100);
   }
 
   private async refreshCacheIfNeeded(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastCacheTime < this.cacheTimeout && this.cachedItems.length > 0) {
+    if (
+      now - this.lastCacheTime < this.cacheTimeout &&
+      this.cachedItems.length > 0
+    ) {
       return;
     }
 
@@ -86,7 +82,8 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
 
     try {
       // Get workspace directories from geminiChatService
-      const workspaceDirectories = await geminiChatService.getWorkspaceDirectories();
+      const workspaceDirectories =
+        await geminiChatService.getWorkspaceDirectories();
 
       this.cachedItems = [];
 
@@ -100,11 +97,13 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
           id: `workspace-${index}`,
           label: displayName,
           value: this.normalizePathForInsert(dir),
-          description: isCurrentDir ? 'Active workspace directory' : 'Workspace directory',
+          description: isCurrentDir
+            ? 'Active workspace directory'
+            : 'Workspace directory',
           icon: isCurrentDir ? FolderOpen : Folder,
           type: 'workspace',
           category: 'workspace',
-          level: 0 // Root level
+          level: 0, // Root level
         });
 
         // Fetch first-level files and folders
@@ -132,7 +131,12 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
     const name = parts[parts.length - 1] || path;
 
     // Show more context for common directory names
-    if (name === 'src' || name === 'lib' || name === 'dist' || name === 'build') {
+    if (
+      name === 'src' ||
+      name === 'lib' ||
+      name === 'dist' ||
+      name === 'build'
+    ) {
       const parent = parts[parts.length - 2];
       return parent ? `${name} (${parent})` : name;
     }
@@ -170,7 +174,9 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
     await this.refreshCacheIfNeeded();
   }
 
-  private async getFirstLevelItems(directory: string): Promise<AutocompleteItem[]> {
+  private async getFirstLevelItems(
+    directory: string,
+  ): Promise<AutocompleteItem[]> {
     const items: AutocompleteItem[] = [];
 
     try {
@@ -185,12 +191,15 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
           id: `${directory}-${item.name}`,
           label: `├─ ${displayName}`, // Add tree structure indicator
           value: fullPath,
-          description: item.type === 'folder' ? 'Subfolder' : this.formatFileSize(item.size || 0),
+          description:
+            item.type === 'folder'
+              ? 'Subfolder'
+              : this.formatFileSize(item.size || 0),
           icon: item.type === 'folder' ? Folder : this.getFileIcon(item.name),
           type: item.type,
           size: item.size,
           modified: item.modified,
-          level: 1 // Sub-level
+          level: 1, // Sub-level
         });
       }
     } catch (error) {
@@ -200,11 +209,17 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
     return items;
   }
 
-  private getFileIcon(fileName: string): React.ComponentType<{ size?: number }> {
+  private getFileIcon(
+    fileName: string,
+  ): React.ComponentType<{ size?: number }> {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
 
     // Excel files
-    if (['xlsx', 'xls', 'xlsm', 'xlsb', 'xltx', 'xltm', 'xlam', 'csv'].includes(ext)) {
+    if (
+      ['xlsx', 'xls', 'xlsm', 'xlsb', 'xltx', 'xltm', 'xlam', 'csv'].includes(
+        ext,
+      )
+    ) {
       return FileSpreadsheet;
     }
 
@@ -214,7 +229,11 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
     }
 
     // PowerPoint files
-    if (['pptx', 'ppt', 'pptm', 'potx', 'potm', 'ppsx', 'ppsm', 'odp'].includes(ext)) {
+    if (
+      ['pptx', 'ppt', 'pptm', 'potx', 'potm', 'ppsx', 'ppsm', 'odp'].includes(
+        ext,
+      )
+    ) {
       return Presentation;
     }
 
@@ -239,32 +258,127 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
     }
 
     // Code files
-    if (['ts', 'tsx', 'js', 'jsx', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'go', 'rs', 'php', 'rb', 'swift', 'vb', 'vbs'].includes(ext)) {
+    if (
+      [
+        'ts',
+        'tsx',
+        'js',
+        'jsx',
+        'py',
+        'java',
+        'cpp',
+        'c',
+        'h',
+        'cs',
+        'go',
+        'rs',
+        'php',
+        'rb',
+        'swift',
+        'vb',
+        'vbs',
+      ].includes(ext)
+    ) {
       return FileCode;
     }
 
     // Text/Document files
-    if (['txt', 'md', 'markdown', 'json', 'yaml', 'yml', 'xml', 'html', 'css', 'scss', 'sass', 'log', 'ini', 'cfg', 'conf'].includes(ext)) {
+    if (
+      [
+        'txt',
+        'md',
+        'markdown',
+        'json',
+        'yaml',
+        'yml',
+        'xml',
+        'html',
+        'css',
+        'scss',
+        'sass',
+        'log',
+        'ini',
+        'cfg',
+        'conf',
+      ].includes(ext)
+    ) {
       return FileText;
     }
 
     // Image files
-    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'psd', 'ai', 'eps'].includes(ext)) {
+    if (
+      [
+        'png',
+        'jpg',
+        'jpeg',
+        'gif',
+        'svg',
+        'webp',
+        'bmp',
+        'ico',
+        'tiff',
+        'tif',
+        'psd',
+        'ai',
+        'eps',
+      ].includes(ext)
+    ) {
       return FileImage;
     }
 
     // Video files
-    if (['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv', 'wmv', 'mpg', 'mpeg', '3gp', 'm4v'].includes(ext)) {
+    if (
+      [
+        'mp4',
+        'avi',
+        'mov',
+        'mkv',
+        'webm',
+        'flv',
+        'wmv',
+        'mpg',
+        'mpeg',
+        '3gp',
+        'm4v',
+      ].includes(ext)
+    ) {
       return FileVideo;
     }
 
     // Audio files
-    if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus', 'aiff', 'ape'].includes(ext)) {
+    if (
+      [
+        'mp3',
+        'wav',
+        'ogg',
+        'flac',
+        'aac',
+        'm4a',
+        'wma',
+        'opus',
+        'aiff',
+        'ape',
+      ].includes(ext)
+    ) {
       return FileAudio;
     }
 
     // Archive files
-    if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'cab', 'iso', 'dmg', 'pkg'].includes(ext)) {
+    if (
+      [
+        'zip',
+        'rar',
+        '7z',
+        'tar',
+        'gz',
+        'bz2',
+        'xz',
+        'cab',
+        'iso',
+        'dmg',
+        'pkg',
+      ].includes(ext)
+    ) {
       return FileArchive;
     }
 
@@ -274,7 +388,8 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
   private formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024 * 1024 * 1024)
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 

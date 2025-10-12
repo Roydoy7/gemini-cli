@@ -1,4 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import type React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/utils/cn';
 import {
   FolderOpen,
@@ -9,10 +16,9 @@ import {
   FileSpreadsheet,
   File,
   Search,
-  X
+  X,
 } from 'lucide-react';
 import type { AutocompleteItem } from './types';
-import { workspaceDirectoryProvider } from './providers/WorkspaceDirectoryProvider';
 
 interface AutocompleteDropdownProps {
   items: AutocompleteItem[];
@@ -21,7 +27,6 @@ interface AutocompleteDropdownProps {
   onClose: () => void;
   position: { top: number; left: number };
   visible: boolean;
-  onRefresh?: () => void;
 }
 
 // Get file icon based on extension
@@ -80,19 +85,32 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
   onClose,
   position,
   visible,
-  onRefresh
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [filterMode, setFilterMode] = useState<'all' | 'folders' | 'files'>(
-    () => workspaceDirectoryProvider.getFilterMode()
+    'all',
   );
   const [searchText, setSearchText] = useState('');
   const [fileTypeFilter, setFileTypeFilter] = useState<string>('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Filter items based on search and file type
-  const filteredItems = items.filter(item => {
+  // Filter items based on filter mode, search and file type
+  const filteredItems = items.filter((item) => {
+    // Filter mode - files/folders/all
+    switch (filterMode) {
+      case 'folders':
+        if (item.type !== 'workspace' && item.type !== 'folder') return false;
+        break;
+      case 'files':
+        if (item.type !== 'file') return false;
+        break;
+      case 'all':
+      default:
+        // Show everything
+        break;
+    }
+
     // Search filter
     if (searchText) {
       const search = searchText.toLowerCase();
@@ -114,24 +132,33 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
   const fileExtensions = Array.from(
     new Set(
       items
-        .filter(item => item.type === 'file')
-        .map(item => item.label.split('.').pop()?.toLowerCase())
-        .filter(Boolean)
-    )
+        .filter((item) => item.type === 'file')
+        .map((item) => item.label.split('.').pop()?.toLowerCase())
+        .filter(Boolean),
+    ),
   ).sort();
 
-  const handleFilterModeChange = async (mode: 'all' | 'folders' | 'files') => {
+  const handleFilterModeChange = (mode: 'all' | 'folders' | 'files') => {
     setFilterMode(mode);
-    workspaceDirectoryProvider.setFilterMode(mode);
-    await workspaceDirectoryProvider.forceRefresh();
-    onRefresh?.();
   };
+
+  // Reset filter to 'all' when dropdown opens
+  useEffect(() => {
+    if (visible) {
+      setFilterMode('all');
+      setSearchText('');
+      setFileTypeFilter('');
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
@@ -147,7 +174,7 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
     if (visible && selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
       itemRefs.current[selectedIndex]?.scrollIntoView({
         block: 'nearest',
-        behavior: 'smooth'
+        behavior: 'smooth',
       });
     }
   }, [selectedIndex, visible]);
@@ -188,13 +215,13 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
       // Quick jump to first letter
       if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
         const char = e.key.toLowerCase();
-        const index = filteredItems.findIndex(item =>
-          item.label.toLowerCase().startsWith(char)
+        const index = filteredItems.findIndex((item) =>
+          item.label.toLowerCase().startsWith(char),
         );
         if (index >= 0) {
           itemRefs.current[index]?.scrollIntoView({
             block: 'nearest',
-            behavior: 'smooth'
+            behavior: 'smooth',
           });
         }
       }
@@ -216,13 +243,16 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
       className="fixed z-50 w-[500px] bg-popover border border-border rounded-md shadow-lg"
       style={{
         top: position.top,
-        left: position.left
+        left: position.left,
       }}
     >
       {/* Search bar */}
       <div className="p-2 border-b border-border bg-muted/50">
         <div className="relative">
-          <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search
+            size={14}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
           <input
             ref={searchInputRef}
             type="text"
@@ -247,10 +277,10 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
         <span className="text-xs text-muted-foreground">Show:</span>
         <button
           className={cn(
-            "px-2 py-1 text-xs rounded transition-colors",
+            'px-2 py-1 text-xs rounded transition-colors',
             filterMode === 'all'
-              ? "bg-primary text-primary-foreground"
-              : "bg-background text-foreground hover:bg-accent"
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-foreground hover:bg-accent',
           )}
           onClick={() => handleFilterModeChange('all')}
         >
@@ -258,10 +288,10 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
         </button>
         <button
           className={cn(
-            "flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors",
+            'flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors',
             filterMode === 'folders'
-              ? "bg-primary text-primary-foreground"
-              : "bg-background text-foreground hover:bg-accent"
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-foreground hover:bg-accent',
           )}
           onClick={() => handleFilterModeChange('folders')}
         >
@@ -270,10 +300,10 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
         </button>
         <button
           className={cn(
-            "flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors",
+            'flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors',
             filterMode === 'files'
-              ? "bg-primary text-primary-foreground"
-              : "bg-background text-foreground hover:bg-accent"
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-foreground hover:bg-accent',
           )}
           onClick={() => handleFilterModeChange('files')}
         >
@@ -291,7 +321,7 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
               className="px-2 py-1 text-xs rounded bg-background border border-border hover:bg-accent"
             >
               <option value="">All types</option>
-              {fileExtensions.map(ext => (
+              {fileExtensions.map((ext) => (
                 <option key={ext} value={ext}>
                   .{ext}
                 </option>
@@ -313,28 +343,31 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
             <div className="text-xs mt-1">
               {searchText || fileTypeFilter
                 ? 'Try adjusting your search or filters'
-                : 'Try adjusting the filters above'
-              }
+                : 'Try adjusting the filters above'}
             </div>
           </div>
         ) : (
           <div className="min-w-max">
             {filteredItems.map((item, index) => {
-              const isFolder = item.type === 'folder' || item.type === 'workspace';
+              const isFolder =
+                item.type === 'folder' || item.type === 'workspace';
               const ItemIcon = isFolder ? FolderOpen : null;
 
               return (
                 <div
                   key={item.id}
-                  ref={el => { itemRefs.current[index] = el; }}
+                  ref={(el) => {
+                    itemRefs.current[index] = el;
+                  }}
                   className={cn(
-                    "flex items-center gap-3 py-2 cursor-pointer transition-colors group",
-                    "hover:bg-accent hover:text-accent-foreground",
-                    selectedIndex === index && "bg-accent text-accent-foreground"
+                    'flex items-center gap-3 py-2 cursor-pointer transition-colors group',
+                    'hover:bg-accent hover:text-accent-foreground',
+                    selectedIndex === index &&
+                      'bg-accent text-accent-foreground',
                   )}
                   style={{
                     paddingLeft: `${12 + (item.level || 0) * 16}px`,
-                    paddingRight: '12px'
+                    paddingRight: '12px',
                   }}
                   onClick={() => onSelect(item)}
                   title={`${item.label}\n${item.value}`}
@@ -342,9 +375,14 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
                   {/* Icon with color coding */}
                   <div className="flex-shrink-0">
                     {isFolder && ItemIcon ? (
-                      <ItemIcon size={16} className={cn(
-                        item.type === 'workspace' ? 'text-primary' : 'text-blue-500'
-                      )} />
+                      <ItemIcon
+                        size={16}
+                        className={cn(
+                          item.type === 'workspace'
+                            ? 'text-primary'
+                            : 'text-blue-500',
+                        )}
+                      />
                     ) : (
                       getFileIcon(item.label)
                     )}
@@ -367,12 +405,17 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
 
                   {/* Type badge */}
                   {item.type && (
-                    <div className={cn(
-                      "text-xs px-2 py-0.5 rounded flex-shrink-0",
-                      item.type === 'workspace' && "bg-primary/10 text-primary",
-                      item.type === 'folder' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-                      item.type === 'file' && "bg-green-500/10 text-green-600 dark:text-green-400"
-                    )}>
+                    <div
+                      className={cn(
+                        'text-xs px-2 py-0.5 rounded flex-shrink-0',
+                        item.type === 'workspace' &&
+                          'bg-primary/10 text-primary',
+                        item.type === 'folder' &&
+                          'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+                        item.type === 'file' &&
+                          'bg-green-500/10 text-green-600 dark:text-green-400',
+                      )}
+                    >
                       {item.type}
                     </div>
                   )}

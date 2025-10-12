@@ -2161,14 +2161,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 onClose={autocomplete.hideAutocomplete}
                 position={autocomplete.position}
                 visible={autocomplete.isVisible}
-                onRefresh={() => {
-                  // Trigger autocomplete refresh by re-checking current position
-                  const textarea = getActualTextareaRef();
-                  if (textarea) {
-                    const cursorPos = textarea.selectionStart;
-                    autocomplete.checkForAutocomplete(message, cursorPos);
-                  }
-                }}
               />
             </div>
 
