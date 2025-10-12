@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/utils/cn';
+import { ShimmerBorder } from '@/components/ui/ShimmerBorder';
 import { CodeHighlight } from '@/components/ui/CodeHighlight';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SmartVisualization } from '@/components/charts/SmartVisualization';
@@ -307,211 +308,247 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
   const keyParams = getKeyParameters();
   const hasParams = keyParams.length > 0;
 
+  // Determine if shimmer should be active (tool is executing)
+  const isExecuting = !toolResponse;
+
+  // Shimmer colors for tool execution (blue/cyan theme)
+  const shimmerColors = [
+    '#60A5FA', // blue-400
+    '#A78BFA', // violet-400
+    '#F472B6', // pink-400
+    '#FBBF24', // amber-400
+    '#34D399', // emerald-400
+    '#60A5FA', // blue-400
+  ];
+
   return (
-    <div
-      ref={cardRef}
-      className={cn(
-        'rounded-lg border overflow-hidden transition-all',
-        isNested ? 'border-border/30' : 'border-border/50',
-        toolResponse?.success === false
-          ? 'border-red-200 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10'
-          : toolResponse
-            ? 'border-green-200 dark:border-green-800/50 bg-green-50/30 dark:bg-green-950/10'
-            : 'border-blue-200 dark:border-blue-800/50 bg-blue-50/30 dark:bg-blue-950/10',
-      )}
+    <ShimmerBorder
+      active={isExecuting}
+      speed="medium"
+      colors={shimmerColors}
+      className="rounded-lg"
     >
-      {/* Tool execution header */}
-      <button
-        onClick={handleToggle}
-        className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-muted/50 transition-colors"
+      <div
+        ref={cardRef}
+        className={cn(
+          'rounded-lg overflow-hidden transition-all',
+          'border-0',
+          !isExecuting && 'border',
+          isNested ? 'border-border/30' : 'border-border/50',
+          toolResponse?.success === false
+            ? 'border-red-200 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10'
+            : toolResponse
+              ? 'border-green-200 dark:border-green-800/50 bg-green-50/30 dark:bg-green-950/10'
+              : 'bg-blue-50/30 dark:bg-blue-950/10',
+        )}
       >
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          {getStatusIcon()}
-          <span className="font-medium text-sm truncate">{toolCall.name}</span>
-          {operation != null && (
-            <span className="font-mono text-xs text-muted-foreground truncate">
-              {typeof operation === 'string'
-                ? operation
-                : JSON.stringify(operation)}
+        {/* Tool execution header */}
+        <button
+          onClick={handleToggle}
+          className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {isExpanded ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+            {getStatusIcon()}
+            <span className="font-medium text-sm truncate">
+              {toolCall.name}
             </span>
-          )}
-        </div>
+            {operation != null && (
+              <span className="font-mono text-xs text-muted-foreground truncate">
+                {typeof operation === 'string'
+                  ? operation
+                  : JSON.stringify(operation)}
+              </span>
+            )}
+          </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-xs font-medium">{getStatusText()}</span>
-          {timestamp && !isNested && (
-            <time
-              dateTime={timestamp.toISOString()}
-              className="text-xs text-muted-foreground"
-              title={format(timestamp, 'yyyy-MM-dd HH:mm:ss')}
-            >
-              {format(timestamp, 'HH:mm')}
-            </time>
-          )}
-        </div>
-      </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs font-medium">{getStatusText()}</span>
+            {timestamp && !isNested && (
+              <time
+                dateTime={timestamp.toISOString()}
+                className="text-xs text-muted-foreground"
+                title={format(timestamp, 'yyyy-MM-dd HH:mm:ss')}
+              >
+                {format(timestamp, 'HH:mm')}
+              </time>
+            )}
+          </div>
+        </button>
 
-      {/* Expanded content */}
-      {isExpanded && (
-        <div className="border-t border-border/30 bg-background/30">
-          {/* Tool call parameters */}
-          {hasParams && (
-            <div className="px-3 py-2 space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">
-                Parameters:
-              </div>
-              <div className="space-y-1.5">
-                {keyParams.map(([key, value]) => (
-                  <div key={key} className="flex items-start gap-2">
-                    <div className="text-xs font-medium text-blue-600 dark:text-blue-400 w-24 flex-shrink-0 pt-1">
-                      {key}:
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      {typeof value === 'object' && value !== null ? (
-                        <pre className="text-xs bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap font-mono overflow-x-auto">
-                          {JSON.stringify(value, null, 2)}
-                        </pre>
-                      ) : key === 'code' ||
-                        key === 'script' ||
-                        key === 'query' ? (
-                        <CodeHighlight code={String(value)} language="python" />
-                      ) : (
-                        <pre className="text-xs text-foreground/90 font-mono bg-muted/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto">
-                          {String(value)}
-                        </pre>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Tool response */}
-          {toolResponse && (
-            <div className="border-t border-border/30 px-3 py-2 space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">
-                Result:
-              </div>
-
-              {/* Structured response data */}
-              {toolResponse.toolResponseData ? (
-                <div className="space-y-2">
-                  {/* Summary */}
-                  {toolResponse.toolResponseData.summary && (
-                    <div className="text-sm font-medium text-foreground">
-                      {toolResponse.toolResponseData.summary}
-                    </div>
-                  )}
-
-                  {/* Metrics */}
-                  {toolResponse.toolResponseData.metrics &&
-                    Object.keys(toolResponse.toolResponseData.metrics).length >
-                      0 && (
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        {toolResponse.toolResponseData.metrics.rowsAffected && (
-                          <span className="px-2 py-1 bg-muted/50 rounded">
-                            Rows:{' '}
-                            {toolResponse.toolResponseData.metrics.rowsAffected}
-                          </span>
+        {/* Expanded content */}
+        {isExpanded && (
+          <div className="border-t border-border/30 bg-background/30">
+            {/* Tool call parameters */}
+            {hasParams && (
+              <div className="px-3 py-2 space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Parameters:
+                </div>
+                <div className="space-y-1.5">
+                  {keyParams.map(([key, value]) => (
+                    <div key={key} className="flex items-start gap-2">
+                      <div className="text-xs font-medium text-blue-600 dark:text-blue-400 w-24 flex-shrink-0 pt-1">
+                        {key}:
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        {typeof value === 'object' && value !== null ? (
+                          <pre className="text-xs bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap font-mono overflow-x-auto">
+                            {JSON.stringify(value, null, 2)}
+                          </pre>
+                        ) : key === 'code' ||
+                          key === 'script' ||
+                          key === 'query' ? (
+                          <CodeHighlight
+                            code={String(value)}
+                            language="python"
+                          />
+                        ) : (
+                          <pre className="text-xs text-foreground/90 font-mono bg-muted/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto">
+                            {String(value)}
+                          </pre>
                         )}
-                        {toolResponse.toolResponseData.metrics
-                          .columnsAffected && (
-                          <span className="px-2 py-1 bg-muted/50 rounded">
-                            Columns:{' '}
-                            {
-                              toolResponse.toolResponseData.metrics
-                                .columnsAffected
-                            }
-                          </span>
-                        )}
-                        {toolResponse.toolResponseData.metrics
-                          .cellsAffected && (
-                          <span className="px-2 py-1 bg-muted/50 rounded">
-                            Cells:{' '}
-                            {
-                              toolResponse.toolResponseData.metrics
-                                .cellsAffected
-                            }
-                          </span>
-                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tool response */}
+            {toolResponse && (
+              <div className="border-t border-border/30 px-3 py-2 space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Result:
+                </div>
+
+                {/* Structured response data */}
+                {toolResponse.toolResponseData ? (
+                  <div className="space-y-2">
+                    {/* Summary */}
+                    {toolResponse.toolResponseData.summary && (
+                      <div className="text-sm font-medium text-foreground">
+                        {toolResponse.toolResponseData.summary}
                       </div>
                     )}
 
-                  {/* Files */}
-                  {toolResponse.toolResponseData.files && (
-                    <div className="space-y-1 text-xs">
-                      {toolResponse.toolResponseData.files.workbook && (
-                        <div className="flex items-center gap-1">
-                          <span className="font-medium text-muted-foreground">
-                            File:
-                          </span>
-                          <span className="font-mono truncate">
-                            {toolResponse.toolResponseData.files.workbook}
-                          </span>
-                        </div>
-                      )}
-                      {toolResponse.toolResponseData.files.worksheet && (
-                        <div className="flex items-center gap-1">
-                          <span className="font-medium text-muted-foreground">
-                            Sheet:
-                          </span>
-                          <span className="font-mono">
-                            {toolResponse.toolResponseData.files.worksheet}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Next actions */}
-                  {toolResponse.toolResponseData.nextActions &&
-                    toolResponse.toolResponseData.nextActions.length > 0 && (
-                      <div className="pt-2 border-t border-border/20">
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Suggested next actions:
-                        </div>
-                        <div className="space-y-1">
-                          {toolResponse.toolResponseData.nextActions.map(
-                            (action: string, index: number) => (
-                              <div
-                                key={index}
-                                className="text-xs bg-muted/30 rounded px-2 py-1 font-mono"
-                              >
-                                {action}
-                              </div>
-                            ),
+                    {/* Metrics */}
+                    {toolResponse.toolResponseData.metrics &&
+                      Object.keys(toolResponse.toolResponseData.metrics)
+                        .length > 0 && (
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {toolResponse.toolResponseData.metrics
+                            .rowsAffected && (
+                            <span className="px-2 py-1 bg-muted/50 rounded">
+                              Rows:{' '}
+                              {
+                                toolResponse.toolResponseData.metrics
+                                  .rowsAffected
+                              }
+                            </span>
+                          )}
+                          {toolResponse.toolResponseData.metrics
+                            .columnsAffected && (
+                            <span className="px-2 py-1 bg-muted/50 rounded">
+                              Columns:{' '}
+                              {
+                                toolResponse.toolResponseData.metrics
+                                  .columnsAffected
+                              }
+                            </span>
+                          )}
+                          {toolResponse.toolResponseData.metrics
+                            .cellsAffected && (
+                            <span className="px-2 py-1 bg-muted/50 rounded">
+                              Cells:{' '}
+                              {
+                                toolResponse.toolResponseData.metrics
+                                  .cellsAffected
+                              }
+                            </span>
                           )}
                         </div>
+                      )}
+
+                    {/* Files */}
+                    {toolResponse.toolResponseData.files && (
+                      <div className="space-y-1 text-xs">
+                        {toolResponse.toolResponseData.files.workbook && (
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium text-muted-foreground">
+                              File:
+                            </span>
+                            <span className="font-mono truncate">
+                              {toolResponse.toolResponseData.files.workbook}
+                            </span>
+                          </div>
+                        )}
+                        {toolResponse.toolResponseData.files.worksheet && (
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium text-muted-foreground">
+                              Sheet:
+                            </span>
+                            <span className="font-mono">
+                              {toolResponse.toolResponseData.files.worksheet}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                  {/* Visualizations */}
-                  {toolResponse.toolResponseData.visualizations &&
-                    toolResponse.toolResponseData.visualizations.length > 0 && (
-                      <div className="pt-2 border-t border-border/20">
-                        <SmartVisualization
-                          visualizations={
-                            toolResponse.toolResponseData.visualizations
-                          }
-                        />
-                      </div>
-                    )}
-                </div>
-              ) : (
-                /* Unstructured response */
-                <div className="text-sm">
-                  <MarkdownRenderer
-                    content={toolResponse.content}
-                    className=""
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+                    {/* Next actions */}
+                    {toolResponse.toolResponseData.nextActions &&
+                      toolResponse.toolResponseData.nextActions.length > 0 && (
+                        <div className="pt-2 border-t border-border/20">
+                          <div className="text-xs font-medium text-muted-foreground mb-1">
+                            Suggested next actions:
+                          </div>
+                          <div className="space-y-1">
+                            {toolResponse.toolResponseData.nextActions.map(
+                              (action: string, index: number) => (
+                                <div
+                                  key={index}
+                                  className="text-xs bg-muted/30 rounded px-2 py-1 font-mono"
+                                >
+                                  {action}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Visualizations */}
+                    {toolResponse.toolResponseData.visualizations &&
+                      toolResponse.toolResponseData.visualizations.length >
+                        0 && (
+                        <div className="pt-2 border-t border-border/20">
+                          <SmartVisualization
+                            visualizations={
+                              toolResponse.toolResponseData.visualizations
+                            }
+                          />
+                        </div>
+                      )}
+                  </div>
+                ) : (
+                  /* Unstructured response */
+                  <div className="text-sm">
+                    <MarkdownRenderer
+                      content={toolResponse.content}
+                      className=""
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </ShimmerBorder>
   );
 };
