@@ -4,7 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
+import {
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+  useEffect,
+  useState,
+} from 'react';
 import { MessageList } from '@/components/chat/MessageList';
 import { MessageInput } from '@/components/chat/MessageInput';
 import { EmptyState } from '@/components/chat/EmptyState';
@@ -46,6 +52,12 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(
       focus: () => void;
     }>(null);
     const messageListRef = useRef<{ scrollToBottom: () => void }>(null);
+
+    // State for delete confirmation dialog
+    const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+      messageId: string;
+      messagePreview: string;
+    } | null>(null);
 
     useImperativeHandle(ref, () => ({
       setMessage: (message: string) => {
@@ -93,6 +105,30 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(
         (m) => m.id === messageId,
       );
       if (messageIndex === -1) return;
+
+      const message = activeSession.messages[messageIndex];
+
+      // Get message preview for confirmation dialog
+      const messagePreview =
+        message.content.length > 50
+          ? message.content.substring(0, 50) + '...'
+          : message.content;
+
+      // Show confirmation dialog
+      setDeleteConfirmDialog({ messageId, messagePreview });
+    };
+
+    const confirmDeleteMessage = async () => {
+      if (!deleteConfirmDialog || !activeSessionId || !activeSession) return;
+
+      const { messageId } = deleteConfirmDialog;
+      const messageIndex = activeSession.messages.findIndex(
+        (m) => m.id === messageId,
+      );
+      if (messageIndex === -1) {
+        setDeleteConfirmDialog(null);
+        return;
+      }
 
       const message = activeSession.messages[messageIndex];
       const messagesToDelete = new Set([messageId]);
@@ -191,11 +227,25 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(
         (m) => !messagesToDelete.has(m.id),
       );
 
-      // Update the session
-      updateSession(activeSessionId, {
-        messages: updatedMessages,
-        updatedAt: new Date(),
-      });
+      try {
+        // Update backend first
+        await geminiChatService.updateSessionMessages(
+          activeSessionId,
+          updatedMessages,
+        );
+
+        // Update frontend store after backend confirms
+        updateSession(activeSessionId, {
+          messages: updatedMessages,
+          updatedAt: new Date(),
+        });
+
+        // Close confirmation dialog
+        setDeleteConfirmDialog(null);
+      } catch (error) {
+        console.error('Failed to delete message:', error);
+        setDeleteConfirmDialog(null);
+      }
     };
 
     const handleToolConfirmation = async (outcome: ToolConfirmationOutcome) => {
@@ -276,6 +326,42 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(
         <ToolModeStatusBar />
 
         <MessageInput disabled={!activeSessionId} ref={messageInputRef} />
+
+        {/* Delete Confirmation Dialog */}
+        {deleteConfirmDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md mx-4 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  Delete Message
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to delete this message? This action
+                  cannot be undone.
+                </p>
+                {deleteConfirmDialog.messagePreview && (
+                  <div className="mt-3 p-3 bg-muted/30 rounded-md">
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {deleteConfirmDialog.messagePreview}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={() => setDeleteConfirmDialog(null)}
+                >
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={confirmDeleteMessage}>
+                  Delete
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   },
