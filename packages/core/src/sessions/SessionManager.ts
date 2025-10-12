@@ -6,13 +6,8 @@
 
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type {
-  UniversalMessage,
-  ModelProviderConfig,
-  ModelProviderType,
-} from '../providers/types.js';
+import type { UniversalMessage } from '../core/message-types.js';
 import type { Config } from '../config/config.js';
-import type { ModelProviderFactory } from '../providers/ModelProviderFactory.js';
 
 export interface SessionData {
   id: string;
@@ -24,6 +19,7 @@ export interface SessionData {
     provider?: string;
     model?: string;
     roleId?: string;
+    titleLockedByUser?: boolean; // User manually set title, prevent auto-updates
   };
 }
 
@@ -37,7 +33,6 @@ export interface SessionInfo {
 
 export interface SessionManagerOptions {
   config: Config;
-  createModelProvider?: typeof ModelProviderFactory.create;
 }
 
 /**
@@ -49,7 +44,6 @@ export class SessionManager {
   private sessions: Map<string, SessionData> = new Map();
   private currentSessionId: string | null = null;
   private config: Config | null = null;
-  private createModelProvider?: typeof ModelProviderFactory.create;
   private initialized = false;
 
   private constructor() {
@@ -76,7 +70,6 @@ export class SessionManager {
     }
 
     this.config = options.config;
-    this.createModelProvider = options.createModelProvider;
     this.initialized = true; // Set before calling initialize to avoid circular dependency
     await this.initialize();
   }
@@ -320,15 +313,33 @@ export class SessionManager {
   }
 
   /**
-   * Update session title
+   * Update session title (typically called when user manually edits the title)
+   * This locks the title to prevent future auto-updates
    */
   updateSessionTitle(sessionId: string, newTitle: string): void {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.title = newTitle;
+      session.metadata = { ...session.metadata, titleLockedByUser: true };
       session.lastUpdated = new Date();
       console.log(
-        `[SessionManager] Updated session ${sessionId} title to: ${newTitle}`,
+        `[SessionManager] Updated session ${sessionId} title to: ${newTitle} (locked by user)`,
+      );
+      this.saveSession(session);
+    }
+  }
+
+  /**
+   * Toggle title lock status for a session
+   * When locked, title won't be auto-updated
+   */
+  toggleTitleLock(sessionId: string, locked: boolean): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.metadata = { ...session.metadata, titleLockedByUser: locked };
+      session.lastUpdated = new Date();
+      console.log(
+        `[SessionManager] Session ${sessionId} title lock: ${locked ? 'locked' : 'unlocked'}`,
       );
       this.saveSession(session);
     }
@@ -505,14 +516,7 @@ export class SessionManager {
   /**
    * Generate intelligent title using LLM when user sends exactly 3rd message
    */
-  async generateIntelligentTitle(
-    sessionId: string,
-    currentProvider?: { type: string; model: string },
-  ): Promise<string | null> {
-    if (!this.createModelProvider || !currentProvider) {
-      return null;
-    }
-
+  async generateIntelligentTitle(sessionId: string): Promise<string | null> {
     try {
       const session = this.sessions.get(sessionId);
       if (!session) return null;
@@ -524,14 +528,11 @@ export class SessionManager {
           !msg.content.startsWith('Tool execution completed successfully'),
       );
 
-      // Only generate when user has exactly 3 messages (after 3rd message is sent)
+      // Take last 5 user messages for title generation (more focused, less tokens)
       const userMessages = displayMessages.filter((msg) => msg.role === 'user');
-      if (userMessages.length !== 3) {
-        return null;
-      }
+      const recentUserMessages = userMessages.slice(-5); // Get last 5 messages
 
-      // Create a conversation summary prompt
-      const conversationText = displayMessages
+      const conversationText = recentUserMessages
         .map((msg) => `${msg.role}: ${msg.content}`)
         .join('\n');
 
@@ -541,37 +542,62 @@ ${conversationText}
 
 Title:`;
 
-      // Use current provider to generate title
-      const providerConfig: ModelProviderConfig = {
-        type: currentProvider.type as ModelProviderType,
-        model: currentProvider.model,
-      };
+      // Use GeminiClient to generate title (dynamic import to avoid circular dependency)
+      // Create a config proxy that forces gemini-2.5-flash model for title generation
+      const titleConfig = new Proxy(this.config!, {
+        get(target, prop) {
+          if (prop === 'getModel') {
+            return () => 'gemini-2.5-flash';
+          }
+          return Reflect.get(target, prop);
+        },
+      });
 
-      const provider = this.createModelProvider!(providerConfig, this.config!);
+      const { GeminiClient } = await import('../core/client.js');
+      const client = new GeminiClient(titleConfig);
 
-      const titleResponse = await provider.sendMessage(
-        [{ role: 'user', content: titlePrompt }],
-        new AbortController().signal,
-      );
+      // Initialize chat session with empty history
+      await client.startChat([]);
 
-      const generatedTitle = titleResponse.content
-        .trim()
-        .replace(/^["']|["']$/g, ''); // Remove quotes if any
+      // Create abort controller with 30 second timeout for title generation
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.warn('[SessionManager] Title generation timeout after 30s');
+        abortController.abort();
+      }, 30000);
 
-      // Validate and clean the generated title
-      if (
-        generatedTitle &&
-        generatedTitle.length > 0 &&
-        generatedTitle.length <= 50
-      ) {
-        console.log(
-          `[SessionManager] LLM generated title for session ${sessionId}: ${generatedTitle}`,
-        );
-        this.updateSessionTitle(sessionId, generatedTitle);
-        return generatedTitle;
+      try {
+        let generatedTitle = '';
+        for await (const event of client.sendMessageStream(
+          [{ text: titlePrompt }],
+          abortController.signal,
+          'title-generation',
+        )) {
+          if (event.type === 'content') {
+            generatedTitle += event.value;
+          }
+        }
+
+        clearTimeout(timeoutId);
+        generatedTitle = generatedTitle.trim().replace(/^["']|["']$/g, ''); // Remove quotes
+
+        // Validate and return
+        if (
+          generatedTitle &&
+          generatedTitle.length > 0 &&
+          generatedTitle.length <= 50
+        ) {
+          console.log(
+            `[SessionManager] LLM generated title for session ${sessionId}: ${generatedTitle}`,
+          );
+          return generatedTitle;
+        }
+
+        return null;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
       }
-
-      return null;
     } catch (error) {
       console.error(
         '[SessionManager] Failed to generate intelligent title:',
@@ -582,14 +608,23 @@ Title:`;
   }
 
   /**
-   * Auto-generate session title based on message count
-   * - First user message: Use message content (first 30 chars)
-   * - Third user message: Use LLM (gemini-2.5-flash) to generate intelligent title
+   * Auto-generate session title dynamically based on conversation
+   * - First user message: Extract from message content (first 30 chars)
+   * - Every 5 messages: Use GeminiClient to generate intelligent title (5, 10, 15, ...)
+   * - Title will be continuously updated unless user manually locks it
    */
   async autoGenerateTitle(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session || session.title !== 'New Chat') {
-      return; // Skip if session doesn't exist or already has custom title
+    if (!session) {
+      return; // Skip if session doesn't exist
+    }
+
+    // Skip if title was locked by user
+    if (session.metadata?.titleLockedByUser) {
+      console.log(
+        `[SessionManager] Title locked by user, skipping auto-generation: ${session.title}`,
+      );
+      return;
     }
 
     // Count user messages (excluding continuation prompts)
@@ -597,25 +632,26 @@ Title:`;
       (msg) => msg.role === 'user' && msg.content !== 'Please continue.',
     );
 
-    if (userMessages.length === 0) {
-      // First message: use simple extraction
+    if (userMessages.length === 1) {
+      // First message: use simple extraction for immediate feedback
       const title = this.generateTitleFromMessage(userMessages[0].content);
       console.log(
         `[SessionManager] Auto-generated title from first message: ${title}`,
       );
-      this.updateSessionTitle(sessionId, title);
-    } else if (userMessages.length === 3) {
-      // Third message: use LLM (always use gemini-2.5-flash for cost efficiency)
+      session.title = title;
+      session.lastUpdated = new Date();
+      this.saveSession(session);
+    } else if (userMessages.length % 5 === 0) {
+      // Every 5 messages: regenerate intelligent title (5, 10, 15, ...)
       try {
-        const intelligentTitle = await this.generateIntelligentTitle(
-          sessionId,
-          {
-            type: 'gemini',
-            model: 'gemini-2.5-flash',
-          },
-        );
+        const intelligentTitle = await this.generateIntelligentTitle(sessionId);
         if (intelligentTitle) {
-          this.updateSessionTitle(sessionId, intelligentTitle);
+          console.log(
+            `[SessionManager] Updating title at ${userMessages.length} messages: ${intelligentTitle}`,
+          );
+          session.title = intelligentTitle;
+          session.lastUpdated = new Date();
+          this.saveSession(session);
         }
       } catch (error) {
         console.error(
