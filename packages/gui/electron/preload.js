@@ -169,6 +169,12 @@ const electronAPI = {
         sessionId,
         newTitle,
       ),
+    updateSessionMessages: (sessionId, messages) =>
+      ipcRenderer.invoke(
+        'geminiChat-update-session-messages',
+        sessionId,
+        messages,
+      ),
     setSessionRole: (sessionId, roleId) =>
       ipcRenderer.invoke('geminiChat-set-session-role', sessionId, roleId),
     // OAuth authentication

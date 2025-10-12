@@ -566,6 +566,26 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  'geminiChat-update-session-messages',
+  async (_, sessionId, messages) => {
+    try {
+      const system = await ensureInitialized();
+      SessionManager.getInstance().saveSessionHistory(sessionId, messages);
+      console.log(
+        'MultiModel updateSessionMessages called:',
+        sessionId,
+        messages.length,
+        'messages',
+      );
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to update session messages:', error);
+      throw error;
+    }
+  },
+);
+
 ipcMain.handle('geminiChat-set-session-role', async (_, sessionId, roleId) => {
   try {
     const system = await ensureInitialized();
