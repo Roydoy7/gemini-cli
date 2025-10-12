@@ -3,48 +3,98 @@
 @tailwind utilities;
 
 @layer base {
+  /* ==================== LIGHT THEME ==================== */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* Background and foreground */
+    --background: 0 0% 96%;
+    --foreground: 0 0% 13%;
+
+    /* Card colors */
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 0 0% 13%;
+
+    /* Popover colors */
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 142 76% 36%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 142 76% 95%;
-    --accent-foreground: 142 76% 20%;
+    --popover-foreground: 0 0% 13%;
+
+    /* Primary (green) - darker for better contrast */
+    --primary: 142 76% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary backgrounds - white */
+    --secondary: 0 0% 100%;
+    --secondary-foreground: 0 0% 13%;
+
+    /* Muted elements - white background */
+    --muted: 0 0% 100%;
+    --muted-foreground: 0 0% 45%;
+
+    /* Avatar background - white */
+    --avatar-bg: 0 0% 100%;
+    --avatar-fg: 0 0% 13%;
+
+    /* Accent color */
+    --accent: 0 0% 92%;
+    --accent-foreground: 0 0% 13%;
+
+    /* Destructive (red) */
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Border and input */
+    --border: 0 0% 75%;
+    --input: 0 0% 94%;
+
+    /* Focus ring */
     --ring: 142 76% 36%;
+
+    /* Border radius */
     --radius: 0.5rem;
   }
 
+  /* ==================== DARK THEME ==================== */
   .dark {
+    /* Background and foreground */
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
+
+    /* Card colors */
     --card: 240 10% 3.9%;
     --card-foreground: 0 0% 98%;
+
+    /* Popover colors */
     --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
+
+    /* Primary (green) */
     --primary: 142 76% 50%;
     --primary-foreground: 240 5.9% 10%;
+
+    /* Secondary backgrounds */
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
+
+    /* Muted elements */
     --muted: 240 3.7% 15.9%;
     --muted-foreground: 240 5% 64.9%;
+
+    /* Avatar background - same as secondary in dark mode */
+    --avatar-bg: 240 3.7% 15.9%;
+    --avatar-fg: 0 0% 98%;
+
+    /* Accent color */
     --accent: 142 76% 15%;
     --accent-foreground: 142 76% 80%;
+
+    /* Destructive (red) */
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
+
+    /* Border and input */
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
+
+    /* Focus ring */
     --ring: 142 76% 50%;
   }
 }
@@ -62,4 +112,53 @@
     height: 100%;
     overflow: hidden;
   }
+}
+
+/* ==================== SCROLLBAR STYLES ==================== */
+/* Light theme scrollbar */
+:root::-webkit-scrollbar,
+:root ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:root::-webkit-scrollbar-track,
+:root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root::-webkit-scrollbar-thumb,
+:root ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 5px;
+  transition: background 0.2s ease;
+}
+
+:root::-webkit-scrollbar-thumb:hover,
+:root ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Dark theme scrollbar - keep original */
+.dark::-webkit-scrollbar,
+.dark ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.dark::-webkit-scrollbar-track,
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  transition: background 0.2s ease;
+}
+
+.dark::-webkit-scrollbar-thumb:hover,
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
