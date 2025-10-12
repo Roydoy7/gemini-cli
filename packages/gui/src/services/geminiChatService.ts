@@ -12,6 +12,7 @@ import type {
   ModelProviderType,
   CompressionInfo,
   ToolCall,
+  ChatMessage,
 } from '@/types';
 import type {
   ToolCallConfirmationDetails,
@@ -99,6 +100,10 @@ interface ElectronAPI {
       }>
     >;
     updateSessionTitle: (sessionId: string, newTitle: string) => Promise<void>;
+    updateSessionMessages: (
+      sessionId: string,
+      messages: ChatMessage[],
+    ) => Promise<void>;
     setSessionRole: (sessionId: string, roleId: string) => Promise<void>;
     // Tool confirmation
     onToolConfirmationRequest: (
@@ -284,9 +289,7 @@ class GeminiChatService {
     }
   }
 
-  async sendMessage(
-    messages: UniversalMessage[],
-  ): Promise<{
+  async sendMessage(messages: UniversalMessage[]): Promise<{
     stream: AsyncGenerator<UniversalStreamEvent>;
     cancel: () => void;
   }> {
@@ -701,6 +704,17 @@ class GeminiChatService {
     await this.api.updateSessionTitle(sessionId, newTitle);
   }
 
+  async updateSessionMessages(
+    sessionId: string,
+    messages: ChatMessage[],
+  ): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('GeminiChatService not initialized');
+    }
+
+    await this.api.updateSessionMessages(sessionId, messages);
+  }
+
   async setSessionRole(sessionId: string, roleId: string): Promise<void> {
     if (!this.initialized) {
       throw new Error('GeminiChatService not initialized');
@@ -821,9 +835,7 @@ class GeminiChatService {
     }
   }
 
-  async getExcelWorksheets(
-    workbook: string,
-  ): Promise<{
+  async getExcelWorksheets(workbook: string): Promise<{
     success: boolean;
     worksheets: Array<{ index: number; name: string }>;
     error?: string;
