@@ -52,12 +52,12 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     PythonEmbeddedTool,
     XlwingsTool,
     MarkItDownTool,
-    KnowledgeBaseTool
+    KnowledgeBaseTool,
   ],
   office_assistant: [
     LSTool,
-    // ReadFileTool,
-    // WriteFileTool,
+    ReadFileTool,
+    WriteFileTool,
     FileTool,
     ShellTool,
     WebTool,
@@ -70,7 +70,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     TodoTool,
     MemoryTool,
     PythonEmbeddedTool,
-    GeminiSearchTool
+    GeminiSearchTool,
   ],
   translator: [
     ReadFileTool,
@@ -95,7 +95,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     GeminiSearchTool,
     // WebSearchTool,
     XlwingsTool,
-    MarkItDownTool
+    MarkItDownTool,
   ],
   financial_analyst: [
     // ReadFileTool,
@@ -110,13 +110,11 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     FinancialAnalyzer,
     EconomicNewsTool,
     // MarkItDownTool,
-    MemoryTool
-  ]
+    MemoryTool,
+  ],
 };
 
-
 export class ToolsetManager {
-
   getToolsForRole(roleId: string): ToolClass[] {
     return ROLE_TOOLSET_MAP[roleId] || [];
   }

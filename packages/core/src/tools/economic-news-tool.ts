@@ -7,6 +7,7 @@
 import type { Config } from '../config/config.js';
 import type { ToolResult } from './tools.js';
 import { BasePythonTool } from './base-python-tool.js';
+import { GeminiSearchTool } from './gemini-search-tool.js';
 
 interface EconomicNewsParams {
   op:
@@ -72,7 +73,15 @@ export class EconomicNewsTool extends BasePythonTool<
     super(
       'economic_news_tool',
       'Economic News Aggregator',
-      'Aggregate financial news from multiple RSS sources with sentiment analysis and categorization',
+      `Aggregate financial news from multiple RSS sources with sentiment analysis and categorization
+# When to use
+- User asks for economic or financial news
+- Conversation is about markets, stocks, forex, crypto, commodities, or central banks, etc.
+
+# When NOT to use
+- User asks for news only, not specifically economic or financial news
+- User asks for very specific news that requires a web search (use ${GeminiSearchTool.Name} instead)
+`,
       ['feedparser', 'beautifulsoup4', 'textblob', 'requests', 'trafilatura'],
       {
         type: 'object',
