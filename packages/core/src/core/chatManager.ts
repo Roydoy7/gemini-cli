@@ -950,6 +950,19 @@ export class GeminiChatManager {
     await workspaceManager.setDirectories(directories);
   }
 
+  async getDirectoryContents(directoryPath: string): Promise<
+    Array<{
+      name: string;
+      path: string;
+      type: 'file' | 'folder';
+      size?: number;
+      modified?: Date;
+    }>
+  > {
+    const workspaceManager = WorkspaceManager.getInstance(this.config);
+    return await workspaceManager.getDirectoryContents(directoryPath);
+  }
+
   /**
    * Cleanup - saves all sessions and releases client pool
    */

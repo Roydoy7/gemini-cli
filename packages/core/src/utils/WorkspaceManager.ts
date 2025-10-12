@@ -38,18 +38,23 @@ export class WorkspaceManager {
   private constructor(config: Config) {
     this.config = config;
     this.workspaceContext = config.getWorkspaceContext();
-    
+
     // Setup persistence file path in project temp directory
     const tempDir = this.config.storage.getProjectTempDir();
-    this.persistenceFilePath = path.join(tempDir, 'active-workspace-directories.json');
-    
-    this.workspaceUnsubscribe = this.workspaceContext.onDirectoriesChanged(() => {
-      this.scheduleContextUpdate();
-      this.persistDirectories(); // Auto-save when directories change
-    });
+    this.persistenceFilePath = path.join(
+      tempDir,
+      'active-workspace-directories.json',
+    );
+
+    this.workspaceUnsubscribe = this.workspaceContext.onDirectoriesChanged(
+      () => {
+        this.scheduleContextUpdate();
+        this.persistDirectories(); // Auto-save when directories change
+      },
+    );
 
     this.scheduleContextUpdate();
-    
+
     // Start async initialization
     this.initializationPromise = this.initialize();
   }
@@ -61,7 +66,9 @@ export class WorkspaceManager {
   static getInstance(config?: Config): WorkspaceManager {
     if (!WorkspaceManager.instance) {
       if (!config) {
-        throw new Error('WorkspaceManager not initialized. Call with config first.');
+        throw new Error(
+          'WorkspaceManager not initialized. Call with config first.',
+        );
       }
       WorkspaceManager.instance = new WorkspaceManager(config);
     }
@@ -95,15 +102,20 @@ export class WorkspaceManager {
    * @param directory The directory path to add
    * @param basePath Optional base path for resolving relative paths
    */
-  async addWorkspaceDirectory(directory: string, basePath?: string): Promise<void> {
+  async addWorkspaceDirectory(
+    directory: string,
+    basePath?: string,
+  ): Promise<void> {
     const previousDirectories = this.getDirectories();
-    
+
     try {
       this.workspaceContext.addDirectory(directory, basePath);
       const newDirectories = this.getDirectories();
-      
+
       if (newDirectories.length > previousDirectories.length) {
-        const addedDirectory = newDirectories.find(d => !previousDirectories.includes(d));
+        const addedDirectory = newDirectories.find(
+          (d) => !previousDirectories.includes(d),
+        );
         this.notifyChange({
           type: 'added',
           directories: newDirectories,
@@ -111,7 +123,9 @@ export class WorkspaceManager {
         });
       }
     } catch (error) {
-      throw new Error(`Failed to add directory ${directory}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to add directory ${directory}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -121,11 +135,11 @@ export class WorkspaceManager {
    */
   async setDirectories(directories: readonly string[]): Promise<void> {
     const previousDirectories = this.getDirectories();
-    
+
     try {
       this.workspaceContext.setDirectories(directories);
       const newDirectories = this.getDirectories();
-      
+
       if (!this.arraysEqual(previousDirectories, newDirectories)) {
         this.notifyChange({
           type: 'set',
@@ -133,7 +147,9 @@ export class WorkspaceManager {
         });
       }
     } catch (error) {
-      throw new Error(`Failed to set directories: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to set directories: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -160,6 +176,60 @@ export class WorkspaceManager {
    */
   isPathWithinWorkspace(pathToCheck: string): boolean {
     return this.workspaceContext.isPathWithinWorkspace(pathToCheck);
+  }
+
+  /**
+   * Gets the contents of a directory.
+   * @param directoryPath The directory path to read
+   * @returns Promise resolving to array of file and folder information
+   */
+  async getDirectoryContents(directoryPath: string): Promise<
+    Array<{
+      name: string;
+      path: string;
+      type: 'file' | 'folder';
+      size?: number;
+      modified?: Date;
+    }>
+  > {
+    try {
+      const items = await fs.promises.readdir(directoryPath, {
+        withFileTypes: true,
+      });
+      const results: Array<{
+        name: string;
+        path: string;
+        type: 'file' | 'folder';
+        size?: number;
+        modified?: Date;
+      }> = [];
+
+      for (const item of items) {
+        const fullPath = path.join(directoryPath, item.name);
+
+        try {
+          const stats = await fs.promises.stat(fullPath);
+          const itemType: 'file' | 'folder' = item.isDirectory()
+            ? 'folder'
+            : 'file';
+
+          results.push({
+            name: item.name,
+            path: fullPath,
+            type: itemType,
+            size: item.isFile() ? stats.size : undefined,
+            modified: stats.mtime,
+          });
+        } catch (error) {
+          console.warn(`Failed to get stats for ${fullPath}:`, error);
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error(`Failed to read directory ${directoryPath}:`, error);
+      return [];
+    }
   }
 
   /**
@@ -200,17 +270,23 @@ export class WorkspaceManager {
       const directories = this.getDirectories();
       const data = {
         activeWorkspaceDirectories: directories,
-        savedAt: new Date().toISOString()
+        savedAt: new Date().toISOString(),
       };
-      
+
       // Ensure the temp directory exists
       const tempDir = path.dirname(this.persistenceFilePath);
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
-      
-      await fs.promises.writeFile(this.persistenceFilePath, JSON.stringify(data, null, 2), 'utf8');
-      console.log(`Persisted ${directories.length} active workspace directories`);
+
+      await fs.promises.writeFile(
+        this.persistenceFilePath,
+        JSON.stringify(data, null, 2),
+        'utf8',
+      );
+      console.log(
+        `Persisted ${directories.length} active workspace directories`,
+      );
     } catch (error) {
       console.error('Failed to persist workspace directories:', error);
     }
@@ -226,27 +302,34 @@ export class WorkspaceManager {
         console.log('No persisted workspace directories found');
         return;
       }
-      
+
       const data = await fs.promises.readFile(this.persistenceFilePath, 'utf8');
       const parsed = JSON.parse(data);
-      
-      if (parsed.activeWorkspaceDirectories && Array.isArray(parsed.activeWorkspaceDirectories)) {
+
+      if (
+        parsed.activeWorkspaceDirectories &&
+        Array.isArray(parsed.activeWorkspaceDirectories)
+      ) {
         const directories = parsed.activeWorkspaceDirectories as string[];
-        
+
         // Validate that directories still exist before restoring
         const validDirectories = [];
         for (const dir of directories) {
           if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
             validDirectories.push(dir);
           } else {
-            console.warn(`Skipping restored directory (no longer exists): ${dir}`);
+            console.warn(
+              `Skipping restored directory (no longer exists): ${dir}`,
+            );
           }
         }
-        
+
         if (validDirectories.length > 0) {
           // Don't trigger change notifications during initial load
           this.workspaceContext.setDirectories(validDirectories);
-          console.log(`Restored ${validDirectories.length} active workspace directories from disk`);
+          console.log(
+            `Restored ${validDirectories.length} active workspace directories from disk`,
+          );
         }
       }
     } catch (error) {
@@ -259,10 +342,9 @@ export class WorkspaceManager {
       return this.contextUpdatePromise;
     }
 
-    this.contextUpdatePromise = this.doUpdateContext()
-      .finally(() => {
-        this.contextUpdatePromise = null;
-      });
+    this.contextUpdatePromise = this.doUpdateContext().finally(() => {
+      this.contextUpdatePromise = null;
+    });
 
     return this.contextUpdatePromise;
   }
@@ -272,9 +354,11 @@ export class WorkspaceManager {
       this.environmentContext = await getEnvironmentContext(this.config);
     } catch (error) {
       console.error('Failed to update environment context:', error);
-      this.environmentContext = [{
-        text: 'Error: Failed to load workspace environment context',
-      }];
+      this.environmentContext = [
+        {
+          text: 'Error: Failed to load workspace environment context',
+        },
+      ];
     }
   }
 
