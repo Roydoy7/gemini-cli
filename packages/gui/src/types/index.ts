@@ -201,6 +201,7 @@ export interface ChatSession {
   provider: ModelProviderType;
   model: string;
   roleId?: string;
+  titleLockedByUser?: boolean; // Prevents automatic title updates
 }
 
 export interface ChatMessage {

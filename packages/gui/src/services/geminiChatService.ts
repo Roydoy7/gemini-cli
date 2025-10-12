@@ -100,6 +100,7 @@ interface ElectronAPI {
       }>
     >;
     updateSessionTitle: (sessionId: string, newTitle: string) => Promise<void>;
+    toggleTitleLock: (sessionId: string, locked: boolean) => Promise<void>;
     updateSessionMessages: (
       sessionId: string,
       messages: ChatMessage[],
@@ -702,6 +703,14 @@ class GeminiChatService {
     }
 
     await this.api.updateSessionTitle(sessionId, newTitle);
+  }
+
+  async toggleTitleLock(sessionId: string, locked: boolean): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('GeminiChatService not initialized');
+    }
+
+    await this.api.toggleTitleLock(sessionId, locked);
   }
 
   async updateSessionMessages(

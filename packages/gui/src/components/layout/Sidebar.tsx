@@ -15,6 +15,8 @@ import {
   MoreHorizontal,
   Trash2,
   AlertTriangle,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { format, isToday, isYesterday, isThisWeek, isThisYear } from 'date-fns';
 import { Button } from '@/components/ui/Button';
@@ -57,6 +59,9 @@ export const Sidebar: React.FC = () => {
     sessionRole: { name: string; icon: string };
     currentRole: { name: string; icon: string };
   } | null>(null);
+  const [openMenuSessionId, setOpenMenuSessionId] = useState<string | null>(
+    null,
+  );
 
   // Helper function to get role information by roleId
   const getRoleInfo = (roleId: string | undefined) => {
@@ -360,6 +365,36 @@ export const Sidebar: React.FC = () => {
     setRoleConflictDialog(null);
   };
 
+  const handleToggleTitleLock = async (
+    sessionId: string,
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+
+    const newLocked = !session.titleLockedByUser;
+
+    try {
+      // Update backend
+      await geminiChatService.toggleTitleLock(sessionId, newLocked);
+
+      // Update frontend store
+      updateSession(sessionId, { titleLockedByUser: newLocked });
+
+      console.log(
+        `Title lock ${newLocked ? 'enabled' : 'disabled'} for session:`,
+        sessionId,
+      );
+    } catch (error) {
+      console.error('Failed to toggle title lock:', error);
+    }
+
+    // Close menu
+    setOpenMenuSessionId(null);
+  };
+
   if (sidebarCollapsed) {
     return (
       <div className="fixed left-0 top-0 h-full w-16 bg-card border-r border-border flex flex-col items-center py-4 space-y-4 z-40">
@@ -488,23 +523,66 @@ export const Sidebar: React.FC = () => {
                         {format(session.updatedAt, 'MM-dd HH:mm')}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity relative">
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuSessionId(
+                            openMenuSessionId === session.id
+                              ? null
+                              : session.id,
+                          );
+                        }}
                       >
                         <MoreHorizontal size={12} />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-destructive hover:text-destructive"
-                        onClick={(e) => handleDeleteSession(session.id, e)}
-                      >
-                        <Trash2 size={12} />
-                      </Button>
+
+                      {/* Dropdown Menu */}
+                      {openMenuSessionId === session.id && (
+                        <>
+                          {/* Backdrop to close menu */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuSessionId(null);
+                            }}
+                          />
+                          {/* Menu Content */}
+                          <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-50">
+                            <button
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
+                              onClick={(e) =>
+                                handleToggleTitleLock(session.id, e)
+                              }
+                            >
+                              {session.titleLockedByUser ? (
+                                <>
+                                  <Unlock size={14} />
+                                  Unlock Title
+                                </>
+                              ) : (
+                                <>
+                                  <Lock size={14} />
+                                  Lock Title
+                                </>
+                              )}
+                            </button>
+                            <button
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2 text-destructive"
+                              onClick={(e) =>
+                                handleDeleteSession(session.id, e)
+                              }
+                            >
+                              <Trash2 size={14} />
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </Card>
