@@ -218,11 +218,12 @@ export const App: React.FC = () => {
     };
 
     initializeService();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isHydrated,
     currentProvider,
     currentModel,
-    currentRole,
+    // Note: currentRole is intentionally NOT in deps - role changes should not trigger re-initialization
     setBuiltinRoles,
     syncOAuthStatus,
   ]); // Re-run when hydration completes

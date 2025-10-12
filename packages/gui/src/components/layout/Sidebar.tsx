@@ -332,23 +332,26 @@ export const Sidebar: React.FC = () => {
   const handleSwitchToSessionRole = async () => {
     if (!roleConflictDialog) return;
 
-    try {
-      // Switch to the session's role
-      const session = sessions.find(
-        (s) => s.id === roleConflictDialog.sessionId,
-      );
-      if (session?.roleId) {
-        await geminiChatService.switchRole(session.roleId);
-        setCurrentRole(session.roleId); // Update frontend state
-        console.log('Switched to session role:', session.roleId);
-      }
+    // Save sessionId and roleId before closing dialog
+    const sessionId = roleConflictDialog.sessionId;
+    const session = sessions.find((s) => s.id === sessionId);
+    const targetRoleId = session?.roleId;
 
-      // Close dialog and perform session switch
+    try {
+      // Close dialog first
       setRoleConflictDialog(null);
-      await performSessionSwitch(roleConflictDialog.sessionId);
+
+      // First switch to the target session
+      await performSessionSwitch(sessionId);
+
+      // Then switch to the session's role
+      if (targetRoleId) {
+        await geminiChatService.switchRole(targetRoleId);
+        setCurrentRole(targetRoleId); // Update frontend state
+        console.log('Switched to session role:', targetRoleId);
+      }
     } catch (error) {
-      console.error('Failed to switch role:', error);
-      setRoleConflictDialog(null);
+      console.error('Failed to switch session and role:', error);
     }
   };
 
