@@ -851,7 +851,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           await geminiChatService.switchSession(activeSessionId);
         }
 
-        // Send ONLY the new user message (MultiModelSystem manages history internally)
+        // Send ONLY the new user message (GeminiChatManager manages history internally)
         const newUserMessage: UniversalMessage = {
           role: 'user',
           content: userMessage.content,
@@ -1247,7 +1247,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               } catch (error) {
                 console.error('Failed to refresh session info:', error);
               }
-            }, 2500); // 2500ms delay to ensure backend title generation (including LLM) is complete
+            }, 30000); // 30000ms (30s) delay to ensure backend title generation (including LLM) is complete
             break;
           } else if (event.type === 'error') {
             const errorMessage =

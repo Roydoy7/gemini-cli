@@ -394,22 +394,11 @@ export class GeminiSearchTool extends BaseDeclarativeTool<
   }
 
   /**
-   * Check if this tool is available (requires Gemini provider and authentication)
+   * Check if this tool is available (requires Gemini authentication)
    */
   async isAvailable(): Promise<boolean> {
     try {
-      // Check if current provider is Gemini
-      const { ModelProviderFactory } = await import(
-        '../providers/ModelProviderFactory.js'
-      );
-      const { ModelProviderType } = await import('../providers/types.js');
-
-      const currentProviderType = ModelProviderFactory.getCurrentProviderType();
-      if (currentProviderType !== ModelProviderType.GEMINI) {
-        return false;
-      }
-
-      // Check if Gemini authentication is available
+      // We now always use Gemini, so just check if authentication is available
       const { AuthManager } = await import('../auth/AuthManager.js');
       const authManager = AuthManager.getInstance();
       authManager.setConfig(this.config);

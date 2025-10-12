@@ -15,7 +15,6 @@ const {
   RoleManager,
   WorkspaceManager,
   SessionManager,
-  ModelProviderFactory,
   AuthManager,
   TemplateManager,
 } = require('@google/gemini-cli-core');
@@ -172,7 +171,6 @@ const ensureInitialized = async (
       // This ensures sessions are loaded when GeminiChatManager.initialize() tries to access them
       await SessionManager.getInstance().initializeWithConfig({
         config: config,
-        createModelProvider: ModelProviderFactory.create,
       });
 
       // Initialize GeminiChatManager with the proper Config instance
@@ -565,6 +563,18 @@ ipcMain.handle(
     }
   },
 );
+
+ipcMain.handle('geminiChat-toggle-title-lock', async (_, sessionId, locked) => {
+  try {
+    const system = await ensureInitialized();
+    SessionManager.getInstance().toggleTitleLock(sessionId, locked);
+    console.log('Title lock toggled:', sessionId, locked);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to toggle title lock:', error);
+    throw error;
+  }
+});
 
 ipcMain.handle(
   'geminiChat-update-session-messages',

@@ -22,7 +22,8 @@ export interface WorkspaceDirectoriesActions {
 /**
  * Custom hook for managing workspace directories with real-time sync
  */
-export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & WorkspaceDirectoriesActions => {
+export const useWorkspaceDirectories = (): WorkspaceDirectoriesState &
+  WorkspaceDirectoriesActions => {
   const [directories, setDirectories] = useState<readonly string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +35,10 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
       const dirs = await geminiChatService.getWorkspaceDirectories();
       setDirectories(dirs);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load workspace directories';
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : 'Failed to load workspace directories';
       setError(errorMessage);
       console.error('Failed to load workspace directories:', err);
     } finally {
@@ -45,23 +49,32 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
   const addDirectory = async (directory: string, basePath?: string) => {
     try {
       setError(null);
-      
+
       // Add to current directories immediately for instant UI feedback
       const newDirectories = [...directories, directory];
       setDirectories(newDirectories);
-      
+
       // Save to localStorage immediately
-      localStorage.setItem('active-workspace-directories', JSON.stringify(newDirectories));
-      
+      localStorage.setItem(
+        'active-workspace-directories',
+        JSON.stringify(newDirectories),
+      );
+
       // Then sync to backend
       await geminiChatService.addWorkspaceDirectory(directory, basePath);
       console.log('Added directory to localStorage and backend:', directory);
     } catch (err) {
       // Revert UI state on error
-      setDirectories(prev => prev.filter(d => d !== directory));
-      localStorage.setItem('active-workspace-directories', JSON.stringify(directories));
-      
-      const errorMessage = err instanceof Error ? err.message : 'Failed to add workspace directory';
+      setDirectories((prev) => prev.filter((d) => d !== directory));
+      localStorage.setItem(
+        'active-workspace-directories',
+        JSON.stringify(directories),
+      );
+
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : 'Failed to add workspace directory';
       setError(errorMessage);
       throw err; // Re-throw for component-level handling
     }
@@ -70,18 +83,24 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
   const setWorkspaceDirectories = async (newDirectories: readonly string[]) => {
     try {
       setError(null);
-      
+
       // Update UI immediately for instant feedback
       setDirectories(newDirectories);
-      
+
       // Save to localStorage immediately
-      localStorage.setItem('active-workspace-directories', JSON.stringify(newDirectories));
-      
+      localStorage.setItem(
+        'active-workspace-directories',
+        JSON.stringify(newDirectories),
+      );
+
       // Then sync to backend
       await geminiChatService.setWorkspaceDirectories(newDirectories);
       // console.log('Set workspace directories in localStorage and backend:', newDirectories);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to set workspace directories';
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : 'Failed to set workspace directories';
       setError(errorMessage);
       throw err; // Re-throw for component-level handling
     }
@@ -111,8 +130,8 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
 
     // Load from localStorage immediately for instant UI
     loadFromLocalStorage();
-    
-    // Wait a bit for MultiModelService to initialize, then sync
+
+    // Wait a bit for GeminiChatService to initialize, then sync
     const syncToBackend = async () => {
       try {
         const saved = localStorage.getItem('active-workspace-directories');
@@ -125,15 +144,23 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
                 await geminiChatService.setWorkspaceDirectories(parsed);
                 // console.log('Synced localStorage directories to backend:', parsed);
               } catch (error) {
-                console.warn('Failed to sync localStorage directories to backend (will retry):', error);
-                
+                console.warn(
+                  'Failed to sync localStorage directories to backend (will retry):',
+                  error,
+                );
+
                 // Retry after a longer delay
                 setTimeout(async () => {
                   try {
                     await geminiChatService.setWorkspaceDirectories(parsed);
-                    console.log('Successfully synced localStorage directories to backend on retry');
+                    console.log(
+                      'Successfully synced localStorage directories to backend on retry',
+                    );
                   } catch (retryError) {
-                    console.warn('Failed to sync on retry, will use localStorage data only:', retryError);
+                    console.warn(
+                      'Failed to sync on retry, will use localStorage data only:',
+                      retryError,
+                    );
                   }
                 }, 3000);
               }
@@ -146,7 +173,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
     };
 
     syncToBackend();
-    
+
     // Also try to load from backend (this might update with newer data)
     setTimeout(() => {
       loadDirectories();
@@ -159,14 +186,24 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
     if ((globalThis as any).electronAPI?.onWorkspaceDirectoriesChanged) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cleanup = (globalThis as any).electronAPI.onWorkspaceDirectoriesChanged(
-        (_event: unknown, data: { type: string; directories: readonly string[]; changedDirectory?: string }) => {
+        (
+          _event: unknown,
+          data: {
+            type: string;
+            directories: readonly string[];
+            changedDirectory?: string;
+          },
+        ) => {
           // console.log('Workspace directories changed:', data);
           setDirectories(data.directories);
           setError(null);
-          
+
           // Save to localStorage
-          localStorage.setItem('active-workspace-directories', JSON.stringify(data.directories));
-        }
+          localStorage.setItem(
+            'active-workspace-directories',
+            JSON.stringify(data.directories),
+          );
+        },
       );
     }
 
@@ -181,6 +218,6 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState & Workspace
     error,
     addDirectory,
     setDirectories: setWorkspaceDirectories,
-    refresh
+    refresh,
   };
 };

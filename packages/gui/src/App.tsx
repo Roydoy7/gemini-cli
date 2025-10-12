@@ -36,7 +36,7 @@ export const App: React.FC = () => {
   }, [theme, isHydrated]);
 
   useEffect(() => {
-    // Initialize MultiModelService via Electron IPC
+    // Initialize GeminiChatService via Electron IPC
     const initializeService = async () => {
       // Wait for Electron API to be available
       let retries = 0;
@@ -213,7 +213,7 @@ export const App: React.FC = () => {
         useAppStore.getState().setInitialized(true);
         console.log('App initialization completed');
       } catch (error) {
-        console.error('Failed to initialize MultiModelService:', error);
+        console.error('Failed to initialize GeminiChatService:', error);
       }
     };
 
