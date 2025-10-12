@@ -400,12 +400,12 @@ export const Sidebar: React.FC = () => {
 
   if (sidebarCollapsed) {
     return (
-      <div className="fixed left-0 top-0 h-full w-16 bg-card border-r border-border flex flex-col items-center py-4 space-y-4 z-40">
+      <div className="fixed left-0 top-0 h-full w-16 bg-primary dark:bg-card border-r border-primary dark:border-border flex flex-col items-center py-4 space-y-4 z-40">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setSidebarCollapsed(false)}
-          className="h-8 w-8"
+          className="h-8 w-8 text-white dark:text-foreground hover:bg-white/10 dark:hover:bg-accent"
         >
           <ChevronRight size={16} />
         </Button>
@@ -413,7 +413,7 @@ export const Sidebar: React.FC = () => {
           variant="ghost"
           size="icon"
           onClick={createNewSession}
-          className="h-8 w-8"
+          className="h-8 w-8 text-white dark:text-foreground hover:bg-white/10 dark:hover:bg-accent"
         >
           <Plus size={16} />
         </Button>
@@ -423,18 +423,23 @@ export const Sidebar: React.FC = () => {
   }
 
   return (
-    <div className="w-80 bg-card border-r border-border flex flex-col">
+    <div className="w-80 bg-primary dark:bg-card border-r border-primary dark:border-border flex flex-col text-white dark:text-foreground">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border">
+      <div className="flex items-center justify-between p-4 border-b border-white/20 dark:border-border">
         <div className="flex items-center gap-2">
-          <MessageSquare size={20} className="text-primary" />
-          <span className="font-semibold">Gemini CLI</span>
+          <MessageSquare
+            size={20}
+            className="text-white dark:text-foreground"
+          />
+          <span className="font-semibold text-white dark:text-foreground">
+            Gemini CLI
+          </span>
         </div>
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setSidebarCollapsed(true)}
-          className="h-8 w-8"
+          className="h-8 w-8 text-white dark:text-foreground hover:bg-white/10 dark:hover:bg-accent"
         >
           <ChevronLeft size={16} />
         </Button>
@@ -444,7 +449,7 @@ export const Sidebar: React.FC = () => {
       <div className="p-4">
         <Button
           onClick={createNewSession}
-          className="w-full justify-start gap-2"
+          className="w-full justify-start gap-2 bg-white dark:bg-primary text-primary dark:text-primary-foreground hover:bg-white/90 dark:hover:bg-primary/90"
         >
           <Plus size={16} />
           New Chat
@@ -463,7 +468,7 @@ export const Sidebar: React.FC = () => {
               placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 bg-white dark:bg-input border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary"
             />
           </div>
           {sessions.length > 0 && (
@@ -471,7 +476,7 @@ export const Sidebar: React.FC = () => {
               variant="ghost"
               size="icon"
               onClick={() => setShowDeleteAllConfirm(true)}
-              className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="h-9 w-9 text-white dark:text-destructive hover:bg-destructive hover:text-white dark:hover:bg-destructive/10"
               title="Delete all conversations"
             >
               <Trash2 size={16} />
@@ -486,7 +491,7 @@ export const Sidebar: React.FC = () => {
           {sortedGroups.map((groupName) => (
             <div key={groupName} className="space-y-2">
               {/* Time Group Header */}
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 py-1">
+              <div className="text-xs font-medium text-white/70 dark:text-muted-foreground uppercase tracking-wider px-2 py-1">
                 {groupName}
               </div>
 
@@ -495,22 +500,38 @@ export const Sidebar: React.FC = () => {
                 <Card
                   key={session.id}
                   className={cn(
-                    'p-3 cursor-pointer hover:bg-accent/50 transition-colors group',
-                    session.id === activeSessionId &&
-                      'bg-accent border-primary/50',
+                    'p-3 cursor-pointer transition-all group border',
+                    session.id === activeSessionId
+                      ? 'bg-white dark:bg-accent border-white dark:border-primary/50 shadow-sm'
+                      : 'bg-white/10 dark:bg-card text-white dark:text-foreground border-white/20 dark:border-border hover:bg-white/20 dark:hover:bg-accent/50',
                   )}
                   onClick={() => handleSessionClick(session.id)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate text-sm">
+                      <div
+                        className={cn(
+                          'font-medium truncate text-sm',
+                          session.id === activeSessionId
+                            ? 'text-foreground dark:text-foreground'
+                            : 'text-white dark:text-foreground',
+                        )}
+                      >
                         {session.title}
                       </div>
                       {/* Role and message count in one line */}
                       {(() => {
                         const roleInfo = getRoleInfo(session.roleId);
+                        const isActive = session.id === activeSessionId;
                         return (
-                          <div className="flex items-center justify-between text-xs mt-1 text-muted-foreground">
+                          <div
+                            className={cn(
+                              'flex items-center justify-between text-xs mt-1',
+                              isActive
+                                ? 'text-muted-foreground dark:text-muted-foreground'
+                                : 'text-white/60 dark:text-muted-foreground',
+                            )}
+                          >
                             <div className="flex items-center gap-1 min-w-0 flex-1">
                               <span className="text-xs">{roleInfo.icon}</span>
                               <span className="truncate">{roleInfo.name}</span>
@@ -522,7 +543,14 @@ export const Sidebar: React.FC = () => {
                         );
                       })()}
 
-                      <div className="text-xs text-muted-foreground">
+                      <div
+                        className={cn(
+                          'text-xs',
+                          session.id === activeSessionId
+                            ? 'text-muted-foreground dark:text-muted-foreground'
+                            : 'text-white/60 dark:text-muted-foreground',
+                        )}
+                      >
                         {format(session.updatedAt, 'MM-dd HH:mm')}
                       </div>
                     </div>
@@ -530,7 +558,12 @@ export const Sidebar: React.FC = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className={cn(
+                          'h-6 w-6',
+                          session.id === activeSessionId
+                            ? 'text-primary dark:text-foreground hover:bg-primary/10 dark:hover:bg-accent'
+                            : 'text-white dark:text-foreground hover:bg-white/20 dark:hover:bg-accent',
+                        )}
                         onClick={(e) => {
                           e.stopPropagation();
                           setOpenMenuSessionId(
@@ -555,7 +588,7 @@ export const Sidebar: React.FC = () => {
                             }}
                           />
                           {/* Menu Content */}
-                          <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-50">
+                          <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-50 text-foreground">
                             <button
                               className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
                               onClick={(e) =>
@@ -596,7 +629,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Footer - removed Authentication Settings button */}
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-white/20 dark:border-border">
         {/* Authentication settings moved to Model Selector */}
       </div>
 
@@ -684,7 +717,7 @@ export const Sidebar: React.FC = () => {
                   </span>
                   <div className="flex items-center gap-1">
                     <span>{roleConflictDialog.sessionRole.icon}</span>
-                    <span className="font-medium">
+                    <span className="font-medium text-foreground">
                       {roleConflictDialog.sessionRole.name}
                     </span>
                   </div>
@@ -695,7 +728,7 @@ export const Sidebar: React.FC = () => {
                   </span>
                   <div className="flex items-center gap-1">
                     <span>{roleConflictDialog.currentRole.icon}</span>
-                    <span className="font-medium">
+                    <span className="font-medium text-foreground">
                       {roleConflictDialog.currentRole.name}
                     </span>
                   </div>
@@ -710,14 +743,14 @@ export const Sidebar: React.FC = () => {
               <Button
                 variant="outline"
                 onClick={handleContinueWithCurrentRole}
-                className="w-full"
+                className="w-full text-foreground"
               >
                 Continue with Current Role (May Cause Issues)
               </Button>
               <Button
                 variant="ghost"
                 onClick={handleCancelSwitch}
-                className="w-full"
+                className="w-full text-foreground"
               >
                 Cancel
               </Button>

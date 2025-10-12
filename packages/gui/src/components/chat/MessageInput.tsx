@@ -647,16 +647,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <span class="text-xs font-medium text-muted-foreground">Session Role:</span>
-                <span class="text-sm font-medium">${sessionRoleName}</span>
+                <span class="text-sm font-medium text-foreground">${sessionRoleName}</span>
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-xs font-medium text-muted-foreground">Current Role:</span>
-                <span class="text-sm font-medium">${currentRoleName}</span>
+                <span class="text-sm font-medium text-foreground">${currentRoleName}</span>
               </div>
             </div>
           </div>
           <div class="p-4 border-t border-border flex justify-start gap-3">
-            <button id="cancel-btn" class="px-4 py-2 text-sm rounded-md border border-border hover:bg-muted transition-colors">
+            <button id="cancel-btn" class="px-4 py-2 text-sm rounded-md border border-border text-foreground hover:bg-muted transition-colors">
               Cancel
             </button>
             <button id="continue-btn" class="px-4 py-2 text-sm rounded-md bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-200 hover:bg-orange-200 dark:hover:bg-orange-900 transition-colors">
