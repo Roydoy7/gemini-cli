@@ -169,6 +169,8 @@ const electronAPI = {
         sessionId,
         newTitle,
       ),
+    toggleTitleLock: (sessionId, locked) =>
+      ipcRenderer.invoke('geminiChat-toggle-title-lock', sessionId, locked),
     updateSessionMessages: (sessionId, messages) =>
       ipcRenderer.invoke(
         'geminiChat-update-session-messages',
