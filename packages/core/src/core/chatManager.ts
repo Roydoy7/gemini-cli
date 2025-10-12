@@ -837,6 +837,10 @@ export class GeminiChatManager {
     this.sessionManager.updateSessionTitle(sessionId, newTitle);
   }
 
+  updateSessionMessages(sessionId: string, messages: UniversalMessage[]): void {
+    this.sessionManager.saveSessionHistory(sessionId, messages);
+  }
+
   setSessionRole(sessionId: string, roleId: string): void {
     this.sessionManager.setSessionRole(sessionId, roleId);
   }

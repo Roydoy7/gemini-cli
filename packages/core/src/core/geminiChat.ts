@@ -154,7 +154,11 @@ function extractCuratedHistory(comprehensiveHistory: Content[]): Content[] {
         i++;
       }
       if (isValid) {
-        curatedHistory.push(...modelOutput.map(stripThoughtsFromContent));
+        // Strip thoughts and filter out any content that becomes invalid after stripping
+        const strippedOutput = modelOutput
+          .map(stripThoughtsFromContent)
+          .filter(isValidContent);
+        curatedHistory.push(...strippedOutput);
       }
     }
   }
