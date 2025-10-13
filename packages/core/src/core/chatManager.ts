@@ -12,8 +12,8 @@ import { GeminiClientPool } from './clientPool.js';
 import { SessionManager } from '../sessions/SessionManager.js';
 import { RoleManager } from '../roles/RoleManager.js';
 import { WorkspaceManager } from '../utils/WorkspaceManager.js';
+import { TemplateManager } from '../templates/TemplateManager.js';
 import type { UniversalMessage } from './message-types.js';
-import type { RoleDefinition } from '../roles/types.js';
 import {
   GeminiEventType,
   type ToolCallRequestInfo,
@@ -791,71 +791,52 @@ export class GeminiChatManager {
   }
 
   /**
-   * Session Management
+   * Get SessionManager instance - delegate session operations to it
+   * Note: switchSession and deleteSession need special handling for client pool
    */
-  createSession(sessionId: string, title?: string, roleId?: string): void {
-    this.sessionManager.createSession(sessionId, title || 'New Chat', roleId);
+  getSessionManager(): SessionManager {
+    return this.sessionManager;
   }
 
+  /**
+   * Switch session with client pool coordination
+   */
   async switchSession(sessionId: string): Promise<void> {
-    // Simply switch the session in SessionManager
-    // The client pool will handle getting/creating the appropriate client
     this.sessionManager.switchSession(sessionId);
-
-    // Load session history into the client for this session
     await this.loadSessionIntoClient(sessionId);
-
     console.log(`[GeminiChatManager] Switched to session: ${sessionId}`);
   }
 
+  /**
+   * Delete session with client pool cleanup
+   */
   deleteSession(sessionId: string): void {
-    // Release the client from pool first
     this.clientPool.release(sessionId);
-
-    // Then delete from SessionManager
     this.sessionManager.deleteSession(sessionId);
   }
 
+  /**
+   * Delete all sessions with client pool cleanup
+   */
   deleteAllSessions(): void {
     const sessionIds = this.sessionManager.getSessionIds();
     sessionIds.forEach((id) => this.deleteSession(id));
   }
 
-  getCurrentSessionId(): string | null {
-    return this.sessionManager.getCurrentSessionId();
-  }
-
-  getSessionsInfo() {
-    return this.sessionManager.getSessionsInfo();
-  }
-
-  getDisplayMessages(sessionId?: string): UniversalMessage[] {
-    return this.sessionManager.getDisplayMessages(sessionId);
-  }
-
-  updateSessionTitle(sessionId: string, newTitle: string): void {
-    this.sessionManager.updateSessionTitle(sessionId, newTitle);
-  }
-
-  toggleTitleLock(sessionId: string, locked: boolean): void {
-    this.sessionManager.toggleTitleLock(sessionId, locked);
-  }
-
-  updateSessionMessages(sessionId: string, messages: UniversalMessage[]): void {
-    this.sessionManager.saveSessionHistory(sessionId, messages);
-  }
-
-  setSessionRole(sessionId: string, roleId: string): void {
-    this.sessionManager.setSessionRole(sessionId, roleId);
+  /**
+   * Get RoleManager instance - delegate role operations to it
+   * Note: switchRole needs special handling for client tool updates
+   */
+  getRoleManager(): RoleManager {
+    return this.roleManager;
   }
 
   /**
-   * Role Management
+   * Switch role with client tool updates
    */
   async switchRole(roleId: string): Promise<boolean> {
     const success = await this.roleManager.setCurrentRole(roleId);
     if (success) {
-      // Update tools for current session's client if it exists
       const sessionId = this.sessionManager.getCurrentSessionId();
       if (sessionId) {
         const client = this.clientPool.get(sessionId);
@@ -866,18 +847,6 @@ export class GeminiChatManager {
       console.log(`[GeminiChatManager] Switched to role: ${roleId}`);
     }
     return success;
-  }
-
-  getCurrentRole() {
-    return this.roleManager.getCurrentRole();
-  }
-
-  getAllRoles() {
-    return this.roleManager.getAllRoles();
-  }
-
-  async addCustomRole(role: RoleDefinition): Promise<void> {
-    await this.roleManager.addCustomRole(role);
   }
 
   /**
@@ -929,38 +898,17 @@ export class GeminiChatManager {
   }
 
   /**
-   * Utility: Get workspace directories
+   * Get WorkspaceManager instance - delegate workspace operations to it
    */
-  async getWorkspaceDirectories(): Promise<readonly string[]> {
-    const workspaceManager = WorkspaceManager.getInstance(this.config);
-    await workspaceManager.ensureInitialized();
-    return workspaceManager.getDirectories();
+  getWorkspaceManager(): WorkspaceManager {
+    return WorkspaceManager.getInstance(this.config);
   }
 
-  async addWorkspaceDirectory(
-    directory: string,
-    basePath?: string,
-  ): Promise<void> {
-    const workspaceManager = WorkspaceManager.getInstance(this.config);
-    await workspaceManager.addWorkspaceDirectory(directory, basePath);
-  }
-
-  async setWorkspaceDirectories(directories: readonly string[]): Promise<void> {
-    const workspaceManager = WorkspaceManager.getInstance(this.config);
-    await workspaceManager.setDirectories(directories);
-  }
-
-  async getDirectoryContents(directoryPath: string): Promise<
-    Array<{
-      name: string;
-      path: string;
-      type: 'file' | 'folder';
-      size?: number;
-      modified?: Date;
-    }>
-  > {
-    const workspaceManager = WorkspaceManager.getInstance(this.config);
-    return await workspaceManager.getDirectoryContents(directoryPath);
+  /**
+   * Get TemplateManager instance - delegate template operations to it
+   */
+  getTemplateManager(): TemplateManager {
+    return TemplateManager.getInstance(this.config);
   }
 
   /**
