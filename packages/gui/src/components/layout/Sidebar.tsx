@@ -195,10 +195,13 @@ export const Sidebar: React.FC = () => {
     const hasOtherSessions = sessions.length > 1;
 
     // Find another session to switch to before deleting (if needed)
+    // Select the most recent session (by updatedAt)
     let nextSession = null;
     if (isActiveSession && hasOtherSessions) {
-      const otherSessions = sessions.filter((s) => s.id !== sessionId);
-      nextSession = otherSessions[0];
+      const otherSessions = sessions
+        .filter((s) => s.id !== sessionId)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      nextSession = otherSessions[0]; // Most recent session
     }
 
     // If deleting the active session, clear any ongoing operation state
@@ -608,7 +611,7 @@ export const Sidebar: React.FC = () => {
                               )}
                             </button>
                             <button
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2 text-destructive"
+                              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 bg-destructive text-white hover:bg-destructive/90"
                               onClick={(e) =>
                                 handleDeleteSession(session.id, e)
                               }
@@ -684,8 +687,9 @@ export const Sidebar: React.FC = () => {
 
             <div className="flex gap-3 justify-end">
               <Button
-                variant="ghost"
+                variant="outline"
                 onClick={() => setDeleteConfirmDialog(null)}
+                className="text-foreground hover:text-foreground"
               >
                 Cancel
               </Button>
