@@ -4,7 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useRef, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
+import {
+  useState,
+  useRef,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  useEffect,
+} from 'react';
 import type React from 'react';
 import {
   Bold,
@@ -23,7 +30,8 @@ import {
   EyeOff,
   FileSpreadsheet,
   Folder,
-  BookTemplate
+  BookTemplate,
+  Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
@@ -51,6 +59,7 @@ interface RichTextInputProps {
   onExcelClick?: () => void;
   onWorkspaceClick?: () => void;
   onTemplateClick?: () => void;
+  onSaveTemplateClick?: () => void;
   // External button children (for rendering menus)
   excelButton?: React.ReactNode;
   workspaceButton?: React.ReactNode;
@@ -63,23 +72,27 @@ export interface RichTextInputRef {
 }
 
 export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
-  ({
-    value,
-    onChange,
-    onKeyDown,
-    onClick,
-    disabled = false,
-    placeholder = 'Type a message...',
-    className,
-    quotedMessage,
-    onRemoveQuote,
-    onExcelClick,
-    onWorkspaceClick,
-    onTemplateClick,
-    excelButton,
-    workspaceButton,
-    templateButton
-  }, ref) => {
+  (
+    {
+      value,
+      onChange,
+      onKeyDown,
+      onClick,
+      disabled = false,
+      placeholder = 'Type a message...',
+      className,
+      quotedMessage,
+      onRemoveQuote,
+      onExcelClick,
+      onWorkspaceClick,
+      onTemplateClick,
+      onSaveTemplateClick,
+      excelButton,
+      workspaceButton,
+      templateButton,
+    },
+    ref,
+  ) => {
     const [isMultilineMode, setIsMultilineMode] = useState(false);
     const [showToolbar, setShowToolbar] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
@@ -92,7 +105,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
       },
       getTextareaRef() {
         return textareaRef.current;
-      }
+      },
     }));
 
     // Auto-adjust textarea height
@@ -118,69 +131,83 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
 
     // Handle mode toggle
     const toggleMode = useCallback(() => {
-      setIsMultilineMode(prev => !prev);
+      setIsMultilineMode((prev) => !prev);
       // When showing toolbar in single-line mode, also switch to multi-line mode
-      setShowToolbar(prev => !prev);
+      setShowToolbar((prev) => !prev);
       // Focus after mode change
       setTimeout(() => textareaRef.current?.focus(), 0);
     }, []);
 
     // Toggle Markdown syntax (add or remove)
-    const toggleMarkdown = useCallback((before: string, after: string = '') => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
+    const toggleMarkdown = useCallback(
+      (before: string, after: string = '') => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
 
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const selectedText = value.substring(start, end);
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const selectedText = value.substring(start, end);
 
-      // Check if already wrapped
-      const beforeText = value.substring(start - before.length, start);
-      const afterText = value.substring(end, end + after.length);
+        // Check if already wrapped
+        const beforeText = value.substring(start - before.length, start);
+        const afterText = value.substring(end, end + after.length);
 
-      if (beforeText === before && afterText === after) {
-        // Remove the markdown
-        const newText = value.substring(0, start - before.length) + selectedText + value.substring(end + after.length);
-        onChange(newText);
+        if (beforeText === before && afterText === after) {
+          // Remove the markdown
+          const newText =
+            value.substring(0, start - before.length) +
+            selectedText +
+            value.substring(end + after.length);
+          onChange(newText);
 
-        setTimeout(() => {
-          const newStart = start - before.length;
-          const newEnd = end - before.length;
-          textarea.setSelectionRange(newStart, newEnd);
-          textarea.focus();
-        }, 0);
-      } else {
-        // Add the markdown
-        const newText = value.substring(0, start) + before + selectedText + after + value.substring(end);
-        onChange(newText);
+          setTimeout(() => {
+            const newStart = start - before.length;
+            const newEnd = end - before.length;
+            textarea.setSelectionRange(newStart, newEnd);
+            textarea.focus();
+          }, 0);
+        } else {
+          // Add the markdown
+          const newText =
+            value.substring(0, start) +
+            before +
+            selectedText +
+            after +
+            value.substring(end);
+          onChange(newText);
 
-        setTimeout(() => {
-          const newStart = start + before.length;
-          const newEnd = end + before.length;
-          textarea.setSelectionRange(newStart, newEnd);
-          textarea.focus();
-        }, 0);
-      }
-    }, [value, onChange]);
+          setTimeout(() => {
+            const newStart = start + before.length;
+            const newEnd = end + before.length;
+            textarea.setSelectionRange(newStart, newEnd);
+            textarea.focus();
+          }, 0);
+        }
+      },
+      [value, onChange],
+    );
 
     // Insert text at cursor
-    const insertText = useCallback((text: string) => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
+    const insertText = useCallback(
+      (text: string) => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
 
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const newText = value.substring(0, start) + text + value.substring(end);
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const newText = value.substring(0, start) + text + value.substring(end);
 
-      onChange(newText);
+        onChange(newText);
 
-      // Set cursor position after the inserted text
-      setTimeout(() => {
-        const newPosition = start + text.length;
-        textarea.setSelectionRange(newPosition, newPosition);
-        textarea.focus();
-      }, 0);
-    }, [value, onChange]);
+        // Set cursor position after the inserted text
+        setTimeout(() => {
+          const newPosition = start + text.length;
+          textarea.setSelectionRange(newPosition, newPosition);
+          textarea.focus();
+        }, 0);
+      },
+      [value, onChange],
+    );
 
     // Toolbar actions
     const handleBold = () => toggleMarkdown('**', '**');
@@ -271,7 +298,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
     };
 
     // Handle internal key events
-    const handleInternalKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleInternalKeyDown = (
+      e: React.KeyboardEvent<HTMLTextAreaElement>,
+    ) => {
       // In single-line mode, Enter sends the message
       if (!isMultilineMode && e.key === 'Enter' && !e.shiftKey) {
         // Let parent handle send
@@ -307,7 +336,8 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-muted-foreground mb-1 font-medium">
-                  Replying to {quotedMessage.role === 'user' ? 'You' : 'Assistant'}
+                  Replying to{' '}
+                  {quotedMessage.role === 'user' ? 'You' : 'Assistant'}
                 </div>
                 <div className="text-sm text-foreground/80 line-clamp-2">
                   {quotedMessage.content}
@@ -454,8 +484,8 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
                 </>
               )}
 
-              {(workspaceButton || onWorkspaceClick) && (
-                workspaceButton || (
+              {(workspaceButton || onWorkspaceClick) &&
+                (workspaceButton || (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -466,22 +496,34 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
                   >
                     <Folder size={16} />
                   </Button>
-                )
-              )}
+                ))}
 
-              {(templateButton || onTemplateClick) && (
-                templateButton || (
+              {(templateButton || onTemplateClick) &&
+                (templateButton || (
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
                     onClick={onTemplateClick}
                     disabled={disabled}
-                    title="Template"
+                    title="Load Template"
                   >
                     <BookTemplate size={16} />
                   </Button>
-                )
+                ))}
+
+              {/* Save template button */}
+              {onSaveTemplateClick && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onSaveTemplateClick}
+                  disabled={disabled || !value.trim()}
+                  title="Save as Template"
+                >
+                  <Save size={16} />
+                </Button>
               )}
 
               {/* Preview toggle - only in multi-line mode */}
@@ -490,7 +532,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => setShowPreview(prev => !prev)}
+                  onClick={() => setShowPreview((prev) => !prev)}
                   disabled={disabled}
                   title={showPreview ? 'Hide preview' : 'Show preview'}
                 >
@@ -514,13 +556,13 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
                   disabled={disabled}
                   placeholder={placeholder}
                   className={cn(
-                    "min-h-[200px] max-h-[400px] resize-none font-mono text-sm",
-                    "focus:ring-1 focus:ring-primary/50",
-                    "[&::-webkit-scrollbar]:w-2",
-                    "[&::-webkit-scrollbar-track]:bg-transparent",
-                    "[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20",
-                    "[&::-webkit-scrollbar-thumb]:rounded-full",
-                    "[&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/30"
+                    'min-h-[200px] max-h-[400px] resize-none font-mono text-sm',
+                    'focus:ring-1 focus:ring-primary/50',
+                    '[&::-webkit-scrollbar]:w-2',
+                    '[&::-webkit-scrollbar-track]:bg-transparent',
+                    '[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20',
+                    '[&::-webkit-scrollbar-thumb]:rounded-full',
+                    '[&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/30',
                   )}
                 />
                 <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
@@ -530,19 +572,23 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
 
               {/* Preview */}
               <div className="relative">
-                <div className={cn(
-                  "min-h-[200px] max-h-[400px] overflow-y-auto",
-                  "border border-border rounded-md bg-background p-3",
-                  "[&::-webkit-scrollbar]:w-2",
-                  "[&::-webkit-scrollbar-track]:bg-transparent",
-                  "[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20",
-                  "[&::-webkit-scrollbar-thumb]:rounded-full",
-                  "[&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/30"
-                )}>
+                <div
+                  className={cn(
+                    'min-h-[200px] max-h-[400px] overflow-y-auto',
+                    'border border-border rounded-md bg-background p-3',
+                    '[&::-webkit-scrollbar]:w-2',
+                    '[&::-webkit-scrollbar-track]:bg-transparent',
+                    '[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20',
+                    '[&::-webkit-scrollbar-thumb]:rounded-full',
+                    '[&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/30',
+                  )}
+                >
                   {value ? (
                     <MarkdownRenderer content={value} />
                   ) : (
-                    <div className="text-muted-foreground text-sm">Preview will appear here...</div>
+                    <div className="text-muted-foreground text-sm">
+                      Preview will appear here...
+                    </div>
                   )}
                 </div>
                 <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
@@ -561,14 +607,16 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
               disabled={disabled}
               placeholder={placeholder}
               className={cn(
-                isMultilineMode ? "min-h-[200px] max-h-[400px]" : "min-h-[44px] max-h-[200px]",
-                "resize-none",
-                "focus:ring-1 focus:ring-primary/50",
-                "[&::-webkit-scrollbar]:w-2",
-                "[&::-webkit-scrollbar-track]:bg-transparent",
-                "[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20",
-                "[&::-webkit-scrollbar-thumb]:rounded-full",
-                "[&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/30"
+                isMultilineMode
+                  ? 'min-h-[200px] max-h-[400px]'
+                  : 'min-h-[44px] max-h-[200px]',
+                'resize-none',
+                'focus:ring-1 focus:ring-primary/50',
+                '[&::-webkit-scrollbar]:w-2',
+                '[&::-webkit-scrollbar-track]:bg-transparent',
+                '[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20',
+                '[&::-webkit-scrollbar-thumb]:rounded-full',
+                '[&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/30',
               )}
               style={{
                 paddingTop: '11px',
@@ -576,7 +624,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
                 paddingLeft: '16px',
                 paddingRight: '16px',
                 fontSize: '14px',
-                lineHeight: '20px'
+                lineHeight: '20px',
               }}
             />
           )}
@@ -588,9 +636,17 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
               size="icon"
               className="h-6 w-6 opacity-50 hover:opacity-100"
               onClick={toggleMode}
-              title={isMultilineMode ? 'Switch to single-line mode' : 'Switch to multi-line mode'}
+              title={
+                isMultilineMode
+                  ? 'Switch to single-line mode'
+                  : 'Switch to multi-line mode'
+              }
             >
-              {isMultilineMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              {isMultilineMode ? (
+                <Minimize2 size={14} />
+              ) : (
+                <Maximize2 size={14} />
+              )}
             </Button>
           </div>
         </div>
@@ -608,7 +664,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 RichTextInput.displayName = 'RichTextInput';

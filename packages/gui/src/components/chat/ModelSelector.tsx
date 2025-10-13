@@ -32,29 +32,62 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onClose }) => {
     userEmail?: string;
     type?: 'oauth' | 'api_key' | 'none';
   }>({ authenticated: false });
-  const [envApiKeyDetected, setEnvApiKeyDetected] = useState(false);
 
-  // Check authentication status for Gemini
+  // Check authentication status for Gemini based on user's preference
   const checkGeminiAuth = useCallback(async () => {
     try {
       console.log('[ModelSelector] Checking Gemini auth...');
 
-      const status = await geminiChatService.getOAuthStatus('gemini');
-      console.log('[ModelSelector] OAuth status:', status);
-      setGeminiAuthStatus(status);
+      // Get auth preference from backend (source of truth)
+      const electronAPI = (
+        globalThis as {
+          electronAPI?: {
+            geminiChat?: {
+              getAuthPreference: (
+                providerType: string,
+              ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
+            };
+          };
+        }
+      ).electronAPI;
 
-      // Also check for environment API key
-      console.log('[ModelSelector] Checking environment API key...');
-      const envResult = await geminiChatService.checkEnvApiKey('gemini');
-      console.log(
-        '[ModelSelector] Environment API key result:',
-        JSON.stringify(envResult, null, 2),
-      );
-      setEnvApiKeyDetected(envResult.detected);
+      let authPref: 'api_key' | 'oauth' | null = null;
+      if (electronAPI?.geminiChat) {
+        const prefResult =
+          await electronAPI.geminiChat.getAuthPreference('gemini');
+        authPref = prefResult?.preference || null;
+        console.log('[ModelSelector] Auth preference from backend:', authPref);
+      }
+
+      if (authPref === 'api_key') {
+        // User chose API key - check if it exists
+        const envResult = await geminiChatService.checkEnvApiKey('gemini');
+        console.log('[ModelSelector] API key check:', envResult);
+        setGeminiAuthStatus({
+          authenticated: envResult.detected,
+          type: 'api_key',
+        });
+      } else if (authPref === 'oauth') {
+        // User chose OAuth - check OAuth status
+        const status = await geminiChatService.getOAuthStatus('gemini');
+        console.log('[ModelSelector] OAuth status:', status);
+        setGeminiAuthStatus({ ...status, type: 'oauth' });
+      } else {
+        // No preference - check both
+        const envResult = await geminiChatService.checkEnvApiKey('gemini');
+        const oauthStatus = await geminiChatService.getOAuthStatus('gemini');
+
+        if (envResult.detected) {
+          setGeminiAuthStatus({ authenticated: true, type: 'api_key' });
+        } else if (oauthStatus.authenticated) {
+          setGeminiAuthStatus({ ...oauthStatus, type: 'oauth' });
+        } else {
+          setGeminiAuthStatus({ authenticated: false, type: 'none' });
+        }
+      }
     } catch (error) {
       console.error('Failed to check Gemini auth:', error);
       setGeminiAuthStatus({ authenticated: false });
-      setEnvApiKeyDetected(false);
     }
   }, []);
 
@@ -179,7 +212,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onClose }) => {
               ) : (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   <Bot size={24} className="mx-auto mb-2 opacity-50" />
-                  {!geminiAuthStatus.authenticated && !envApiKeyDetected ? (
+                  {!geminiAuthStatus.authenticated ? (
                     <>
                       Authentication required to load models
                       <br />
