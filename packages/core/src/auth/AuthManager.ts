@@ -8,7 +8,7 @@ import type { OAuth2Client } from 'google-auth-library';
 import { clearCachedCredentialFile } from '../code_assist/oauth2.js';
 import type { Config } from '../config/config.js';
 import { Storage } from '../config/storage.js';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 export interface AuthProvider {
@@ -70,65 +70,76 @@ export class AuthManager {
       name: 'Google Gemini',
       supportsOAuth: true,
       supportsApiKey: true,
-      envApiKeyName: 'GEMINI_API_KEY'
+      envApiKeyName: 'GEMINI_API_KEY',
     },
     openai: {
-      id: 'openai', 
+      id: 'openai',
       name: 'OpenAI',
       supportsOAuth: false, // OpenAI doesn't use OAuth, only API keys
       supportsApiKey: true,
-      envApiKeyName: 'OPENAI_API_KEY'
+      envApiKeyName: 'OPENAI_API_KEY',
     },
     anthropic: {
       id: 'anthropic',
       name: 'Anthropic Claude',
       supportsOAuth: false, // Anthropic doesn't use OAuth, only API keys
       supportsApiKey: true,
-      envApiKeyName: 'ANTHROPIC_API_KEY'
+      envApiKeyName: 'ANTHROPIC_API_KEY',
     },
     lm_studio: {
       id: 'lm_studio',
       name: 'LM Studio',
       supportsOAuth: false,
-      supportsApiKey: false // Local model, no auth needed
-    }
+      supportsApiKey: false, // Local model, no auth needed
+    },
   };
 
   private constructor() {
-    // Load saved auth preferences on initialization
-    this.loadAuthPreferences().catch(error => {
-      console.warn('[AuthManager] Failed to load auth preferences:', error);
-    });
+    console.log('[AuthManager] Constructor called - creating new instance');
+    // Load saved auth preferences synchronously on initialization
+    // This ensures preferences are available immediately
+    this.loadAuthPreferencesSync();
   }
 
   static getInstance(): AuthManager {
     if (!AuthManager.instance) {
+      console.log('[AuthManager] getInstance: Creating new singleton instance');
       AuthManager.instance = new AuthManager();
+    } else {
+      console.log(
+        '[AuthManager] getInstance: Returning existing singleton instance',
+      );
     }
     return AuthManager.instance;
   }
 
   /**
-   * Load auth preferences from persistent storage
+   * Load auth preferences from persistent storage (synchronous)
+   * This ensures preferences are available immediately when AuthManager is created
    */
-  private async loadAuthPreferences(): Promise<void> {
+  private loadAuthPreferencesSync(): void {
     try {
       const preferencesPath = AuthManager.getAuthPreferencesPath();
-      const data = await fs.readFile(preferencesPath, 'utf-8');
+      const data = readFileSync(preferencesPath, 'utf-8');
       const preferences = JSON.parse(data);
-      
+
       // Convert plain object to Map
       this.authPreferences.clear();
       for (const [providerId, authType] of Object.entries(preferences)) {
         if (authType === 'oauth' || authType === 'api_key') {
-          this.authPreferences.set(providerId, authType);
+          this.authPreferences.set(providerId, authType as 'oauth' | 'api_key');
         }
       }
-      
-      console.log('[AuthManager] Loaded auth preferences:', Object.fromEntries(this.authPreferences));
-    } catch (error) {
+
+      console.log(
+        '[AuthManager] Loaded auth preferences:',
+        Object.fromEntries(this.authPreferences),
+      );
+    } catch (_error) {
       // File doesn't exist or is corrupted - start with empty preferences
-      console.log('[AuthManager] No saved auth preferences found, starting fresh', error);
+      console.log(
+        '[AuthManager] No saved auth preferences found, starting fresh',
+      );
     }
   }
 
@@ -139,14 +150,18 @@ export class AuthManager {
     try {
       const preferencesPath = AuthManager.getAuthPreferencesPath();
       const globalDir = Storage.getGlobalGeminiDir();
-      
+
       // Ensure the directory exists
       await fs.mkdir(globalDir, { recursive: true });
-      
+
       // Convert Map to plain object for JSON serialization
       const preferences = Object.fromEntries(this.authPreferences);
-      await fs.writeFile(preferencesPath, JSON.stringify(preferences, null, 2), 'utf-8');
-      
+      await fs.writeFile(
+        preferencesPath,
+        JSON.stringify(preferences, null, 2),
+        'utf-8',
+      );
+
       console.log('[AuthManager] Saved auth preferences:', preferences);
     } catch (error) {
       console.error('[AuthManager] Failed to save auth preferences:', error);
@@ -183,8 +198,12 @@ export class AuthManager {
 
   /**
    * Set user's preferred authentication type for a provider
+   * Changed to async to ensure preferences are saved before returning
    */
-  setAuthPreference(providerId: string, authType: 'oauth' | 'api_key'): void {
+  async setAuthPreference(
+    providerId: string,
+    authType: 'oauth' | 'api_key',
+  ): Promise<void> {
     const provider = this.getProvider(providerId);
     if (!provider) {
       throw new Error(`Unsupported provider: ${providerId}`);
@@ -195,15 +214,23 @@ export class AuthManager {
     }
 
     if (authType === 'api_key' && !provider.supportsApiKey) {
-      throw new Error(`Provider ${provider.name} does not support API key authentication`);
+      throw new Error(
+        `Provider ${provider.name} does not support API key authentication`,
+      );
     }
 
     this.authPreferences.set(providerId, authType);
-    
-    // Save preferences to disk immediately
-    this.saveAuthPreferences().catch(error => {
-      console.error('[AuthManager] Failed to save auth preferences after setting:', error);
-    });
+
+    // IMPORTANT: Clear cached auth status when preference changes
+    // This forces getAuthStatus() to re-check authentication with the new preference
+    this.authStatuses.delete(providerId);
+    console.log(
+      `[AuthManager] setAuthPreference: Cleared cached auth status for ${providerId}`,
+    );
+
+    // IMPORTANT: Wait for preferences to be saved to disk before returning
+    // This ensures the preference is persisted even if the app is closed immediately after
+    await this.saveAuthPreferences();
   }
 
   /**
@@ -211,79 +238,121 @@ export class AuthManager {
    */
   getAuthPreference(providerId: string): 'oauth' | 'api_key' | null {
     const storedPreference = this.authPreferences.get(providerId);
+    console.log(`[AuthManager] getAuthPreference(${providerId}):`, {
+      storedPreference,
+      mapSize: this.authPreferences.size,
+      allPreferences: Object.fromEntries(this.authPreferences),
+    });
+
     if (storedPreference) {
+      console.log(
+        `[AuthManager] getAuthPreference(${providerId}): Returning stored preference:`,
+        storedPreference,
+      );
       return storedPreference;
     }
 
     // Provide default values for known providers
     const provider = this.getProvider(providerId);
     if (!provider) {
+      console.log(
+        `[AuthManager] getAuthPreference(${providerId}): Unknown provider, returning null`,
+      );
       return null;
     }
 
     // Default preferences based on provider capabilities
+    let defaultPref: 'oauth' | 'api_key' | null;
     switch (providerId) {
       case 'gemini':
-        return provider.supportsOAuth ? 'oauth' : (provider.supportsApiKey ? 'api_key' : null);
+        defaultPref = provider.supportsOAuth
+          ? 'oauth'
+          : provider.supportsApiKey
+            ? 'api_key'
+            : null;
+        console.log(
+          `[AuthManager] getAuthPreference(${providerId}): No stored preference, returning default:`,
+          defaultPref,
+        );
+        return defaultPref;
       case 'openai':
       case 'anthropic':
-        return provider.supportsApiKey ? 'api_key' : null;
+        defaultPref = provider.supportsApiKey ? 'api_key' : null;
+        console.log(
+          `[AuthManager] getAuthPreference(${providerId}): No stored preference, returning default:`,
+          defaultPref,
+        );
+        return defaultPref;
       default:
         // For other providers, default to API key if supported, otherwise OAuth
         if (provider.supportsApiKey) {
-          return 'api_key';
+          defaultPref = 'api_key';
         } else if (provider.supportsOAuth) {
-          return 'oauth';
+          defaultPref = 'oauth';
+        } else {
+          defaultPref = null;
         }
-        return null;
+        console.log(
+          `[AuthManager] getAuthPreference(${providerId}): No stored preference, returning default:`,
+          defaultPref,
+        );
+        return defaultPref;
     }
   }
 
   /**
    * Start OAuth flow for a provider (if supported)
    */
-  async startOAuthFlow(providerId: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  async startOAuthFlow(
+    providerId: string,
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
     const provider = this.getProvider(providerId);
     if (!provider) {
       return { success: false, error: `Unsupported provider: ${providerId}` };
     }
 
     if (!provider.supportsOAuth) {
-      return { success: false, error: `Provider ${provider.name} does not support OAuth` };
+      return {
+        success: false,
+        error: `Provider ${provider.name} does not support OAuth`,
+      };
     }
 
     try {
       if (providerId === 'gemini') {
         const oauthClient = await this.getGeminiOAuthClient();
         const { token } = await oauthClient.getAccessToken();
-        
+
         if (token) {
           // Store OAuth client for future use
           this.oauthClients.set(providerId, oauthClient);
-          
+
           // Update auth status
           const userInfo = await this.fetchGeminiUserInfo(token);
           this.authStatuses.set(providerId, {
             authenticated: true,
             authType: 'oauth',
-            userEmail: userInfo?.email
+            userEmail: userInfo?.email,
           });
 
           // Set user preference to OAuth
-          this.setAuthPreference(providerId, 'oauth');
+          await this.setAuthPreference(providerId, 'oauth');
 
           return { success: true, message: 'OAuth authentication successful' };
         }
       }
 
       // TODO: Add support for other OAuth providers (OpenAI, Anthropic, etc.)
-      
+
       return { success: false, error: 'OAuth flow failed' };
     } catch (error) {
       console.error(`OAuth flow failed for ${providerId}:`, error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'OAuth authentication failed' 
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'OAuth authentication failed',
       };
     }
   }
@@ -314,7 +383,7 @@ export class AuthManager {
 
     // Check authentication status based on user's preferred method
     const preferredAuthType = this.getAuthPreference(providerId);
-    
+
     if (preferredAuthType === 'oauth') {
       // User chose OAuth - only check OAuth status
       if (provider.supportsOAuth && providerId === 'gemini') {
@@ -329,7 +398,7 @@ export class AuthManager {
         const hasApiKey = await this.checkEnvApiKey(providerId);
         const status: AuthStatus = {
           authenticated: hasApiKey.detected,
-          authType: hasApiKey.detected ? 'api_key' : 'none'
+          authType: hasApiKey.detected ? 'api_key' : 'none',
         };
         this.authStatuses.set(providerId, status);
         return status;
@@ -364,8 +433,12 @@ export class AuthManager {
 
     // Check if cached credentials match current auth preference
     const currentAuthType = this.getAuthPreference(providerId);
-    const cachedAuthType = cached.accessToken ? 'oauth' : cached.apiKey ? 'api_key' : null;
-    
+    const cachedAuthType = cached.accessToken
+      ? 'oauth'
+      : cached.apiKey
+        ? 'api_key'
+        : null;
+
     if (currentAuthType !== cachedAuthType) {
       // Auth preference changed, invalidate cache
       this.credentialsCache.delete(providerId);
@@ -376,21 +449,24 @@ export class AuthManager {
       accessToken: cached.accessToken,
       apiKey: cached.apiKey,
       refreshToken: cached.refreshToken,
-      expiresAt: cached.expiresAt
+      expiresAt: cached.expiresAt,
     };
   }
 
   /**
    * Cache credentials with expiration
    */
-  private setCachedCredentials(providerId: string, credentials: AuthCredentials): void {
+  private setCachedCredentials(
+    providerId: string,
+    credentials: AuthCredentials,
+  ): void {
     const now = new Date();
     const cachedCredentials: CachedCredentials = {
       ...credentials,
       cachedAt: now,
-      validUntil: new Date(now.getTime() + AuthManager.CACHE_DURATION_MS)
+      validUntil: new Date(now.getTime() + AuthManager.CACHE_DURATION_MS),
     };
-    
+
     this.credentialsCache.set(providerId, cachedCredentials);
   }
 
@@ -398,7 +474,9 @@ export class AuthManager {
    * Get access credentials for API calls based on user's preferred authentication type
    * This is the unified interface that providers should use
    */
-  async getAccessCredentials(providerId: string): Promise<AuthCredentials | null> {
+  async getAccessCredentials(
+    providerId: string,
+  ): Promise<AuthCredentials | null> {
     const provider = this.getProvider(providerId);
     if (!provider) {
       return null;
@@ -439,7 +517,9 @@ export class AuthManager {
     } else if (preferredAuthType === 'api_key') {
       // User chose API key - only return API key credentials
       if (!provider.supportsApiKey || !provider.envApiKeyName) {
-        throw new Error(`Provider ${provider.name} does not support API key authentication`);
+        throw new Error(
+          `Provider ${provider.name} does not support API key authentication`,
+        );
       }
 
       const apiKey = process.env[provider.envApiKeyName];
@@ -457,15 +537,15 @@ export class AuthManager {
   /**
    * Set user preference to use API key authentication
    */
-  useApiKeyAuth(providerId: string): void {
-    this.setAuthPreference(providerId, 'api_key');
-    
+  async useApiKeyAuth(providerId: string): Promise<void> {
+    await this.setAuthPreference(providerId, 'api_key');
+
     // Update auth status if API key is available
     const provider = this.getProvider(providerId);
     if (provider?.envApiKeyName && process.env[provider.envApiKeyName]) {
       this.authStatuses.set(providerId, {
         authenticated: true,
-        authType: 'api_key'
+        authType: 'api_key',
       });
     }
   }
@@ -474,15 +554,17 @@ export class AuthManager {
    * Initialize default API key authentication ONLY for providers that only support API keys
    * DO NOT automatically set preferences based on environment variables - respect user choice
    */
-  initializeDefaultApiKeyAuth(): void {
+  async initializeDefaultApiKeyAuth(): Promise<void> {
     // For providers that only support API key (like OpenAI currently), set default preference
     const apiKeyOnlyProviders = Object.entries(AuthManager.PROVIDERS)
-      .filter(([, provider]) => !provider.supportsOAuth && provider.supportsApiKey)
+      .filter(
+        ([, provider]) => !provider.supportsOAuth && provider.supportsApiKey,
+      )
       .map(([id]) => id);
 
     for (const providerId of apiKeyOnlyProviders) {
       if (!this.getAuthPreference(providerId)) {
-        this.useApiKeyAuth(providerId);
+        await this.useApiKeyAuth(providerId);
       }
     }
 
@@ -494,24 +576,41 @@ export class AuthManager {
   /**
    * Clear authentication for a provider
    */
-  async clearCredentials(providerId: string): Promise<{ success: boolean; error?: string }> {
+  async clearCredentials(
+    providerId: string,
+  ): Promise<{ success: boolean; error?: string }> {
     try {
+      console.log(`[AuthManager] clearCredentials called for ${providerId}`);
+
       // Clear OAuth client, status, and credentials cache
       this.oauthClients.delete(providerId);
       this.authStatuses.delete(providerId);
       this.credentialsCache.delete(providerId);
 
+      console.log(
+        '[AuthManager] Cleared in-memory caches (oauthClients, authStatuses, credentialsCache)',
+      );
+
       if (providerId === 'gemini') {
         // Clear cached OAuth credentials from disk
+        console.log('[AuthManager] Clearing OAuth credentials from disk...');
         await clearCachedCredentialFile();
+        console.log('[AuthManager] OAuth credentials cleared from disk');
       }
 
+      console.log('[AuthManager] clearCredentials completed successfully');
       return { success: true };
     } catch (error) {
-      console.error(`Failed to clear credentials for ${providerId}:`, error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to clear credentials' 
+      console.error(
+        `[AuthManager] Failed to clear credentials for ${providerId}:`,
+        error,
+      );
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to clear credentials',
       };
     }
   }
@@ -519,7 +618,9 @@ export class AuthManager {
   /**
    * Check if environment API key exists for a provider
    */
-  async checkEnvApiKey(providerId: string): Promise<{ detected: boolean; source: string }> {
+  async checkEnvApiKey(
+    providerId: string,
+  ): Promise<{ detected: boolean; source: string }> {
     const provider = this.getProvider(providerId);
     if (!provider || !provider.envApiKeyName) {
       return { detected: false, source: 'not_supported' };
@@ -527,10 +628,10 @@ export class AuthManager {
 
     const apiKey = process.env[provider.envApiKeyName];
     const detected = !!(apiKey && apiKey.trim());
-    
+
     return {
       detected,
-      source: provider.envApiKeyName
+      source: provider.envApiKeyName,
     };
   }
 
@@ -544,7 +645,7 @@ export class AuthManager {
         targetDir: process.cwd(),
         debugMode: false,
         cwd: process.cwd(),
-        model: 'gemini-2.5-flash'
+        model: 'gemini-2.5-flash',
       };
       this.config = new Config(configParams);
       await this.config.initialize();
@@ -557,23 +658,66 @@ export class AuthManager {
 
   private async checkGeminiOAuthStatus(): Promise<AuthStatus> {
     try {
-      const oauthClient = await this.getGeminiOAuthClient();
-      const { token } = await oauthClient.getAccessToken();
-      
-      if (token) {
-        this.oauthClients.set('gemini', oauthClient);
-        const userInfo = await this.fetchGeminiUserInfo(token);
-        
-        return {
-          authenticated: true,
-          authType: 'oauth',
-          userEmail: userInfo?.email
-        };
+      console.log(
+        '[AuthManager] checkGeminiOAuthStatus: Checking cached credentials...',
+      );
+      // IMPORTANT: Only check cached credentials, DO NOT trigger browser login
+      // This method is called during app initialization to check auth status
+
+      // Try to load cached credentials from disk
+      const credPath = Storage.getOAuthCredsPath();
+      console.log(
+        '[AuthManager] checkGeminiOAuthStatus: Reading credentials from',
+        credPath,
+      );
+      const credData = await fs.readFile(credPath, 'utf-8');
+      const credentials = JSON.parse(credData);
+
+      console.log(
+        '[AuthManager] checkGeminiOAuthStatus: Credentials found, verifying...',
+      );
+
+      if (
+        credentials &&
+        (credentials.access_token || credentials.refresh_token)
+      ) {
+        // Credentials exist - create OAuth client and verify
+        const { OAuth2Client } = await import('google-auth-library');
+        const client = new OAuth2Client({
+          clientId:
+            '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com',
+          clientSecret: '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',
+        });
+        client.setCredentials(credentials);
+
+        // Try to get access token - this may refresh if needed but won't trigger browser
+        const { token } = await client.getAccessToken();
+
+        if (token) {
+          console.log(
+            '[AuthManager] checkGeminiOAuthStatus: OAuth token verified successfully',
+          );
+          this.oauthClients.set('gemini', client);
+          const userInfo = await this.fetchGeminiUserInfo(token);
+
+          return {
+            authenticated: true,
+            authType: 'oauth',
+            userEmail: userInfo?.email,
+          };
+        }
       }
     } catch (error) {
-      console.log('Gemini OAuth not available:', error);
+      // Credentials file doesn't exist or is invalid - user is not authenticated
+      console.log(
+        '[AuthManager] checkGeminiOAuthStatus: No valid credentials found:',
+        error,
+      );
     }
 
+    console.log(
+      '[AuthManager] checkGeminiOAuthStatus: Returning unauthenticated status',
+    );
     return { authenticated: false, authType: 'none' };
   }
 
@@ -592,11 +736,16 @@ export class AuthManager {
     }
   }
 
-  private async fetchGeminiUserInfo(token: string): Promise<{ email: string } | null> {
+  private async fetchGeminiUserInfo(
+    token: string,
+  ): Promise<{ email: string } | null> {
     try {
-      const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await fetch(
+        'https://www.googleapis.com/oauth2/v2/userinfo',
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
 
       if (response.ok) {
         return await response.json();
