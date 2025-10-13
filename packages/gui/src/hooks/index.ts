@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // UI hooks (通用UI交互)
 export { useClickOutside } from './ui/useClickOutside';
 
@@ -9,4 +15,5 @@ export { useClickOutside } from './ui/useClickOutside';
 
 // Shared hooks (共享业务逻辑)
 export { useWorkspaceDirectories } from './shared/useWorkspaceDirectories';
+export { useAuthStatus } from './useAuthStatus';
 // export { useMultiModel } from './shared/useMultiModel';

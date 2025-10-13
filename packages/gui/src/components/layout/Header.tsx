@@ -1,4 +1,11 @@
-import React, { useState } from 'react';
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import type React from 'react';
+import { useState } from 'react';
 import {
   Globe,
   Sun,
@@ -10,33 +17,41 @@ import {
   Key,
   CheckCircle,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ModelSelector } from '@/components/chat/ModelSelector';
 import { RoleSelector } from '@/components/chat/RoleSelector';
+import { AuthSettingsModal } from '@/components/settings/AuthSettingsModal';
 // Removed WorkspaceSelector import - now in Sidebar
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStatus } from '@/hooks/useAuthStatus';
 
 interface HeaderProps {
   isRightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isRightSidebarOpen, onToggleRightSidebar }) => {
+export const Header: React.FC<HeaderProps> = ({
+  isRightSidebarOpen,
+  onToggleRightSidebar,
+}) => {
   const {
     currentProvider,
     currentModel,
     currentRole,
     language,
     theme,
-    authConfig,
-    setTheme
+    setTheme,
   } = useAppStore();
 
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [showRoleSelector, setShowRoleSelector] = useState(false);
+  const [showAuthSettings, setShowAuthSettings] = useState(false);
   // Removed showWorkspaceSelector state - now in Sidebar
+
+  // Get real-time auth status from backend
+  const authStatus = useAuthStatus('gemini');
 
   const getProviderIcon = () => {
     switch (currentProvider) {
@@ -76,23 +91,6 @@ export const Header: React.FC<HeaderProps> = ({ isRightSidebarOpen, onToggleRigh
     }
   };
 
-  const getAuthStatus = () => {
-    if (currentProvider === 'gemini') {
-      const geminiConfig = authConfig.gemini;
-      if (geminiConfig?.type === 'oauth' && geminiConfig.oauthToken) {
-        return { type: 'oauth' as const, authenticated: true };
-      } else if (geminiConfig?.type === 'api_key') {
-        // For API key, we assume it's available since user switched to it
-        // The actual check is done in the settings modal
-        return { type: 'api_key' as const, authenticated: true };
-      }
-      return { type: 'none' as const, authenticated: false };
-    }
-    return { type: 'other' as const, authenticated: true }; // Other providers assume authenticated
-  };
-
-  const authStatus = getAuthStatus();
-
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-border bg-card px-6 flex items-center justify-between">
       {/* Left Section - Model and Role Info */}
@@ -114,7 +112,10 @@ export const Header: React.FC<HeaderProps> = ({ isRightSidebarOpen, onToggleRigh
 
         {showModelSelector && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowModelSelector(false)} />
+            <div
+              className="fixed inset-0 bg-black/50"
+              onClick={() => setShowModelSelector(false)}
+            />
             <div className="relative max-h-[80vh] overflow-auto">
               <ModelSelector onClose={() => setShowModelSelector(false)} />
             </div>
@@ -140,7 +141,10 @@ export const Header: React.FC<HeaderProps> = ({ isRightSidebarOpen, onToggleRigh
 
         {showRoleSelector && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => setShowRoleSelector(false)} />
+            <div
+              className="fixed inset-0 bg-black/50"
+              onClick={() => setShowRoleSelector(false)}
+            />
             <div className="relative max-h-[80vh] overflow-auto">
               <RoleSelector onClose={() => setShowRoleSelector(false)} />
             </div>
@@ -156,22 +160,43 @@ export const Header: React.FC<HeaderProps> = ({ isRightSidebarOpen, onToggleRigh
       <div className="flex items-center gap-2">
         {/* Authentication Status Indicator */}
         {currentProvider === 'gemini' && (
-          <div className="flex items-center gap-1 px-2 py-1 rounded-md text-xs">
+          <button
+            onClick={() => setShowAuthSettings(true)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors ${
+              authStatus.authenticated
+                ? 'hover:bg-muted/50'
+                : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/30'
+            }`}
+            title={
+              authStatus.authenticated
+                ? 'Click to change authentication method'
+                : '⚠️ Authentication required - Click to configure'
+            }
+          >
             {authStatus.authenticated ? (
               <>
-                <CheckCircle size={12} className="text-green-500" />
-                <span className="text-green-600">
+                <CheckCircle size={14} className="text-green-500" />
+                <span className="text-green-600 font-medium">
                   {authStatus.type === 'oauth' ? 'OAuth' : 'API Key'}
                 </span>
               </>
             ) : (
               <>
-                <Key size={12} className="text-amber-500" />
-                <span className="text-amber-600">Not Configured</span>
+                <Key size={14} className="text-red-600" />
+                <span className="text-red-600 font-medium">Auth Required</span>
+                <span className="text-red-500/70 text-[10px]">
+                  Click to Config
+                </span>
               </>
             )}
-          </div>
+          </button>
         )}
+
+        {/* Auth Settings Modal */}
+        <AuthSettingsModal
+          open={showAuthSettings}
+          onClose={() => setShowAuthSettings(false)}
+        />
 
         <Button
           variant="ghost"
@@ -192,11 +217,7 @@ export const Header: React.FC<HeaderProps> = ({ isRightSidebarOpen, onToggleRigh
           <Globe size={16} />
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-        >
+        <Button variant="ghost" size="icon" className="h-8 w-8">
           <Settings size={16} />
         </Button>
 
@@ -207,7 +228,11 @@ export const Header: React.FC<HeaderProps> = ({ isRightSidebarOpen, onToggleRigh
           onClick={onToggleRightSidebar}
           title={`${isRightSidebarOpen ? 'Hide' : 'Show'} sidebar`}
         >
-          {isRightSidebarOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          {isRightSidebarOpen ? (
+            <PanelRightClose size={16} />
+          ) : (
+            <PanelRightOpen size={16} />
+          )}
         </Button>
       </div>
     </header>
