@@ -160,10 +160,37 @@ const ensureInitialized = async (
       // Create the Config instance
       const config = new Config(configParameters);
 
-      // Initialize contentGenerator with Google OAuth as default
-      // This must be done before config.initialize() because GeminiClient needs contentGenerator
+      // Check auth preference and initialize accordingly
       const { AuthType } = require('@google/gemini-cli-core');
-      await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+      const authManager = AuthManager.getInstance();
+
+      // Get user's auth preference for Gemini
+      const authPref = authManager.getAuthPreference('gemini');
+      console.log('[ensureInitialized] Auth preference:', authPref);
+
+      // Respect user's choice - don't override their selection
+      if (authPref === 'api_key') {
+        console.log('[ensureInitialized] User chose API key authentication');
+        await config.refreshAuth(AuthType.USE_GEMINI);
+      } else if (authPref === 'oauth') {
+        console.log('[ensureInitialized] User chose OAuth authentication');
+        await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+      } else {
+        // No preference set - check what's available and use it
+        console.log(
+          '[ensureInitialized] No auth preference set, checking available auth...',
+        );
+        const apiKeyResult = await authManager.checkEnvApiKey('gemini');
+        if (apiKeyResult.detected) {
+          console.log(
+            '[ensureInitialized] API key detected, using API key auth',
+          );
+          await config.refreshAuth(AuthType.USE_GEMINI);
+        } else {
+          console.log('[ensureInitialized] No API key, attempting OAuth');
+          await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+        }
+      }
 
       await config.initialize();
 
@@ -183,7 +210,7 @@ const ensureInitialized = async (
       // console.log('WorkspaceManager initialized with config and persisted directories loaded')
 
       // Initialize TemplateManager with config
-      templateManager = new TemplateManager(config);
+      templateManager = TemplateManager.getInstance(config);
       // console.log('TemplateManager initialized with config')
 
       isInitialized = true;
@@ -300,7 +327,10 @@ ipcMain.handle(
     try {
       // console.log('MultiModel getDirectoryContents called for:', directoryPath)
       const system = await ensureInitialized();
-      const items = await geminiChatManager.getDirectoryContents(directoryPath);
+      const items =
+        await WorkspaceManager.getInstance().getDirectoryContents(
+          directoryPath,
+        );
       // console.log('Got directory contents:', items.length, 'items')
       return items;
     } catch (error) {
@@ -997,21 +1027,31 @@ ipcMain.handle('oauth-get-status', async (_, providerType) => {
   try {
     // console.log('OAuth get status called for:', providerType)
 
-    // Use AuthManager for unified OAuth status checking
-    // const { AuthManager } = require('@google/gemini-cli-core')
+    // IMPORTANT: This should ONLY check OAuth status, not API key or any other auth method
+    // This is used by the OAuth configuration UI to determine if user is logged in with OAuth
     const authManager = AuthManager.getInstance();
 
-    // Ensure system is initialized and pass config to AuthManager
-    const system = await ensureInitialized();
-    authManager.setConfig(system.getConfig());
+    // Get the current auth preference
+    const authPref = authManager.getAuthPreference(providerType);
 
+    // If user's preference is NOT oauth, always return unauthenticated
+    if (authPref !== 'oauth') {
+      return { authenticated: false, type: 'none' };
+    }
+
+    // User chose OAuth - check if they have valid OAuth credentials
     const status = await authManager.getAuthStatus(providerType);
-    // console.log('OAuth status result:', status)
+
+    // Only return authenticated if BOTH:
+    // 1. User's preference is OAuth
+    // 2. OAuth credentials are valid
+    const isOAuthAuthenticated =
+      status.authType === 'oauth' && status.authenticated;
 
     return {
-      authenticated: status.authenticated,
+      authenticated: isOAuthAuthenticated,
       userEmail: status.userEmail,
-      type: status.authType,
+      type: isOAuthAuthenticated ? 'oauth' : 'none',
     };
   } catch (error) {
     console.error('Failed to check OAuth status:', error);
@@ -1063,14 +1103,10 @@ ipcMain.handle('set-api-key-preference', async (_, providerType) => {
   try {
     // console.log('Set API key preference called for:', providerType)
 
-    // Ensure system is initialized
-    const system = await ensureInitialized();
-
-    // Use AuthManager to set API key preference
-    // const { AuthManager } = require('@google/gemini-cli-core')
+    // Use AuthManager to set API key preference WITHOUT initializing
+    // Setting preference should not trigger initialization
     const authManager = AuthManager.getInstance();
-    authManager.setConfig(system.getConfig());
-    authManager.useApiKeyAuth(providerType);
+    await authManager.useApiKeyAuth(providerType);
 
     // console.log('API key preference set successfully')
     return { success: true };
@@ -1088,14 +1124,10 @@ ipcMain.handle('set-oauth-preference', async (_, providerType) => {
   try {
     // console.log('Set OAuth preference called for:', providerType)
 
-    // Ensure system is initialized
-    const system = await ensureInitialized();
-
-    // Use AuthManager to set OAuth preference
-    // const { AuthManager } = require('@google/gemini-cli-core')
+    // Use AuthManager to set OAuth preference WITHOUT initializing
+    // Setting preference should not trigger initialization
     const authManager = AuthManager.getInstance();
-    authManager.setConfig(system.getConfig());
-    authManager.setAuthPreference(providerType, 'oauth');
+    await authManager.setAuthPreference(providerType, 'oauth');
 
     // console.log('OAuth preference set successfully')
     return { success: true };
@@ -1105,6 +1137,23 @@ ipcMain.handle('set-oauth-preference', async (_, providerType) => {
       success: false,
       error: error.message,
     };
+  }
+});
+
+// Add IPC handler for getting auth preference
+ipcMain.handle('get-auth-preference', async (_, providerType) => {
+  try {
+    // console.log('Get auth preference called for:', providerType)
+
+    // Use AuthManager to get auth preference WITHOUT initializing
+    const authManager = AuthManager.getInstance();
+    const preference = authManager.getAuthPreference(providerType);
+
+    // console.log('Auth preference result:', preference)
+    return { preference };
+  } catch (error) {
+    console.error('Failed to get auth preference:', error);
+    return { preference: null };
   }
 });
 

@@ -192,6 +192,8 @@ const electronAPI = {
       ipcRenderer.invoke('set-api-key-preference', providerType),
     setOAuthPreference: (providerType) =>
       ipcRenderer.invoke('set-oauth-preference', providerType),
+    getAuthPreference: (providerType) =>
+      ipcRenderer.invoke('get-auth-preference', providerType),
     getApprovalMode: () => ipcRenderer.invoke('get-approval-mode'),
     setApprovalMode: (mode) => ipcRenderer.invoke('set-approval-mode', mode),
     // Direct Excel tool calls
