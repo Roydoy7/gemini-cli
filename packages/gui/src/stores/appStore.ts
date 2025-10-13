@@ -66,7 +66,7 @@ export const useAppStore = create<AppStore>()(
       currentModel: 'gemini-2.5-flash',
       authConfig: {
         gemini: {
-          type: 'oauth',
+          type: 'oauth', // This is no longer persisted - read from backend AuthManager
         },
       },
       currentWorkspace: null,
@@ -224,7 +224,7 @@ export const useAppStore = create<AppStore>()(
         language: state.language,
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
-        authConfig: state.authConfig,
+        // authConfig is NOT persisted - read from backend AuthManager instead
         workspaces: state.workspaces,
         currentWorkspace: state.currentWorkspace,
         customRoles: state.customRoles,

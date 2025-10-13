@@ -5,8 +5,9 @@
  */
 
 import type React from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { AuthSelection } from '@/components/auth/AuthSelection';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
 import { geminiChatService } from '@/services/geminiChatService';
@@ -16,12 +17,302 @@ export const App: React.FC = () => {
   const { currentProvider, currentModel, currentRole, theme, isHydrated } =
     useAppStore();
   const { setBuiltinRoles, syncOAuthStatus } = useAppStore();
+  const [authStatus, setAuthStatus] = useState<{
+    checking: boolean;
+    authenticated: boolean;
+    needsSelection: boolean;
+  }>({ checking: true, authenticated: false, needsSelection: false });
 
+  const [isWaitingForOAuth, setIsWaitingForOAuth] = useState(false);
+
+  // Continuously monitor authentication status changes
   useEffect(() => {
-    // Wait for zustand persist to hydrate before initializing
     if (!isHydrated) {
       return;
     }
+
+    console.log('[App] Setting up continuous auth monitoring...');
+
+    const checkAuthChanges = async () => {
+      try {
+        const electronAPI = (
+          globalThis as {
+            electronAPI?: {
+              geminiChat?: {
+                getAuthPreference: (
+                  providerType: string,
+                ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
+                checkEnvApiKey: (
+                  providerType: string,
+                ) => Promise<{ detected: boolean }>;
+                getOAuthStatus: (
+                  providerType: string,
+                ) => Promise<{ authenticated: boolean; userEmail?: string }>;
+              };
+            };
+          }
+        ).electronAPI;
+
+        if (!electronAPI?.geminiChat) {
+          return;
+        }
+
+        // Get current auth preference
+        const prefResult =
+          await electronAPI.geminiChat.getAuthPreference('gemini');
+        const authPref = prefResult?.preference;
+
+        // Check authentication based on preference
+        let isAuthenticated = false;
+        if (authPref === 'api_key') {
+          const apiKeyResult =
+            await electronAPI.geminiChat.checkEnvApiKey('gemini');
+          isAuthenticated = apiKeyResult?.detected || false;
+        } else if (authPref === 'oauth') {
+          const oauthStatus =
+            await electronAPI.geminiChat.getOAuthStatus('gemini');
+          isAuthenticated = oauthStatus?.authenticated || false;
+        }
+
+        // If authentication status changed, update state
+        if (
+          authStatus.authenticated !== isAuthenticated ||
+          authStatus.checking
+        ) {
+          console.log('[App] Auth status changed:', {
+            was: authStatus.authenticated,
+            now: isAuthenticated,
+            pref: authPref,
+          });
+          setAuthStatus({
+            checking: false,
+            authenticated: isAuthenticated,
+            // IMPORTANT: Only show needsSelection if we were checking initially (startup)
+            // Don't show it for subsequent changes (user is using AuthSettingsModal)
+            needsSelection:
+              authStatus.checking && (!authPref || !isAuthenticated),
+          });
+        }
+      } catch (error) {
+        console.error('[App] Failed to check auth changes:', error);
+      }
+    };
+
+    // Check immediately
+    checkAuthChanges();
+
+    // Then check every 3 seconds
+    const interval = setInterval(checkAuthChanges, 3000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isHydrated, authStatus.authenticated, authStatus.checking]);
+
+  // Monitor OAuth status when waiting for user to complete OAuth login
+  useEffect(() => {
+    if (!isWaitingForOAuth) {
+      return;
+    }
+
+    console.log(
+      '[App] Waiting for OAuth completion, starting status polling...',
+    );
+
+    const checkOAuthCompletion = async () => {
+      try {
+        const electronAPI = (
+          globalThis as {
+            electronAPI?: {
+              geminiChat?: {
+                getOAuthStatus: (
+                  providerType: string,
+                ) => Promise<{ authenticated: boolean; userEmail?: string }>;
+              };
+            };
+          }
+        ).electronAPI;
+
+        if (!electronAPI?.geminiChat) {
+          return;
+        }
+
+        const oauthStatus =
+          await electronAPI.geminiChat.getOAuthStatus('gemini');
+        console.log('[App] OAuth status check:', oauthStatus);
+
+        if (oauthStatus?.authenticated) {
+          console.log(
+            '[App] OAuth completed successfully, closing auth selection dialog',
+          );
+          setIsWaitingForOAuth(false);
+          setAuthStatus({
+            checking: false,
+            authenticated: true,
+            needsSelection: false,
+          });
+        }
+      } catch (error) {
+        console.error('[App] Failed to check OAuth completion:', error);
+      }
+    };
+
+    // Check immediately
+    checkOAuthCompletion();
+
+    // Then check every 2 seconds
+    const interval = setInterval(checkOAuthCompletion, 2000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isWaitingForOAuth]);
+
+  // Check authentication status before initializing
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      if (!isHydrated) {
+        return;
+      }
+
+      try {
+        // Wait for Electron API
+        let retries = 0;
+        const maxRetries = 10;
+
+        interface ElectronGeminiAPI {
+          checkEnvApiKey: (
+            providerType: string,
+          ) => Promise<{ detected: boolean }>;
+          getOAuthStatus: (
+            providerType: string,
+          ) => Promise<{ authenticated: boolean; userEmail?: string }>;
+          getAuthPreference: (
+            providerType: string,
+          ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
+        }
+
+        while (retries < maxRetries) {
+          const electronAPI = (
+            globalThis as { electronAPI?: { geminiChat?: ElectronGeminiAPI } }
+          ).electronAPI;
+          if (electronAPI?.geminiChat) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          retries++;
+        }
+
+        const electronAPI = (
+          globalThis as { electronAPI?: { geminiChat?: ElectronGeminiAPI } }
+        ).electronAPI;
+
+        if (!electronAPI?.geminiChat) {
+          console.warn('Electron API not available, showing auth selection');
+          setAuthStatus({
+            checking: false,
+            authenticated: false,
+            needsSelection: true,
+          });
+          return;
+        }
+
+        // Get user's auth preference from backend (source of truth)
+        const prefResult =
+          await electronAPI.geminiChat.getAuthPreference?.('gemini');
+        const authPref = prefResult?.preference;
+        console.log('User auth preference from backend:', authPref);
+
+        // Sync backend preference to frontend store (backend is source of truth)
+        if (authPref) {
+          useAppStore.getState().updateAuthConfig({
+            gemini: {
+              type: authPref,
+            },
+          });
+          console.log(
+            'Synced backend auth preference to frontend store:',
+            authPref,
+          );
+        }
+
+        // Check authentication based on user preference
+        if (authPref === 'api_key') {
+          // User chose API key - verify it exists
+          const apiKeyResult =
+            await electronAPI.geminiChat.checkEnvApiKey('gemini');
+          if (apiKeyResult?.detected) {
+            console.log('User chose API key and it is available');
+            setAuthStatus({
+              checking: false,
+              authenticated: true,
+              needsSelection: false,
+            });
+            return;
+          } else {
+            console.log(
+              'User chose API key but it is not available, showing auth selection',
+            );
+            setAuthStatus({
+              checking: false,
+              authenticated: false,
+              needsSelection: true,
+            });
+            return;
+          }
+        } else if (authPref === 'oauth') {
+          // User chose OAuth - verify they are logged in
+          const oauthStatus =
+            await electronAPI.geminiChat.getOAuthStatus('gemini');
+          if (oauthStatus?.authenticated) {
+            console.log(
+              'User chose OAuth and is authenticated:',
+              oauthStatus.userEmail,
+            );
+            setAuthStatus({
+              checking: false,
+              authenticated: true,
+              needsSelection: false,
+            });
+            return;
+          } else {
+            console.log(
+              'User chose OAuth but is not authenticated, showing auth selection',
+            );
+            setAuthStatus({
+              checking: false,
+              authenticated: false,
+              needsSelection: true,
+            });
+            return;
+          }
+        } else {
+          // No preference set - ALWAYS show auth selection, don't make decisions for the user
+          console.log(
+            'No auth preference set, showing auth selection to let user choose',
+          );
+          setAuthStatus({
+            checking: false,
+            authenticated: false,
+            needsSelection: true,
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to check auth status:', error);
+        // On error, show auth selection to be safe
+        setAuthStatus({
+          checking: false,
+          authenticated: false,
+          needsSelection: true,
+        });
+      }
+    };
+
+    checkAuthStatus();
+  }, [isHydrated]);
+
+  useEffect(() => {
     // Apply theme to document
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -33,9 +324,18 @@ export const App: React.FC = () => {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       root.classList.toggle('dark', isDark);
     }
-  }, [theme, isHydrated]);
+  }, [theme]);
 
   useEffect(() => {
+    // Only initialize if authenticated (skip if user hasn't configured auth yet)
+    if (
+      authStatus.checking ||
+      authStatus.needsSelection ||
+      !authStatus.authenticated
+    ) {
+      return;
+    }
+
     // Initialize GeminiChatService via Electron IPC
     const initializeService = async () => {
       // Wait for Electron API to be available
@@ -220,13 +520,153 @@ export const App: React.FC = () => {
     initializeService();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    authStatus.checking,
+    authStatus.needsSelection,
+    authStatus.authenticated,
     isHydrated,
     currentProvider,
     currentModel,
     // Note: currentRole is intentionally NOT in deps - role changes should not trigger re-initialization
     setBuiltinRoles,
     syncOAuthStatus,
-  ]); // Re-run when hydration completes
+  ]); // Re-run when auth status or hydration changes
 
-  return <AppLayout />;
+  const handleAuthSelection = async (method: 'oauth' | 'apikey') => {
+    try {
+      const electronAPI = (
+        globalThis as {
+          electronAPI?: {
+            geminiChat?: {
+              setApiKeyPreference?: (
+                providerType: string,
+              ) => Promise<{ success: boolean }>;
+              setOAuthPreference?: (
+                providerType: string,
+              ) => Promise<{ success: boolean }>;
+              checkEnvApiKey: (
+                providerType: string,
+              ) => Promise<{ detected: boolean }>;
+              getOAuthStatus: (
+                providerType: string,
+              ) => Promise<{ authenticated: boolean }>;
+              startOAuthFlow?: (
+                providerType: string,
+              ) => Promise<{ success: boolean }>;
+            };
+          };
+        }
+      ).electronAPI;
+
+      if (!electronAPI?.geminiChat) {
+        console.error('Electron API not available');
+        return;
+      }
+
+      if (method === 'apikey') {
+        // Set API key preference
+        await electronAPI.geminiChat.setApiKeyPreference?.('gemini');
+
+        // Check if API key is actually available
+        const apiKeyResult =
+          await electronAPI.geminiChat.checkEnvApiKey('gemini');
+        if (apiKeyResult?.detected) {
+          console.log('API key preference set and API key detected');
+          setAuthStatus({
+            checking: false,
+            authenticated: true,
+            needsSelection: false,
+          });
+        } else {
+          console.error(
+            'API key preference set but no API key found in environment',
+          );
+          alert(
+            'API key not found in environment. Please set GEMINI_API_KEY or GOOGLE_API_KEY environment variable.',
+          );
+          setAuthStatus({
+            checking: false,
+            authenticated: false,
+            needsSelection: true,
+          });
+        }
+      } else {
+        // Set OAuth preference
+        await electronAPI.geminiChat.setOAuthPreference?.('gemini');
+
+        // Check if already authenticated
+        const oauthStatus =
+          await electronAPI.geminiChat.getOAuthStatus('gemini');
+        if (oauthStatus?.authenticated) {
+          console.log('OAuth preference set and already authenticated');
+          setAuthStatus({
+            checking: false,
+            authenticated: true,
+            needsSelection: false,
+          });
+        } else {
+          // Not authenticated yet - start OAuth flow
+          console.log('OAuth preference set, starting OAuth flow');
+
+          // Start monitoring OAuth completion
+          setIsWaitingForOAuth(true);
+
+          // Start OAuth flow (this will open browser)
+          // Don't await - let the polling handle completion detection
+          electronAPI.geminiChat
+            .startOAuthFlow?.('gemini')
+            .then((result) => {
+              console.log('[App] OAuth flow completed with result:', result);
+              if (!result?.success) {
+                console.error('OAuth flow failed');
+                setIsWaitingForOAuth(false);
+                setAuthStatus({
+                  checking: false,
+                  authenticated: false,
+                  needsSelection: true,
+                });
+              }
+              // If successful, the polling useEffect will detect it and close the dialog
+            })
+            .catch((error) => {
+              console.error('OAuth flow error:', error);
+              setIsWaitingForOAuth(false);
+              setAuthStatus({
+                checking: false,
+                authenticated: false,
+                needsSelection: true,
+              });
+            });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to set auth preference:', error);
+      setAuthStatus({
+        checking: false,
+        authenticated: false,
+        needsSelection: true,
+      });
+    }
+  };
+
+  const handleSkipAuth = () => {
+    console.log('User skipped authentication');
+    setAuthStatus({
+      checking: false,
+      authenticated: false,
+      needsSelection: false,
+    });
+  };
+
+  // Always render AppLayout, show auth selection as modal overlay
+  return (
+    <>
+      <AppLayout />
+      {authStatus.needsSelection && (
+        <AuthSelection
+          onSelectAuth={handleAuthSelection}
+          onSkip={handleSkipAuth}
+        />
+      )}
+    </>
+  );
 };
