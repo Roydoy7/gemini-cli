@@ -6,39 +6,54 @@
 
 import type {
   PresetTemplate,
-  TemplateCategory,
   TemplateRenderOptions,
   TemplateRenderResult,
   TemplateSearchOptions,
-  TemplateUsageStats
+  TemplateUsageStats,
 } from './types.js';
-import { BUILTIN_TEMPLATES, TEMPLATE_CATEGORIES } from './BuiltinTemplates.js';
 import { TemplateRenderer } from './TemplateRenderer.js';
-import { SimpleTemplateBuilder, type SimpleTemplateOptions } from './SimpleTemplateBuilder.js';
-import { ConversationTemplateGenerator, type TemplateGenerationOptions, type ConversationMessage } from './ConversationTemplateGenerator.js';
+import {
+  SimpleTemplateBuilder,
+  type SimpleTemplateOptions,
+} from './SimpleTemplateBuilder.js';
+import {
+  ConversationTemplateGenerator,
+  type TemplateGenerationOptions,
+  type ConversationMessage,
+} from './ConversationTemplateGenerator.js';
 import type { Config } from '../config/config.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 export class TemplateManager {
+  private static instance: TemplateManager | null = null;
   private templates = new Map<string, PresetTemplate>();
   private customTemplatesPath: string;
   private usageStats = new Map<string, TemplateUsageStats>();
 
-  constructor(config: Config) {
+  private constructor(config: Config) {
     this.customTemplatesPath = path.join(
       config.getProjectRoot(),
       '.gemini',
-      'templates'
+      'templates',
     );
-    
-    // Load builtin templates
-    for (const template of Object.values(BUILTIN_TEMPLATES)) {
-      this.templates.set(template.id, template);
-    }
 
     this.loadCustomTemplates();
     this.loadUsageStats();
+  }
+
+  static getInstance(config?: Config): TemplateManager {
+    if (!TemplateManager.instance) {
+      if (!config) {
+        throw new Error('Config is required for first-time initialization');
+      }
+      TemplateManager.instance = new TemplateManager(config);
+    }
+    return TemplateManager.instance;
+  }
+
+  static resetInstance(): void {
+    TemplateManager.instance = null;
   }
 
   getAllTemplates(): PresetTemplate[] {
@@ -50,8 +65,9 @@ export class TemplateManager {
   }
 
   getTemplatesByCategory(category: string): PresetTemplate[] {
-    return Array.from(this.templates.values())
-      .filter(template => template.category === category);
+    return Array.from(this.templates.values()).filter(
+      (template) => template.category === category,
+    );
   }
 
   searchTemplates(options: TemplateSearchOptions): PresetTemplate[] {
@@ -59,50 +75,47 @@ export class TemplateManager {
 
     if (options.query) {
       const query = options.query.toLowerCase();
-      results = results.filter(template =>
-        template.name.toLowerCase().includes(query) ||
-        template.description.toLowerCase().includes(query) ||
-        template.tags.some(tag => tag.toLowerCase().includes(query))
+      results = results.filter(
+        (template) =>
+          template.name.toLowerCase().includes(query) ||
+          template.description.toLowerCase().includes(query) ||
+          template.tags.some((tag) => tag.toLowerCase().includes(query)),
       );
     }
 
     if (options.category) {
-      results = results.filter(template => template.category === options.category);
+      results = results.filter(
+        (template) => template.category === options.category,
+      );
     }
 
     if (options.tags && options.tags.length > 0) {
-      results = results.filter(template =>
-        options.tags!.some(tag => template.tags.includes(tag))
+      results = results.filter((template) =>
+        options.tags!.some((tag) => template.tags.includes(tag)),
       );
     }
 
     if (options.author) {
-      results = results.filter(template => template.author === options.author);
+      results = results.filter(
+        (template) => template.author === options.author,
+      );
     }
 
     if (options.builtinOnly) {
-      results = results.filter(template => template.isBuiltin);
+      results = results.filter((template) => template.isBuiltin);
     }
 
     if (options.customOnly) {
-      results = results.filter(template => !template.isBuiltin);
+      results = results.filter((template) => !template.isBuiltin);
     }
 
     return results;
   }
 
-  getAllCategories(): TemplateCategory[] {
-    return Object.values(TEMPLATE_CATEGORIES);
-  }
-
-  getCategory(id: string): TemplateCategory | undefined {
-    return TEMPLATE_CATEGORIES[id];
-  }
-
   renderTemplate(
     templateId: string,
     variables: Record<string, string | number | boolean>,
-    options: Partial<TemplateRenderOptions> = {}
+    options: Partial<TemplateRenderOptions> = {},
   ): TemplateRenderResult {
     const template = this.templates.get(templateId);
     if (!template) {
@@ -110,20 +123,20 @@ export class TemplateManager {
         renderedText: '',
         usedVariables: [],
         missingVariables: [],
-        errors: [`Template '${templateId}' not found`]
+        errors: [`Template '${templateId}' not found`],
       };
     }
 
     const renderOptions: TemplateRenderOptions = {
       variables,
       preserveWhitespace: options.preserveWhitespace ?? false,
-      escapeHtml: options.escapeHtml ?? false
+      escapeHtml: options.escapeHtml ?? false,
     };
 
     const result = TemplateRenderer.render(
       template.template,
       template.variables,
-      renderOptions
+      renderOptions,
     );
 
     // Update usage stats
@@ -136,7 +149,7 @@ export class TemplateManager {
     const customTemplate: PresetTemplate = {
       ...template,
       isBuiltin: false,
-      lastModified: new Date()
+      lastModified: new Date(),
     };
 
     // Validate template syntax
@@ -151,7 +164,7 @@ export class TemplateManager {
 
   updateCustomTemplate(
     id: string,
-    updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>
+    updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>,
   ): void {
     const existing = this.templates.get(id);
     if (!existing) {
@@ -167,14 +180,18 @@ export class TemplateManager {
       ...updates,
       id,
       isBuiltin: false,
-      lastModified: new Date()
+      lastModified: new Date(),
     };
 
     // Validate template syntax if template content changed
     if (updates.template) {
-      const templateErrors = TemplateRenderer.validateTemplate(updates.template);
+      const templateErrors = TemplateRenderer.validateTemplate(
+        updates.template,
+      );
       if (templateErrors.length > 0) {
-        throw new Error(`Invalid template syntax: ${templateErrors.join(', ')}`);
+        throw new Error(
+          `Invalid template syntax: ${templateErrors.join(', ')}`,
+        );
       }
     }
 
@@ -217,15 +234,24 @@ export class TemplateManager {
 
   importTemplate(templateJson: string): void {
     let template: PresetTemplate;
-    
+
     try {
       template = JSON.parse(templateJson);
     } catch (error) {
-      throw new Error(`Invalid JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Invalid JSON: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
 
     // Validate required fields
-    const requiredFields = ['id', 'name', 'description', 'category', 'template', 'variables'];
+    const requiredFields = [
+      'id',
+      'name',
+      'description',
+      'category',
+      'template',
+      'variables',
+    ];
     for (const field of requiredFields) {
       if (!(field in template)) {
         throw new Error(`Missing required field: ${field}`);
@@ -237,7 +263,7 @@ export class TemplateManager {
       lastModified: new Date(),
       version: template.version || '1.0.0',
       tags: template.tags || [],
-      variables: template.variables || []
+      variables: template.variables || [],
     });
   }
 
@@ -259,12 +285,15 @@ export class TemplateManager {
   createTemplateFromConversation(
     message: ConversationMessage,
     name: string,
-    options: TemplateGenerationOptions = {}
+    options: TemplateGenerationOptions = {},
   ): void {
-    const template = ConversationTemplateGenerator.fromConversationMessage(message, {
-      ...options,
-      customName: name
-    });
+    const template = ConversationTemplateGenerator.fromConversationMessage(
+      message,
+      {
+        ...options,
+        customName: name,
+      },
+    );
     this.templates.set(template.id, template);
     this.saveCustomTemplate(template);
   }
@@ -275,9 +304,13 @@ export class TemplateManager {
   createTemplateFromExamples(
     examples: ConversationMessage[],
     name: string,
-    options: TemplateGenerationOptions = {}
+    options: TemplateGenerationOptions = {},
   ): void {
-    const template = ConversationTemplateGenerator.fromMultipleExamples(examples, name, options);
+    const template = ConversationTemplateGenerator.fromMultipleExamples(
+      examples,
+      name,
+      options,
+    );
     this.templates.set(template.id, template);
     this.saveCustomTemplate(template);
   }
@@ -287,14 +320,17 @@ export class TemplateManager {
    */
   suggestTemplatesFromConversations(
     conversations: readonly ConversationMessage[],
-    minLength: number = 50
+    minLength: number = 50,
   ): Array<{
     message: ConversationMessage;
     score: number;
     reason: string;
     suggestedName: string;
   }> {
-    return ConversationTemplateGenerator.suggestTemplatesFromHistory(conversations, minLength);
+    return ConversationTemplateGenerator.suggestTemplatesFromHistory(
+      conversations,
+      minLength,
+    );
   }
 
   /**
@@ -311,17 +347,17 @@ export class TemplateManager {
 
     try {
       const files = fs.readdirSync(this.customTemplatesPath);
-      
+
       for (const file of files) {
         if (file.endsWith('.json')) {
           try {
             const filePath = path.join(this.customTemplatesPath, file);
             const content = fs.readFileSync(filePath, 'utf-8');
             const template: PresetTemplate = JSON.parse(content);
-            
+
             this.templates.set(template.id, {
               ...template,
-              isBuiltin: false
+              isBuiltin: false,
             });
           } catch (error) {
             console.warn(`Failed to load custom template ${file}:`, error);
@@ -344,7 +380,7 @@ export class TemplateManager {
 
   private deleteCustomTemplateFile(templateId: string): void {
     const filePath = path.join(this.customTemplatesPath, `${templateId}.json`);
-    
+
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -352,16 +388,16 @@ export class TemplateManager {
 
   private loadUsageStats(): void {
     const statsPath = path.join(this.customTemplatesPath, 'usage-stats.json');
-    
+
     if (fs.existsSync(statsPath)) {
       try {
         const content = fs.readFileSync(statsPath, 'utf-8');
         const stats: TemplateUsageStats[] = JSON.parse(content);
-        
+
         for (const stat of stats) {
           this.usageStats.set(stat.templateId, {
             ...stat,
-            lastUsed: new Date(stat.lastUsed)
+            lastUsed: new Date(stat.lastUsed),
           });
         }
       } catch (error) {
@@ -372,12 +408,12 @@ export class TemplateManager {
 
   private updateUsageStats(templateId: string): void {
     const existing = this.usageStats.get(templateId);
-    
+
     this.usageStats.set(templateId, {
       templateId,
       usageCount: (existing?.usageCount || 0) + 1,
       lastUsed: new Date(),
-      averageRating: existing?.averageRating
+      averageRating: existing?.averageRating,
     });
 
     this.saveUsageStats();
@@ -390,7 +426,7 @@ export class TemplateManager {
 
     const statsPath = path.join(this.customTemplatesPath, 'usage-stats.json');
     const stats = Array.from(this.usageStats.values());
-    
+
     fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2));
   }
 }

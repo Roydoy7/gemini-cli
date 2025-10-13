@@ -5,7 +5,6 @@
  */
 
 import type { PresetTemplate, TemplateVariable } from './types.js';
-import { TEMPLATE_CATEGORIES } from './BuiltinTemplates.js';
 
 export interface SimpleTemplateOptions {
   readonly name: string;
@@ -25,14 +24,15 @@ export interface ConversationTemplate {
  * without requiring deep knowledge of the template system internals.
  */
 export class SimpleTemplateBuilder {
-
   /**
    * Creates a template from a simple text with automatic variable detection.
    * Supports multiple variable syntaxes: [var], <var>, {var}, @var
    */
   static fromSimpleText(options: SimpleTemplateOptions): PresetTemplate {
     const variables = this.extractVariablesFromText(options.template);
-    const standardizedTemplate = this.standardizeVariableSyntax(options.template);
+    const standardizedTemplate = this.standardizeVariableSyntax(
+      options.template,
+    );
 
     return {
       id: this.generateId(options.name),
@@ -46,7 +46,7 @@ export class SimpleTemplateBuilder {
       author: 'User',
       version: '1.0.0',
       lastModified: new Date(),
-      isBuiltin: false
+      isBuiltin: false,
     };
   }
 
@@ -58,7 +58,7 @@ export class SimpleTemplateBuilder {
   static fromConversation(
     name: string,
     conversation: ConversationTemplate,
-    description?: string
+    description?: string,
   ): PresetTemplate {
     const template = this.buildConversationTemplate(conversation);
     const variables = this.suggestVariablesFromConversation(conversation);
@@ -75,7 +75,7 @@ export class SimpleTemplateBuilder {
       author: 'User',
       version: '1.0.0',
       lastModified: new Date(),
-      isBuiltin: false
+      isBuiltin: false,
     };
   }
 
@@ -117,7 +117,9 @@ export class SimpleTemplateBuilder {
       variables.add(match[1]);
     }
 
-    return Array.from(variables).map(varName => this.createVariableDefinition(varName));
+    return Array.from(variables).map((varName) =>
+      this.createVariableDefinition(varName),
+    );
   }
 
   /**
@@ -128,13 +130,16 @@ export class SimpleTemplateBuilder {
 
     // Convert [var] to {{var}}
     result = result.replace(/\[([^:\]]+)(?::([^:\]]+))?\]/g, '{{$1}}');
-    
+
     // Convert <var> to {{var}}
     result = result.replace(/<([^:>]+)(?::([^:>]+))?>/g, '{{$1}}');
-    
+
     // Convert {var} to {{var}} (avoid existing {{}} syntax)
-    result = result.replace(/(?<!\{)\{([^{}:]+)(?::([^{}]+))?\}(?!\})/g, '{{$1}}');
-    
+    result = result.replace(
+      /(?<!\{)\{([^{}:]+)(?::([^{}]+))?\}(?!\})/g,
+      '{{$1}}',
+    );
+
     // Convert @var to {{var}}
     result = result.replace(/@([a-zA-Z_][a-zA-Z0-9_]*)/g, '{{$1}}');
 
@@ -147,18 +152,26 @@ export class SimpleTemplateBuilder {
   private static createVariableDefinition(varName: string): TemplateVariable {
     // Smart type inference based on variable name
     const name = varName.toLowerCase();
-    
+
     let type: TemplateVariable['type'] = 'text';
-    let description = `Value for ${varName}`;
+    const description = `Value for ${varName}`;
     let placeholder = `Enter ${varName}`;
 
     if (name.includes('path') || name.includes('file')) {
       type = name.includes('dir') ? 'directory_path' : 'file_path';
       placeholder = `Path to ${varName}`;
-    } else if (name.includes('count') || name.includes('number') || name.includes('size')) {
+    } else if (
+      name.includes('count') ||
+      name.includes('number') ||
+      name.includes('size')
+    ) {
       type = 'number';
       placeholder = `Number for ${varName}`;
-    } else if (name.includes('enable') || name.includes('disable') || name.includes('is_')) {
+    } else if (
+      name.includes('enable') ||
+      name.includes('disable') ||
+      name.includes('is_')
+    ) {
       type = 'boolean';
       placeholder = `true/false for ${varName}`;
     }
@@ -168,11 +181,13 @@ export class SimpleTemplateBuilder {
       type,
       description,
       required: true,
-      placeholder
+      placeholder,
     };
   }
 
-  private static buildConversationTemplate(conversation: ConversationTemplate): string {
+  private static buildConversationTemplate(
+    conversation: ConversationTemplate,
+  ): string {
     let template = conversation.userMessage;
 
     if (conversation.context) {
@@ -182,7 +197,9 @@ export class SimpleTemplateBuilder {
     return template;
   }
 
-  private static suggestVariablesFromConversation(conversation: ConversationTemplate): TemplateVariable[] {
+  private static suggestVariablesFromConversation(
+    conversation: ConversationTemplate,
+  ): TemplateVariable[] {
     // Identify potential variables from common patterns in user messages
     const variables: TemplateVariable[] = [];
     const text = conversation.userMessage;
@@ -202,14 +219,14 @@ export class SimpleTemplateBuilder {
           description: `Replace "${content}" with custom value`,
           required: true,
           placeholder: content,
-          defaultValue: content
+          defaultValue: content,
         });
         varIndex++;
       }
     }
 
     // Look for file/path patterns
-    const pathPattern = /[\w.-]+\/[\w.-\/]+/g;
+    const pathPattern = /[\w.-]+\/[\w.-/]+/g;
     while ((match = pathPattern.exec(text)) !== null) {
       variables.push({
         name: `file_path_${varIndex}`,
@@ -217,7 +234,7 @@ export class SimpleTemplateBuilder {
         description: `Replace "${match[0]}" with custom path`,
         required: true,
         placeholder: match[0],
-        defaultValue: match[0]
+        defaultValue: match[0],
       });
       varIndex++;
     }
@@ -226,11 +243,14 @@ export class SimpleTemplateBuilder {
   }
 
   private static generateId(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      + '_' + Date.now().toString(36);
+    return (
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') +
+      '_' +
+      Date.now().toString(36)
+    );
   }
 }
 
@@ -256,7 +276,7 @@ export class TemplateWizard {
     tags: ['user-created'],
     author: 'User',
     version: '1.0.0',
-    isBuiltin: false
+    isBuiltin: false,
   };
 
   setBasicInfo(name: string, description: string): this {
@@ -267,22 +287,17 @@ export class TemplateWizard {
     return this;
   }
 
-  setCategory(categoryId: string): this {
-    const category = TEMPLATE_CATEGORIES[categoryId];
-    if (category) {
-      this.templateData.category = categoryId;
-      this.templateData.icon = category.icon;
-    } else {
-      this.templateData.category = 'custom';
-      this.templateData.icon = '📝';
-    }
+  setCategory(categoryId: string, icon?: string): this {
+    this.templateData.category = categoryId || 'custom';
+    this.templateData.icon = icon || '📝';
     return this;
   }
 
   setTemplate(templateText: string): this {
     this.templateData.template = templateText;
     // Auto-extract variables
-    this.templateData.variables = SimpleTemplateBuilder['extractVariablesFromText'](templateText);
+    this.templateData.variables =
+      SimpleTemplateBuilder['extractVariablesFromText'](templateText);
     return this;
   }
 
@@ -301,18 +316,27 @@ export class TemplateWizard {
 
   build(): PresetTemplate {
     // Validate required fields
-    if (!this.templateData.name || !this.templateData.description || !this.templateData.template) {
-      throw new Error('Missing required fields: name, description, and template are required');
+    if (
+      !this.templateData.name ||
+      !this.templateData.description ||
+      !this.templateData.template
+    ) {
+      throw new Error(
+        'Missing required fields: name, description, and template are required',
+      );
     }
 
     return this.templateData as PresetTemplate;
   }
 
   private generateId(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      + '_' + Date.now().toString(36);
+    return (
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') +
+      '_' +
+      Date.now().toString(36)
+    );
   }
 }

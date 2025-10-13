@@ -6,23 +6,22 @@
 
 export { TemplateManager } from './TemplateManager.js';
 export { TemplateRenderer } from './TemplateRenderer.js';
-export { SimpleTemplateBuilder, TemplateWizard } from './SimpleTemplateBuilder.js';
+export {
+  SimpleTemplateBuilder,
+  TemplateWizard,
+} from './SimpleTemplateBuilder.js';
 export { ConversationTemplateGenerator } from './ConversationTemplateGenerator.js';
-export { BUILTIN_TEMPLATES, TEMPLATE_CATEGORIES } from './BuiltinTemplates.js';
 export type {
   PresetTemplate,
   TemplateVariable,
-  TemplateCategory,
   TemplateRenderOptions,
   TemplateRenderResult,
   TemplateSearchOptions,
-  TemplateUsageStats
+  TemplateUsageStats,
 } from './types.js';
-export type {
-  SimpleTemplateOptions
-} from './SimpleTemplateBuilder.js';
+export type { SimpleTemplateOptions } from './SimpleTemplateBuilder.js';
 export type {
   ConversationMessage,
   TemplateGenerationOptions,
-  VariableSuggestion
+  VariableSuggestion,
 } from './ConversationTemplateGenerator.js';
