@@ -34,7 +34,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
 import { geminiChatService } from '@/services/geminiChatService';
-import { useWorkspaceDirectories } from '@/hooks';
+import { useWorkspaceDirectories, useAuthStatus } from '@/hooks';
 import { cn } from '@/utils/cn';
 import type { ChatMessage, UniversalMessage, RoleDefinition } from '@/types';
 import { AutocompleteDropdown, useAutocomplete } from './autocomplete';
@@ -111,6 +111,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [deleteTemplateConfirm, setDeleteTemplateConfirm] =
       useState<Template | null>(null);
     const [authSetupDialog, setAuthSetupDialog] = useState(false);
+    const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+    const [newTemplateName, setNewTemplateName] = useState('');
+    const [showAuthRequiredDialog, setShowAuthRequiredDialog] = useState(false);
     const excelMenuRef = useRef<HTMLDivElement>(null);
     const workspaceMenuRef = useRef<HTMLDivElement>(null);
     const templateMenuRef = useRef<HTMLDivElement>(null);
@@ -136,6 +139,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       loading: loadingDirectories,
       addDirectory: addWorkspaceDirectory,
     } = useWorkspaceDirectories();
+
+    // Check authentication status
+    const authStatus = useAuthStatus('gemini');
 
     // Close menus when clicking outside
     useEffect(() => {
@@ -369,6 +375,47 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleCancelTemplateEdit = () => {
       setEditingTemplate(null);
       setEditContent('');
+    };
+
+    // Handle save template button click
+    const handleSaveTemplateClick = () => {
+      if (message.trim()) {
+        // Set default template name using current timestamp
+        setNewTemplateName(`Template ${new Date().toLocaleString()}`);
+        setShowSaveTemplateDialog(true);
+      }
+    };
+
+    // Handle save new template
+    const handleSaveNewTemplate = async () => {
+      if (!newTemplateName.trim() || !message.trim()) return;
+
+      try {
+        await geminiChatService.addCustomTemplate({
+          id: `template-${Date.now()}`,
+          name: newTemplateName.trim(),
+          description: '',
+          category: 'custom',
+          icon: '📝',
+          template: message.trim(),
+          variables: [],
+          tags: [],
+          version: '1.0.0',
+          lastModified: new Date(),
+        });
+
+        // Clear dialog state
+        setShowSaveTemplateDialog(false);
+        setNewTemplateName('');
+
+        // Refresh templates list
+        const backendTemplates = await geminiChatService.getAllTemplatesAsync();
+        const customTemplates = backendTemplates.filter((t) => !t.isBuiltin);
+        setTemplates(customTemplates);
+      } catch (error) {
+        console.error('Error saving template:', error);
+        setError('Failed to save template');
+      }
     };
 
     // Handle template deletion
@@ -724,6 +771,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleSendMessage = async () => {
       if (!message.trim() || !activeSessionId || isStreaming || isThinking)
         return;
+
+      // Check authentication before sending message
+      if (!authStatus.authenticated) {
+        console.log('[MessageInput] Authentication required - showing dialog');
+        setShowAuthRequiredDialog(true);
+        return;
+      }
 
       // Check if this is the first message in the session (session has no roleId set)
       const session = useAppStore
@@ -1383,6 +1437,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     onExcelClick={handleExcelButtonClick}
                     onWorkspaceClick={handleWorkspaceButtonClick}
                     onTemplateClick={handleTemplateButtonClick}
+                    onSaveTemplateClick={handleSaveTemplateClick}
                     excelButton={
                       <div className="relative" ref={excelMenuRef}>
                         <Button
@@ -2249,6 +2304,56 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           </div>
         )}
 
+        {/* Save Template Dialog */}
+        {showSaveTemplateDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]">
+            <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md mx-4 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  Save as Template
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Enter a name for this template to save it for future use.
+                </p>
+                <input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  placeholder="Template name..."
+                  className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveNewTemplate();
+                    } else if (e.key === 'Escape') {
+                      setShowSaveTemplateDialog(false);
+                      setNewTemplateName('');
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowSaveTemplateDialog(false);
+                    setNewTemplateName('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveNewTemplate}
+                  disabled={!newTemplateName.trim()}
+                >
+                  Save Template
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Auth Setup Dialog */}
         {authSetupDialog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]">
@@ -2284,6 +2389,36 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   }}
                 >
                   View Instructions
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Authentication Required Dialog */}
+        {showAuthRequiredDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]">
+            <div className="bg-card border border-red-500/50 rounded-lg shadow-lg w-full max-w-md mx-4 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-red-600 mb-2">
+                  Authentication Required
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  You must configure authentication before sending messages.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Please click the &ldquo;Auth Required&rdquo; button in the
+                  header to configure your authentication method (OAuth or API
+                  Key).
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowAuthRequiredDialog(false)}
+                >
+                  OK
                 </Button>
               </div>
             </div>
