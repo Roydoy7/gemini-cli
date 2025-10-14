@@ -29,7 +29,6 @@ import { XlwingsDocTool } from '../tools/xlwings-doc-tool.js';
 import { GeminiSearchTool } from '../tools/gemini-search-tool.js';
 import { KnowledgeBaseTool } from './knowledge-base-tool.js';
 
-
 export const OUTPUT_UPDATE_INTERVAL_MS = 1000;
 
 export interface PythonEmbeddedToolParams {
@@ -93,7 +92,7 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
     try {
       // Get embedded Python path
       const embeddedPythonPath = this.getEmbeddedPythonPath();
-      
+
       // Verify embedded Python exists
       if (!fs.existsSync(embeddedPythonPath)) {
         return {
@@ -105,31 +104,35 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
       // Install requirements if specified
       if (this.params.requirements?.length) {
         if (updateOutput) {
-          updateOutput(`Installing Python packages: ${this.params.requirements.join(', ')}...\n`);
+          updateOutput(
+            `Installing Python packages: ${this.params.requirements.join(', ')}...\n`,
+          );
         }
-        
+
         try {
           const installCommand = `"${embeddedPythonPath}" -m pip install ${this.params.requirements.join(' ')} --quiet`;
-          const workingDir = this.params.workingDirectory || this.config.getTargetDir();
-          
-          const { result: installPromise } = await ShellExecutionService.execute(
-            installCommand,
-            workingDir,
-            () => {}, // No output callback for install
-            signal,
-            false, // Don't use NodePty for install
-            shellExecutionConfig || {},
-          );
-          
+          const workingDir =
+            this.params.workingDirectory || this.config.getTargetDir();
+
+          const { result: installPromise } =
+            await ShellExecutionService.execute(
+              installCommand,
+              workingDir,
+              () => {}, // No output callback for install
+              signal,
+              false, // Don't use NodePty for install
+              shellExecutionConfig || {},
+            );
+
           const installResult = await installPromise;
-          
+
           if (installResult.exitCode !== 0) {
             return {
               llmContent: `Failed to install Python requirements: ${installResult.output}`,
               returnDisplay: `❌ Failed to install Python requirements`,
             };
           }
-          
+
           if (updateOutput) {
             updateOutput(`✅ Packages installed successfully\n\n`);
           }
@@ -145,14 +148,16 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
       const tempDir = os.tmpdir();
       const scriptId = crypto.randomUUID();
       const scriptPath = path.join(tempDir, `gemini_python_${scriptId}.py`);
-      
+
       // Write Python code to temporary file with UTF-8 encoding
       // Wrap output in Base64 to avoid encoding issues on Windows with non-ASCII characters
+      // Add line tracing for timeout detection
       const codeWithEncoding = `# -*- coding: utf-8 -*-
 import sys
 import io
 import base64
 import json
+import traceback
 
 # Force UTF-8 for internal processing
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -163,6 +168,7 @@ _output_lines = []
 _error_lines = []
 _original_print = print
 _original_stderr_write = sys.stderr.write
+_last_executed_line = 0
 
 def print(*args, **kwargs):
     """Capture print output"""
@@ -179,17 +185,67 @@ def stderr_write(text):
 
 sys.stderr.write = stderr_write
 
+def _trace_lines(frame, event, arg):
+    """Trace function to track last executed line"""
+    global _last_executed_line
+    if event == 'line' and frame.f_code.co_filename == '<string>':
+        _last_executed_line = frame.f_lineno
+    return _trace_lines
+
+# Enable line tracing
+sys.settrace(_trace_lines)
+
 # Execute user code
 _exit_code = 0
+_error_line_number = None
+_error_context = None
 try:
-${this.params.code.split('\n').map(line => '    ' + line).join('\n')}
+${this.params.code
+  .split('\n')
+  .map((line) => '    ' + line)
+  .join('\n')}
 except SystemExit as e:
     _exit_code = e.code if e.code else 0
 except Exception as e:
-    import traceback
-    _error_lines.append(f"Error: {str(e)}\\n")
+    # Extract detailed error information
+    tb_list = traceback.extract_tb(e.__traceback__)
+
+    # Find the frame in user code
+    user_code_lines = ${JSON.stringify(this.params.code.split('\n'))}
+
+    for frame in tb_list:
+        if frame.filename == '<string>':
+            _error_line_number = frame.lineno
+
+            # Get code context (3 lines before and after)
+            context_lines = []
+            for i in range(max(1, _error_line_number - 3), min(len(user_code_lines) + 1, _error_line_number + 4)):
+                marker = ">>> " if i == _error_line_number else "    "
+                if i - 1 < len(user_code_lines):
+                    context_lines.append(f"{marker}Line {i}: {user_code_lines[i - 1]}")
+
+            _error_context = "\\n".join(context_lines)
+            break
+
+    # Format error message with context
+    error_header = f"\\n{'='*60}\\n"
+    error_header += f"ERROR at Line {_error_line_number}\\n"
+    error_header += f"{'='*60}\\n"
+
+    if _error_context:
+        error_header += f"\\nCode context:\\n{_error_context}\\n\\n"
+
+    error_header += f"Error type: {type(e).__name__}\\n"
+    error_header += f"Error message: {str(e)}\\n"
+    error_header += f"{'='*60}\\n\\n"
+
+    _error_lines.append(error_header)
+    _error_lines.append("Full traceback:\\n")
     _error_lines.append(traceback.format_exc())
     _exit_code = 1
+finally:
+    # Disable tracing
+    sys.settrace(None)
 
 # Restore original functions
 print = _original_print
@@ -200,47 +256,143 @@ _final_output = ''.join(_output_lines)
 _final_errors = ''.join(_error_lines)
 
 # Output result with special markers
-if _final_output or _final_errors:
-    result_data = {
-        "stdout": _final_output,
-        "stderr": _final_errors,
-        "exit_code": _exit_code
-    }
-    # Encode as JSON then Base64 to avoid any encoding issues
-    json_str = json.dumps(result_data, ensure_ascii=False)
-    encoded = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
-    print(f"__PYTHON_RESULT_BASE64__{encoded}__END__")
-else:
-    print("__PYTHON_RESULT_BASE64__eyJzdGRvdXQiOiAiIiwgInN0ZGVyciI6ICIiLCAiZXhpdF9jb2RlIjogMH0=__END__")
+result_data = {
+    "stdout": _final_output,
+    "stderr": _final_errors,
+    "exit_code": _exit_code,
+    "error_line": _error_line_number,
+    "last_executed_line": _last_executed_line
+}
+
+# Encode as JSON then Base64 to avoid any encoding issues
+json_str = json.dumps(result_data, ensure_ascii=False)
+encoded = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
+print(f"__PYTHON_RESULT_BASE64__{encoded}__END__")
 
 sys.exit(_exit_code)`;
       await fs.promises.writeFile(scriptPath, codeWithEncoding, 'utf-8');
-      
+
       // Prepare execution command with UTF-8 environment settings
       const isWindows = process.platform === 'win32';
       const command = isWindows
         ? `chcp 65001 > nul && set PYTHONIOENCODING=utf-8 && set PYTHONLEGACYWINDOWSSTDIO=1 && "${embeddedPythonPath}" "${scriptPath}"`
         : `PYTHONIOENCODING=utf-8 "${embeddedPythonPath}" "${scriptPath}"`;
-      
+
       // Set working directory
-      const workingDir = this.params.workingDirectory || this.config.getTargetDir();
-      
-      // Execute Python script using ShellExecutionService
+      const workingDir =
+        this.params.workingDirectory || this.config.getTargetDir();
+
+      // Get timeout setting (default 30 seconds)
+      const timeoutMs = (this.params.timeout || 30) * 1000;
+
+      // Execute Python script using ShellExecutionService with timeout
       const { result: pythonPromise } = await ShellExecutionService.execute(
         command,
         workingDir,
-        updateOutput ? (event) => {
-          if (event.type === 'data') {
-            // For now, just call updateOutput with the chunk
-            updateOutput(event.chunk);
-          }
-        } : () => {},
+        updateOutput
+          ? (event) => {
+              if (event.type === 'data') {
+                // For now, just call updateOutput with the chunk
+                updateOutput(event.chunk);
+              }
+            }
+          : () => {},
         signal,
         false, // Don't use NodePty for Python execution
         shellExecutionConfig || {},
       );
-      
-      const result = await pythonPromise;
+
+      // Create a timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new Error(
+              `Python execution timed out after ${this.params.timeout || 30} seconds`,
+            ),
+          );
+        }, timeoutMs);
+      });
+
+      // Race between execution and timeout
+      let result;
+      try {
+        result = await Promise.race([pythonPromise, timeoutPromise]);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('timed out')) {
+          // Try to get partial result before cleaning up
+          let partialOutput = '';
+          let lastLine = 0;
+
+          try {
+            // Read the script file to try to extract any partial output
+            const scriptOutput = await fs.promises.readFile(
+              scriptPath,
+              'utf-8',
+            );
+            // Try to parse any output that might have been written
+            const match = scriptOutput.match(
+              /__PYTHON_RESULT_BASE64__([A-Za-z0-9+/=]+)__END__/,
+            );
+            if (match) {
+              const jsonStr = Buffer.from(match[1], 'base64').toString('utf-8');
+              const resultData = JSON.parse(jsonStr);
+              lastLine = resultData.last_executed_line || 0;
+              if (resultData.stdout) {
+                partialOutput = resultData.stdout;
+              }
+            }
+          } catch (_parseError) {
+            // Ignore parsing errors
+          }
+
+          // Clean up temporary file
+          try {
+            await fs.promises.unlink(scriptPath);
+          } catch (_cleanupError) {
+            // Ignore cleanup errors
+          }
+
+          // Get code context around the last executed line
+          const codeLines = this.params.code.split('\n');
+          let contextInfo = '';
+          if (lastLine > 0 && lastLine <= codeLines.length) {
+            const start = Math.max(1, lastLine - 2);
+            const end = Math.min(codeLines.length, lastLine + 2);
+            const contextLines = [];
+            for (let i = start; i <= end; i++) {
+              const marker = i === lastLine ? '>>> ' : '    ';
+              contextLines.push(`${marker}Line ${i}: ${codeLines[i - 1]}`);
+            }
+            contextInfo = `\n\nLast executed line:\n${contextLines.join('\n')}`;
+          }
+
+          const timeoutMessage = `❌ Python execution timed out after ${this.params.timeout || 30} seconds.
+
+TIMEOUT DETAILS:
+${lastLine > 0 ? `- Last executed line: ${lastLine}` : '- Unable to determine last executed line'}
+${partialOutput ? `- Partial output before timeout:\n${partialOutput}` : '- No output captured before timeout'}
+${contextInfo}
+
+The script took too long to complete. Consider:
+1. Optimizing your code for better performance (check for infinite loops or slow operations)
+2. Increasing the timeout parameter if the operation legitimately needs more time
+3. Breaking the task into smaller chunks
+4. Adding progress indicators with print() statements to track execution`;
+
+          return {
+            llmContent: timeoutMessage,
+            returnDisplay: `❌ Execution timed out after ${this.params.timeout || 30} seconds at line ${lastLine || 'unknown'}`,
+          };
+        }
+
+        // Clean up for other errors
+        try {
+          await fs.promises.unlink(scriptPath);
+        } catch (_cleanupError) {
+          // Ignore cleanup errors
+        }
+        throw error;
+      }
 
       // Clean up temporary file
       try {
@@ -249,13 +401,15 @@ sys.exit(_exit_code)`;
         // Ignore cleanup errors
         console.warn('Failed to delete temporary Python script:', cleanupError);
       }
-      
+
       // Parse output - check for Base64 encoded result
       let output = result.output.trim();
       let actualExitCode = result.exitCode;
 
       // Check for Base64 encoded result marker
-      const base64Match = output.match(/__PYTHON_RESULT_BASE64__([A-Za-z0-9+/=]+)__END__/);
+      const base64Match = output.match(
+        /__PYTHON_RESULT_BASE64__([A-Za-z0-9+/=]+)__END__/,
+      );
       if (base64Match) {
         try {
           // Decode Base64 result
@@ -266,7 +420,9 @@ sys.exit(_exit_code)`;
           // Use decoded output
           output = resultData.stdout || '';
           if (resultData.stderr) {
-            output = output ? `${output}\n${resultData.stderr}` : resultData.stderr;
+            output = output
+              ? `${output}\n${resultData.stderr}`
+              : resultData.stderr;
           }
           actualExitCode = resultData.exit_code || 0;
         } catch (decodeError) {
@@ -278,9 +434,11 @@ sys.exit(_exit_code)`;
 
       const hasError = actualExitCode !== 0;
 
-      const formattedOutput = output || (hasError
-        ? 'Python script executed with errors (no output)'
-        : 'Python script executed successfully (no output)');
+      const formattedOutput =
+        output ||
+        (hasError
+          ? 'Python script executed with errors (no output)'
+          : 'Python script executed successfully (no output)');
 
       // Add execution summary
       const summary = hasError
@@ -293,7 +451,6 @@ sys.exit(_exit_code)`;
         llmContent: finalOutput,
         returnDisplay: finalOutput,
       };
-      
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       return {
@@ -307,12 +464,13 @@ sys.exit(_exit_code)`;
     // Use import.meta.url to get the current file location
     const currentFileUrl = import.meta.url;
     const currentFilePath = new URL(currentFileUrl).pathname;
-    
+
     // Convert Windows path format if needed
-    const normalizedPath = process.platform === 'win32' 
-      ? currentFilePath.slice(1) // Remove leading slash on Windows
-      : currentFilePath;
-    
+    const normalizedPath =
+      process.platform === 'win32'
+        ? currentFilePath.slice(1) // Remove leading slash on Windows
+        : currentFilePath;
+
     // Path structure: packages/core/src/tools/python-embedded-tool.ts
     // Go up: src/tools -> src -> core -> packages -> python-3.13.7
     const toolsPath = path.dirname(normalizedPath); // packages/core/dist/src/tools/python-embedded-tool.js
@@ -320,12 +478,19 @@ sys.exit(_exit_code)`;
     const distPath = path.dirname(srcPath); // packages/core/dist
     const corePath = path.dirname(distPath); // packages/core
     const packagesPath = path.dirname(corePath); // packages
-    const embeddedPythonPath = path.join(packagesPath, 'python-3.13.7', 'python.exe');
+    const embeddedPythonPath = path.join(
+      packagesPath,
+      'python-3.13.7',
+      'python.exe',
+    );
     return embeddedPythonPath;
   }
 }
 
-export class PythonEmbeddedTool extends BaseDeclarativeTool<PythonEmbeddedToolParams, ToolResult> {
+export class PythonEmbeddedTool extends BaseDeclarativeTool<
+  PythonEmbeddedToolParams,
+  ToolResult
+> {
   static readonly Name: string = 'python-embedded-tools';
 
   private readonly allowlist = new Set<string>();
@@ -384,6 +549,7 @@ This tool uses an embedded Python 3.13.7 environment to ensure stable and consis
 - NEVER assume a worksheet has table headers; NEVER assume there is only one header row, there may be multiple header rows or no headers at all; Ferthermore, there maybe multiple tables and headers in a single worksheet, if necessary, try to identify the correct table by sampling data
 - NEVER assume you can write correct python code in one attempt, always use print statement to output helpful information, if errors occur, use these message to iteratively fix your code. If you can not resolve the errors, use ${GeminiSearchTool.Name} to search for solutions or examples, if you are still stuck, inform the user about the technical limitations
 - If your python code sucessfully runs and finishes the task as expected, consider use ${KnowledgeBaseTool.Name} to save the code snippet for future reference
+- When required to copy data between workbooks, always copy values only, avoid copying formulas or formats to prevent broken references unless explicitly requested
 
 ## User may refer column letters like "A", "B", "C", or even "XA", "XB" in complex sheets, convert them to numerical indexes use a function like this:
 \`\`\`python
@@ -482,8 +648,7 @@ def col_letter_to_index(col_letter):
   if str(cell.value or "").strip().lower() == "target":
       # do something
   \`\`\`
-`
-      ,
+`,
       Kind.Execute,
       {
         type: 'object',
@@ -491,7 +656,8 @@ def col_letter_to_index(col_letter):
         properties: {
           code: {
             type: 'string',
-            description: 'Python code to execute. Can be multi-line and include imports. IMPORTANT: When working with text/files, always specify UTF-8 encoding (e.g., open(file, "r", encoding="utf-8")) to prevent UnicodeEncodeError on Windows systems.',
+            description:
+              'Python code to execute. Can be multi-line and include imports. IMPORTANT: When working with text/files, always specify UTF-8 encoding (e.g., open(file, "r", encoding="utf-8")) to prevent UnicodeEncodeError on Windows systems.',
           },
           description: {
             type: 'string',
@@ -505,12 +671,14 @@ def col_letter_to_index(col_letter):
           },
           workingDirectory: {
             type: 'string',
-            description: 'Working directory for script execution (default: current target directory)',
+            description:
+              'Working directory for script execution (default: current target directory)',
           },
           requirements: {
             type: 'array',
             items: { type: 'string' },
-            description: 'List of Python packages to install before execution (e.g., ["requests", "pandas", "matplotlib"])',
+            description:
+              'List of Python packages to install before execution (e.g., ["requests", "pandas", "matplotlib"])',
           },
         },
         additionalProperties: false,
@@ -523,19 +691,24 @@ def col_letter_to_index(col_letter):
   protected createInvocation(
     params: PythonEmbeddedToolParams,
   ): ToolInvocation<PythonEmbeddedToolParams, ToolResult> {
-    return new PythonEmbeddedToolInvocation(this.config, params, this.allowlist);
+    return new PythonEmbeddedToolInvocation(
+      this.config,
+      params,
+      this.allowlist,
+    );
   }
 
   private getPythonPathStatic(): string {
     // Use import.meta.url to get the current file location
     const currentFileUrl = import.meta.url;
     const currentFilePath = new URL(currentFileUrl).pathname;
-    
+
     // Convert Windows path format if needed
-    const normalizedPath = process.platform === 'win32' 
-      ? currentFilePath.slice(1) // Remove leading slash on Windows
-      : currentFilePath;
-    
+    const normalizedPath =
+      process.platform === 'win32'
+        ? currentFilePath.slice(1) // Remove leading slash on Windows
+        : currentFilePath;
+
     // Path structure: packages/core/src/tools/python-embedded-tool.ts
     // Go up: src/tools -> src -> core -> packages -> python-3.13.7
     const toolsPath = path.dirname(normalizedPath); // packages/core/dist/src/tools/python-embedded-tool.js
@@ -543,7 +716,11 @@ def col_letter_to_index(col_letter):
     const distPath = path.dirname(srcPath); // packages/core/dist
     const corePath = path.dirname(distPath); // packages/core
     const packagesPath = path.dirname(corePath); // packages
-    const embeddedPythonPath = path.join(packagesPath, 'python-3.13.7', 'python.exe');
+    const embeddedPythonPath = path.join(
+      packagesPath,
+      'python-3.13.7',
+      'python.exe',
+    );
     return embeddedPythonPath;
   }
 
@@ -558,22 +735,23 @@ def col_letter_to_index(col_letter):
     try {
       // Use the same path resolution as the private method
       const embeddedPythonPath = this.getPythonPathStatic();
-      
+
       const available = fs.existsSync(embeddedPythonPath);
-      
+
       if (available) {
         // Get version info
         try {
-          const { result: versionPromise } = await ShellExecutionService.execute(
-            `"${embeddedPythonPath}" --version`,
-            process.cwd(),
-            () => {},
-            new AbortController().signal,
-            false,
-            {},
-          );
+          const { result: versionPromise } =
+            await ShellExecutionService.execute(
+              `"${embeddedPythonPath}" --version`,
+              process.cwd(),
+              () => {},
+              new AbortController().signal,
+              false,
+              {},
+            );
           const result = await versionPromise;
-        
+
           return {
             pythonPath: embeddedPythonPath,
             version: result.output?.trim() || 'Unknown',
@@ -587,7 +765,7 @@ def col_letter_to_index(col_letter):
           };
         }
       }
-      
+
       return {
         pythonPath: embeddedPythonPath,
         version: 'Not available',
