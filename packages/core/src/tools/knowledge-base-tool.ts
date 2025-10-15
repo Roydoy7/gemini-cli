@@ -414,8 +414,8 @@ knowledge_base(op="search",
         };
       }
 
-      // Try to find JSON in the output
-      const jsonMatch = cleanOutput.match(/\{[\s\S]*\}/);
+      // Try to find JSON in the output (support both objects and arrays)
+      const jsonMatch = cleanOutput.match(/[{[][\s\S]*[}\]]/);
       if (jsonMatch) {
         cleanOutput = jsonMatch[0];
       }
@@ -875,8 +875,10 @@ def main():
         operation = "${op}"
 
         if operation == "store":
-            content = """${content.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}""" if """${content}""" else None
-            file_path = r"${file_path}" if "${file_path}" else None
+            content_str = """${content.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"""
+            file_path_str = r"${file_path.replace(/\\/g, '\\\\')}"
+            content = content_str if content_str else None
+            file_path = file_path_str if file_path_str else None
             metadata = ${JSON.stringify(metadata)}
             result = kb.store_content(content=content, file_path=file_path, metadata=metadata)
 
