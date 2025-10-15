@@ -290,6 +290,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
       switch (item.type) {
         case 'header': {
+          // Reset numbered list counter when encountering a header
+          numberedCounter = 1;
+
           const level = Math.min(item.level || 1, 6);
           const headerClassName = cn(
             'font-bold mt-6 mb-4',
@@ -347,6 +350,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         }
 
         case 'separator':
+          // Reset numbered list counter when encountering a separator
+          numberedCounter = 1;
           return <hr key={key} className="border-border my-6 border-t" />;
 
         case 'code':

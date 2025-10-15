@@ -186,9 +186,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         globalThis as {
           electronAPI?: {
             geminiChat?: {
-              startOAuthFlow: (
-                providerType: string,
-              ) => Promise<{
+              startOAuthFlow: (providerType: string) => Promise<{
                 success: boolean;
                 message?: string;
                 error?: string;
@@ -230,7 +228,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
 
         // Auto-close modal after successful authentication
         setTimeout(() => {
-          onClose();
+          handleClose();
         }, 1500); // Give user time to see the success message
       } else {
         throw new Error(result.error || 'OAuth authentication failed');
@@ -305,7 +303,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
 
       // Auto-close modal after successful switch
       setTimeout(() => {
-        onClose();
+        handleClose();
       }, 1500);
     } catch (error) {
       console.error('[AuthSettingsModal] handleUseOAuth failed:', error);
@@ -418,7 +416,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
 
       // Auto-close modal after successful switch
       setTimeout(() => {
-        onClose();
+        handleClose();
       }, 1500);
     } catch (error) {
       console.error('Failed to set API key preference:', error);
@@ -489,18 +487,27 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
     }
   };
 
+  const handleClose = () => {
+    // Trigger auth-changed event to notify App.tsx to re-check auth status
+    console.log(
+      '[AuthSettingsModal] Closing modal, triggering auth-changed event',
+    );
+    window.dispatchEvent(new CustomEvent('auth-changed'));
+    onClose();
+  };
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative bg-card rounded-lg shadow-lg p-6 max-w-md w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">
             Google Gemini Authentication
           </h2>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button variant="ghost" size="icon" onClick={handleClose}>
             <X size={20} />
           </Button>
         </div>
@@ -685,7 +692,7 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
 
         {/* Footer */}
         <div className="flex gap-3 justify-end">
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={handleClose}>
             Close
           </Button>
         </div>

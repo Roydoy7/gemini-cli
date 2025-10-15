@@ -157,6 +157,9 @@ export const Sidebar: React.FC = () => {
       // Switch backend to new session to keep frontend and backend in sync
       await geminiChatService.switchSession(newSession.id);
 
+      // CRITICAL: Sync chatStore.currentSessionId with backend for new session
+      await setActiveSession(newSession.id);
+
       // Focus input after session is created
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('focus-message-input'));
@@ -290,7 +293,8 @@ export const Sidebar: React.FC = () => {
       await geminiChatService.switchSession(sessionId);
 
       // Only switch frontend after backend confirms success
-      setActiveSession(sessionId);
+      // CRITICAL: await to sync chatStore.currentSessionId with backend
+      await setActiveSession(sessionId);
 
       // Load session messages from backend
       const messages = await geminiChatService.getDisplayMessages(sessionId);

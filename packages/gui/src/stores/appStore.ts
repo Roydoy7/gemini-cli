@@ -16,10 +16,11 @@ import type {
   ThemeMode,
   RoleDefinition,
 } from '@/types';
+import { useChatStore } from './chatStore';
 
 interface AppStore extends AppState {
   // Actions
-  setActiveSession: (sessionId: string | null) => void;
+  setActiveSession: (sessionId: string | null) => Promise<void>;
   addSession: (session: ChatSession) => void;
   updateSession: (sessionId: string, updates: Partial<ChatSession>) => void;
   removeSession: (sessionId: string) => void;
@@ -81,8 +82,21 @@ export const useAppStore = create<AppStore>()(
       builtinRoles: [],
 
       // Actions
-      setActiveSession: (sessionId: string | null) =>
-        set({ activeSessionId: sessionId }),
+      setActiveSession: async (sessionId: string | null) => {
+        // Get chatStore state to manage per-session states
+        const chatState = useChatStore.getState();
+
+        // Save current session state before switching
+        chatState.saveCurrentSessionState();
+
+        // Switch to new session
+        set({ activeSessionId: sessionId });
+
+        // Load new session state (or clear if new session)
+        if (sessionId) {
+          await chatState.loadSessionState(sessionId);
+        }
+      },
 
       addSession: (session: ChatSession) =>
         set((state) => ({
@@ -97,14 +111,19 @@ export const useAppStore = create<AppStore>()(
           ),
         })),
 
-      removeSession: (sessionId: string) =>
+      removeSession: (sessionId: string) => {
+        // Clear session state when deleting session
+        const chatState = useChatStore.getState();
+        chatState.clearSessionState(sessionId);
+
         set((state) => ({
           sessions: state.sessions.filter(
             (session) => session.id !== sessionId,
           ),
           activeSessionId:
             state.activeSessionId === sessionId ? null : state.activeSessionId,
-        })),
+        }));
+      },
 
       clearAllSessions: () =>
         set({

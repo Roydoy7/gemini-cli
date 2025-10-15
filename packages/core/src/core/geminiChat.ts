@@ -285,12 +285,17 @@ export class GeminiChat {
       });
     }
 
+    // Record history length before adding user message, for potential rollback
+    const historyLengthBeforeRequest = this.history.length;
+
     // Add user content to history ONCE before any attempts.
     this.history.push(userContent);
     const requestContents = this.getHistory(true);
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
+    let streamCompletedSuccessfully = false;
+
     return (async function* () {
       try {
         let lastError: unknown = new Error('Request failed after all retries.');
@@ -361,7 +366,23 @@ export class GeminiChat {
           }
           throw lastError;
         }
+
+        // If we reach here without throwing, stream completed successfully
+        streamCompletedSuccessfully = true;
       } finally {
+        // CRITICAL: Rollback history if stream was interrupted (timeout/cancel/error)
+        // This prevents incomplete history (user message without model response) from being saved
+        // which would break Gemini API (unpaired tool calls/responses) and cause context loss
+        if (!streamCompletedSuccessfully) {
+          console.warn(
+            '[GeminiChat] Stream was interrupted before completion, rolling back history to prevent corruption',
+          );
+          console.warn(
+            `[GeminiChat] Rolling back from ${self.history.length} to ${historyLengthBeforeRequest} entries`,
+          );
+          self.history = self.history.slice(0, historyLengthBeforeRequest);
+        }
+
         streamDoneResolver!();
       }
     })();
@@ -583,14 +604,27 @@ export class GeminiChat {
       });
     }
 
+    // Check if response contains thoughtSignature (Gemini internal reasoning)
+    // thoughtSignature parts don't have text fields, so they don't contribute to responseText
+    const hasThoughtSignature = consolidatedParts.some(
+      (part) =>
+        part &&
+        typeof part === 'object' &&
+        'thoughtSignature' in part &&
+        (part as { thoughtSignature?: string }).thoughtSignature,
+    );
+
     // Stream validation logic: A stream is considered successful if:
     // 1. There's a tool call (tool calls can end without explicit finish reasons), OR
-    // 2. There's a finish reason AND we have non-empty response text
+    // 2. There's a finish reason AND (we have non-empty response text OR thoughtSignature)
     //
     // We throw an error only when there's no tool call AND:
     // - No finish reason, OR
-    // - Empty response text (e.g., only thoughts with no actual content)
-    if (!hasToolCall && (!hasFinishReason || !responseText)) {
+    // - Empty response text AND no thoughtSignature
+    if (
+      !hasToolCall &&
+      (!hasFinishReason || (!responseText && !hasThoughtSignature))
+    ) {
       if (!hasFinishReason) {
         throw new InvalidStreamError(
           'Model stream ended without a finish reason.',
@@ -617,9 +651,6 @@ export class GeminiChat {
         // Convert thought part to text part with <think> tags
         // Use the text field which contains the actual thinking content
         const thinkingText = `<think>\n${partWithThought.text}\n</think>\n\n`;
-        console.log(
-          `[GeminiChat] Converting thought part ${thinkingPartsCount} to text (${partWithThought.text.substring(0, 50)}...)`,
-        );
         partsWithThinkingAsText.push({ text: thinkingText });
       } else if (!partWithThought.thought) {
         // Keep non-thought parts as-is (skip thought parts without text)

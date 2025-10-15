@@ -12,7 +12,8 @@ interface AuthStatus {
 }
 
 /**
- * Hook to get real-time authentication status from backend AuthManager
+ * Hook to get authentication status from backend AuthManager
+ * Only checks on mount and when auth-changed event is triggered
  */
 export function useAuthStatus(providerType: string): AuthStatus {
   const [authStatus, setAuthStatus] = useState<AuthStatus>({
@@ -99,12 +100,22 @@ export function useAuthStatus(providerType: string): AuthStatus {
       }
     };
 
+    // Check on mount
     checkAuthStatus();
 
-    // Re-check every 5 seconds to keep status updated
-    const interval = setInterval(checkAuthStatus, 5000);
+    // Listen for auth-changed events and re-check
+    const handleAuthChanged = () => {
+      console.log(
+        '[useAuthStatus] Auth changed event received, re-checking...',
+      );
+      checkAuthStatus();
+    };
 
-    return () => clearInterval(interval);
+    window.addEventListener('auth-changed', handleAuthChanged);
+
+    return () => {
+      window.removeEventListener('auth-changed', handleAuthChanged);
+    };
   }, [providerType]);
 
   return authStatus;

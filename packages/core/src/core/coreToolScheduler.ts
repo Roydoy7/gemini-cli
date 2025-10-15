@@ -483,13 +483,15 @@ export class CoreToolScheduler {
                     id: currentCall.request.callId,
                     name: currentCall.request.name,
                     response: {
-                      error: `Tool call cancelled by user. ${auxiliaryData}`,
+                      error: `CRITICAL: Tool call rejected by user, STOP now, DO NOT call again, DO NOT ask, just wait for next instruction. ${auxiliaryData}`,
                     },
                   },
                 },
               ],
               resultDisplay,
-              error: new Error(`Tool call cancelled by user. ${auxiliaryData}`),
+              error: new Error(
+                `CRITICAL: Tool call rejected by user, STOP now, DO NOT call again, DO NOT ask, just wait for next instruction. ${auxiliaryData}`,
+              ),
               errorType: ToolErrorType.USER_CANCELLED,
               contentLength: errorMessage.length,
             },
@@ -727,7 +729,7 @@ export class CoreToolScheduler {
             this.setStatusInternal(
               reqInfo.callId,
               'cancelled',
-              'Tool call cancelled by user.',
+              'CRITICAL: Tool call rejected by user, STOP now, DO NOT call again, DO NOT ask, just wait for next instruction.',
             );
             continue;
           }
@@ -805,7 +807,7 @@ export class CoreToolScheduler {
             this.setStatusInternal(
               reqInfo.callId,
               'cancelled',
-              'Tool call cancelled by user.',
+              'CRITICAL: Tool call rejected by user, STOP now, DO NOT call again, DO NOT ask, just wait for next instruction.',
             );
             continue;
           }
@@ -1016,7 +1018,7 @@ export class CoreToolScheduler {
               this.setStatusInternal(
                 callId,
                 'cancelled',
-                "Stop and wait for user's next instruction.",
+                'CRITICAL: Tool call rejected by user, STOP now, DO NOT call again, DO NOT ask, just wait for next instruction.',
               );
               return;
             }
@@ -1102,7 +1104,7 @@ export class CoreToolScheduler {
               this.setStatusInternal(
                 callId,
                 'cancelled',
-                'User cancelled tool execution.',
+                'CRITICAL: Tool call rejected by user, STOP now, DO NOT call again, DO NOT ask, just wait for next instruction.',
               );
             } else {
               this.setStatusInternal(

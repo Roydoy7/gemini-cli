@@ -24,7 +24,7 @@ import { FileTool } from './file-tool.js';
 import { WebTool } from './web-tool.js';
 import { TodoTool } from './todo-tool.js';
 import { PythonEmbeddedTool } from './python-embedded-tool.js';
-import { XlwingsTool } from './xlwings-tool.js';
+// import { XlwingsTool } from './xlwings-tool.js';
 import { MarkItDownTool } from './markitdown-tool.js';
 import { GeminiSearchTool } from './gemini-search-tool.js';
 import { JPXInvestorTool } from './jpx-investor-tool.js';
@@ -32,7 +32,7 @@ import { EconomicCalendarTool } from './economic-calendar-tool.js';
 import { FinancialAnalyzer } from './financial-analyzer-tool.js';
 import { EconomicNewsTool } from './economic-news-tool.js';
 import { KnowledgeBaseTool } from './knowledge-base-tool.js';
-import { XlwingsDocTool } from './xlwings-doc-tool.js';
+// import { XlwingsDocTool } from './xlwings-doc-tool.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolClass = any;
@@ -50,9 +50,9 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     ReadManyFilesTool,
     MemoryTool,
     PythonEmbeddedTool,
-    XlwingsTool,
     MarkItDownTool,
     KnowledgeBaseTool,
+    GeminiSearchTool,
   ],
   office_assistant: [
     LSTool,
@@ -61,8 +61,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     FileTool,
     ShellTool,
     WebTool,
-    // XlwingsTool,
-    XlwingsDocTool,
+    // XlwingsDocTool,
     MarkItDownTool,
     KnowledgeBaseTool,
     PDFTool,
@@ -94,7 +93,6 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     RipGrepTool,
     GeminiSearchTool,
     // WebSearchTool,
-    XlwingsTool,
     MarkItDownTool,
   ],
   financial_analyst: [
