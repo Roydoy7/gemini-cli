@@ -638,29 +638,15 @@ export class GeminiChatManager {
           const args =
             (part.functionCall.args as Record<string, unknown>) || {};
 
-          // CRITICAL: Restore callId from args if available
-          // We store callId in args.__callId to preserve it across conversions
-          let functionCallId: string;
-          if ('__callId' in args && typeof args['__callId'] === 'string') {
-            functionCallId = args['__callId'];
-            // Remove __callId from arguments before storing
-            const { __callId, ...cleanArgs } = args;
-            toolCalls.push({
-              id: functionCallId,
-              name: part.functionCall.name,
-              arguments: cleanArgs,
-            });
-          } else {
-            // Fallback: Use Gemini API's ID or generate one
-            functionCallId =
-              part.functionCall.id ??
-              `${part.functionCall.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-            toolCalls.push({
-              id: functionCallId,
-              name: part.functionCall.name,
-              arguments: args,
-            });
-          }
+          // Use Gemini API's native ID or generate one
+          const functionCallId =
+            part.functionCall.id ??
+            `${part.functionCall.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          toolCalls.push({
+            id: functionCallId,
+            name: part.functionCall.name,
+            arguments: args,
+          });
         }
 
         // Extract function responses (tool responses)
@@ -753,12 +739,9 @@ export class GeminiChatManager {
           parts.push({
             functionCall: {
               name: toolCall.name,
-              args: {
-                ...toolCall.arguments,
-                // CRITICAL: Store callId in args to preserve it across conversions
-                // We use a special key that won't conflict with actual tool arguments
-                __callId: toolCall.id,
-              },
+              args: toolCall.arguments,
+              // Use the tool call ID directly
+              id: toolCall.id,
             },
           });
         }
