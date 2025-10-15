@@ -105,45 +105,64 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
 
       // Install requirements if specified
       if (this.params.requirements?.length) {
-        if (updateOutput) {
-          updateOutput(
-            `Installing Python packages: ${this.params.requirements.join(', ')}...\n`,
-          );
+        const workingDir =
+          this.params.workingDirectory || this.config.getTargetDir();
+
+        // Get site-packages directory path
+        const pythonDir = path.dirname(embeddedPythonPath);
+        const sitePackagesDir = path.join(pythonDir, 'Lib', 'site-packages');
+
+        // Check which packages need to be installed by checking filesystem directly
+        const packagesToInstall: string[] = [];
+
+        for (const pkg of this.params.requirements) {
+          const isInstalled = this.checkPackageInstalled(sitePackagesDir, pkg);
+          if (!isInstalled) {
+            packagesToInstall.push(pkg);
+          }
         }
 
-        try {
-          const installCommand = `"${embeddedPythonPath}" -m pip install ${this.params.requirements.join(' ')} --quiet`;
-          const workingDir =
-            this.params.workingDirectory || this.config.getTargetDir();
-
-          const { result: installPromise } =
-            await ShellExecutionService.execute(
-              installCommand,
-              workingDir,
-              () => {}, // No output callback for install
-              signal,
-              false, // Don't use NodePty for install
-              shellExecutionConfig || {},
+        // Only install packages that are not already installed
+        if (packagesToInstall.length > 0) {
+          if (updateOutput) {
+            updateOutput(
+              `Installing Python packages: ${packagesToInstall.join(', ')}...\n`,
             );
+          }
 
-          const installResult = await installPromise;
+          try {
+            const installCommand = `"${embeddedPythonPath}" -m pip install ${packagesToInstall.join(' ')} --quiet`;
 
-          if (installResult.exitCode !== 0) {
+            const { result: installPromise } =
+              await ShellExecutionService.execute(
+                installCommand,
+                workingDir,
+                () => {}, // No output callback for install
+                signal,
+                false, // Don't use NodePty for install
+                shellExecutionConfig || {},
+              );
+
+            const installResult = await installPromise;
+
+            if (installResult.exitCode !== 0) {
+              return {
+                llmContent: `Failed to install Python requirements: ${installResult.output}`,
+                returnDisplay: `❌ Failed to install Python requirements`,
+              };
+            }
+
+            if (updateOutput) {
+              updateOutput(`✅ Packages installed successfully\n\n`);
+            }
+          } catch (installError) {
             return {
-              llmContent: `Failed to install Python requirements: ${installResult.output}`,
+              llmContent: `Failed to install Python requirements: ${getErrorMessage(installError)}`,
               returnDisplay: `❌ Failed to install Python requirements`,
             };
           }
-
-          if (updateOutput) {
-            updateOutput(`✅ Packages installed successfully\n\n`);
-          }
-        } catch (installError) {
-          return {
-            llmContent: `Failed to install Python requirements: ${getErrorMessage(installError)}`,
-            returnDisplay: `❌ Failed to install Python requirements`,
-          };
         }
+        // If all packages already installed, skip silently (no output to save time)
       }
 
       // Create temporary Python script file
@@ -462,6 +481,42 @@ The script took too long to complete. Consider:
     }
   }
 
+  /**
+   * Check if a Python package is installed by examining the site-packages directory
+   * This is much faster than running pip show because it doesn't spawn a process
+   */
+  private checkPackageInstalled(
+    sitePackagesDir: string,
+    packageName: string,
+  ): boolean {
+    try {
+      // Normalize package name (pip uses lowercase with hyphens replaced by underscores for folders)
+      const normalizedName = packageName.toLowerCase().replace(/-/g, '_');
+
+      // Check for package directory (e.g., "requests", "openpyxl")
+      const packageDir = path.join(sitePackagesDir, normalizedName);
+      if (fs.existsSync(packageDir)) {
+        return true;
+      }
+
+      // Check for .dist-info directory (e.g., "requests-2.31.0.dist-info")
+      const items = fs.readdirSync(sitePackagesDir);
+      for (const item of items) {
+        if (
+          item.toLowerCase().startsWith(normalizedName) &&
+          item.endsWith('.dist-info')
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (_error) {
+      // If we can't check, assume not installed to trigger installation attempt
+      return false;
+    }
+  }
+
   private getEmbeddedPythonPath(): string {
     // Use import.meta.url to get the current file location
     const currentFileUrl = import.meta.url;
@@ -552,6 +607,51 @@ This tool uses an embedded Python 3.13.7 environment to ensure stable and consis
 - NEVER assume you can write correct python code in one attempt, always use print statement to output helpful information, if errors occur, use these message to iteratively fix your code. If you can not resolve the errors, use ${GeminiSearchTool.Name} to search for solutions or examples, if you are still stuck, inform the user about the technical limitations
 - If your python code sucessfully runs and finishes the task as expected, consider use ${KnowledgeBaseTool.Name} to save the code snippet for future reference
 - When required to copy data between workbooks, always copy values only, avoid copying formulas or formats to prevent broken references unless explicitly requested
+
+## CRITICAL: Verification After Excel Modifications
+**MANDATORY: Always verify modifications by re-reading the affected data**
+
+When modifying Excel files (cells, formulas, formats):
+1. **Perform the modification** (write, update, delete)
+2. **Re-open or re-read the file** to verify changes
+3. **Print verification results** to confirm success
+4. **Report verified status** to user (e.g., "✓ A1 = 100 (verified)")
+
+Example for openpyxl:
+\`\`\`python
+# Step 1: Modify
+wb = openpyxl.load_workbook('data.xlsx')
+ws = wb['Sheet1']
+ws['A1'] = 100
+wb.save('data.xlsx')
+
+# Step 2: Verify - CRITICAL
+wb_verify = openpyxl.load_workbook('data.xlsx')
+actual = wb_verify['Sheet1']['A1'].value
+print(f"✓ Verified: A1 = {actual}")
+wb_verify.close()
+
+# Step 3: Validate
+assert actual == 100, f"Verification failed! Expected 100, got {actual}"
+\`\`\`
+
+Example for xlwings:
+\`\`\`python
+# Step 1: Modify
+book = xw.Book('data.xlsx')
+book.sheets['Sheet1'].range('A1').value = 100
+book.save()
+
+# Step 2: Verify - CRITICAL
+actual = book.sheets['Sheet1'].range('A1').value
+print(f"✓ Verified: A1 = {actual}")
+
+# Step 3: Validate
+assert actual == 100, f"Verification failed! Expected 100, got {actual}"
+book.close()
+\`\`\`
+
+**Skip verification only if**: user explicitly says "don't verify" OR operation is purely cosmetic (colors, fonts) and low-risk
 
 ## CRITICAL: Iterative Debugging Strategy
 When Python code produces errors, follow this systematic approach:
