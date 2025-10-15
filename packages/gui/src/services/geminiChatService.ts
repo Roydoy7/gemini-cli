@@ -13,11 +13,13 @@ import type {
   CompressionInfo,
   ToolCall,
   ChatMessage,
+  ToolResponseData,
 } from '@/types';
 import type {
   ToolCallConfirmationDetails,
   ToolConfirmationOutcome,
 } from '@/types';
+import { useChatStore } from '@/stores/chatStore';
 
 // Define Electron API interface
 interface ElectronAPI {
@@ -39,10 +41,14 @@ interface ElectronAPI {
           content?: string;
           role?: string;
           timestamp: number;
+          sessionId?: string;
           compressionInfo?: CompressionInfo;
           toolCall?: ToolCall;
           toolCallId?: string;
           toolName?: string;
+          toolSuccess?: boolean;
+          toolResponseData?: ToolResponseData;
+          thoughtSummary?: { subject: string; description: string };
         }) => void,
         onComplete: (data: {
           type: string;
@@ -112,13 +118,15 @@ interface ElectronAPI {
         event: unknown,
         data: {
           streamId: string;
+          sessionId?: string; // CRITICAL: Session ID for routing
           confirmationDetails: ToolCallConfirmationDetails;
         },
       ) => void,
     ) => () => void;
     sendToolConfirmationResponse: (
       outcome: string,
-    ) => Promise<{ success: boolean }>;
+      sessionId?: string, // CRITICAL: Include sessionId in response
+    ) => void;
     // OAuth authentication
     startOAuthFlow: (
       providerType: string,
@@ -170,9 +178,10 @@ class GeminiChatService {
   private modelsCacheTimestamp: number = 0;
   private readonly MODELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  // Tool confirmation callback
+  // Tool confirmation callback - includes sessionId to route to correct session
   private confirmationCallback?: (
     details: ToolCallConfirmationDetails,
+    sessionId?: string,
   ) => Promise<ToolConfirmationOutcome>;
 
   private get api() {
@@ -202,6 +211,7 @@ class GeminiChatService {
   setConfirmationCallback(
     callback: (
       details: ToolCallConfirmationDetails,
+      sessionId?: string,
     ) => Promise<ToolConfirmationOutcome>,
   ): void {
     this.confirmationCallback = callback;
@@ -211,27 +221,36 @@ class GeminiChatService {
   private setupConfirmationListener(): void {
     if (this.api.onToolConfirmationRequest) {
       this.api.onToolConfirmationRequest(async (_, data) => {
-        console.log(' from main process:', data);
+        console.log('Tool confirmation request from main process:', data);
+
+        // Extract sessionId from request data
+        const sessionId = data.sessionId;
 
         if (this.confirmationCallback) {
           try {
             // Call the registered callback to handle confirmation in GUI
-            // data.confirmationDetails is the actual ToolCallConfirmationDetails
+            // Pass sessionId so callback can route to correct session
             const outcome = await this.confirmationCallback(
               data.confirmationDetails,
+              sessionId,
             );
-            console.log('Sending confirmation response:', outcome);
+            console.log(
+              'Sending confirmation response:',
+              outcome,
+              'sessionId:',
+              sessionId,
+            );
 
-            // Send the response back to main process
-            this.api.sendToolConfirmationResponse(outcome);
+            // Send the response back to main process WITH sessionId
+            this.api.sendToolConfirmationResponse(outcome, sessionId);
           } catch (error) {
             console.error('Error handling tool confirmation:', error);
-            // Send cancel as fallback
-            this.api.sendToolConfirmationResponse('cancel');
+            // Send cancel as fallback WITH sessionId
+            this.api.sendToolConfirmationResponse('cancel', sessionId);
           }
         } else {
           console.warn('No confirmation callback registered, auto-cancelling');
-          this.api.sendToolConfirmationResponse('cancel');
+          this.api.sendToolConfirmationResponse('cancel', sessionId);
         }
       });
     }
@@ -300,6 +319,9 @@ class GeminiChatService {
 
     const streamResponse = this.api.sendMessageStream(messages);
 
+    // Get current session ID BEFORE starting stream for event filtering
+    const currentSessionId = await this.getCurrentSessionId();
+
     // Create our own async generator using real-time callbacks
     let cleanup: (() => void) | null = null;
 
@@ -318,12 +340,63 @@ class GeminiChatService {
           content?: string;
           role?: string;
           timestamp: number;
+          sessionId?: string; // CRITICAL: Session ID from backend
           compressionInfo?: CompressionInfo;
           toolCall?: ToolCall;
           toolCallId?: string;
           toolName?: string;
+          toolSuccess?: boolean;
+          toolResponseData?: ToolResponseData;
           thoughtSummary?: { subject: string; description: string };
         }) => {
+          // CRITICAL: Check if this event belongs to current session or another session
+          const isCurrentSession =
+            !chunk.sessionId ||
+            !currentSessionId ||
+            chunk.sessionId === currentSessionId;
+
+          // If event is from another session, update that session's saved state
+          if (!isCurrentSession && chunk.sessionId) {
+            // Update background session state directly
+            const chatState = useChatStore.getState();
+            const sessionStates = chatState.sessionStates;
+            const backgroundSessionState = sessionStates.get(
+              chunk.sessionId,
+            ) || {
+              currentOperation: null,
+              error: null,
+              streamingMessage: '',
+              compressionNotification: null,
+              toolConfirmation: null,
+            };
+
+            // Update background session state based on event type
+            if (chunk.type === 'thought') {
+              backgroundSessionState.currentOperation = {
+                type: 'thinking',
+                message: 'AI is thinking...',
+              };
+            } else if (chunk.type === 'content_delta') {
+              backgroundSessionState.streamingMessage += chunk.content || '';
+            } else if (chunk.type === 'compression') {
+              backgroundSessionState.compressionNotification =
+                chunk.compressionInfo || null;
+            } else if (chunk.type === 'tool_call_request') {
+              backgroundSessionState.currentOperation = {
+                type: 'tool_executing',
+                message: 'Executing tool...',
+                toolName: chunk.toolCall?.name,
+              };
+            }
+
+            // Save updated state back to map
+            const newSessionStates = new Map(sessionStates);
+            newSessionStates.set(chunk.sessionId, backgroundSessionState);
+            chatState.sessionStates = newSessionStates;
+
+            // Don't add to events queue (don't show in current session UI)
+            return;
+          }
           if (chunk.type === 'content_delta' && chunk.content) {
             events.push({
               type: 'content_delta',
@@ -374,13 +447,30 @@ class GeminiChatService {
             }
           } else if (chunk.type === 'tool_call_response') {
             // Handle tool call response events
+            console.log(
+              '[GeminiChatService] Received tool_call_response event',
+            );
+            console.log('[GeminiChatService] toolCallId:', chunk.toolCallId);
+            console.log('[GeminiChatService] toolName:', chunk.toolName);
+            console.log('[GeminiChatService] toolSuccess:', chunk.toolSuccess);
+            console.log('[GeminiChatService] sessionId:', chunk.sessionId);
+            console.log('[GeminiChatService] content:', chunk.content);
+
             events.push({
               type: 'tool_call_response',
               content: chunk.content,
               toolCallId: chunk.toolCallId,
               toolName: chunk.toolName,
+              toolSuccess: chunk.toolSuccess, // CRITICAL: Include toolSuccess field from backend
+              toolResponseData: chunk.toolResponseData,
+              sessionId: chunk.sessionId, // CRITICAL: Include sessionId for routing to correct session
               timestamp: chunk.timestamp,
             });
+            console.log(
+              '[GeminiChatService] Added tool_call_response to events queue, total events:',
+              events.length,
+            );
+
             // Wake up the generator for tool response event
             if (resolveNext) {
               resolveNext();
@@ -389,7 +479,46 @@ class GeminiChatService {
           }
         },
         // onComplete callback
-        (data) => {
+        (data: {
+          type: string;
+          content: string;
+          role: string;
+          timestamp: number;
+          sessionId?: string;
+        }) => {
+          // Check if completion is for current session or another session
+          const isCurrentSession =
+            !data.sessionId ||
+            !currentSessionId ||
+            data.sessionId === currentSessionId;
+
+          // If completion is from another session, clear its operation state
+          if (!isCurrentSession && data.sessionId) {
+            const chatState = useChatStore.getState();
+            const sessionStates = chatState.sessionStates;
+            const backgroundSessionState = sessionStates.get(
+              data.sessionId,
+            ) || {
+              currentOperation: null,
+              error: null,
+              streamingMessage: '',
+              compressionNotification: null,
+              toolConfirmation: null,
+            };
+
+            // Clear operation state when stream completes
+            backgroundSessionState.currentOperation = null;
+            backgroundSessionState.streamingMessage = '';
+
+            const newSessionStates = new Map(sessionStates);
+            newSessionStates.set(data.sessionId, backgroundSessionState);
+            chatState.sessionStates = newSessionStates;
+
+            console.log(
+              `[GeminiChatService] Updated completion state for background session ${data.sessionId}`,
+            );
+            return;
+          }
           events.push({
             type: 'message_complete',
             content: data.content,
@@ -404,7 +533,40 @@ class GeminiChatService {
           }
         },
         // onError callback
-        (error) => {
+        (error: { type: string; error: string; sessionId?: string }) => {
+          // Check if error is for current session or another session
+          const isCurrentSession =
+            !error.sessionId ||
+            !currentSessionId ||
+            error.sessionId === currentSessionId;
+
+          // If error is from another session, update its error state
+          if (!isCurrentSession && error.sessionId) {
+            const chatState = useChatStore.getState();
+            const sessionStates = chatState.sessionStates;
+            const backgroundSessionState = sessionStates.get(
+              error.sessionId,
+            ) || {
+              currentOperation: null,
+              error: null,
+              streamingMessage: '',
+              compressionNotification: null,
+              toolConfirmation: null,
+            };
+
+            // Set error state and clear operation
+            backgroundSessionState.error = error.error;
+            backgroundSessionState.currentOperation = null;
+
+            const newSessionStates = new Map(sessionStates);
+            newSessionStates.set(error.sessionId, backgroundSessionState);
+            chatState.sessionStates = newSessionStates;
+
+            console.log(
+              `[GeminiChatService] Updated error state for background session ${error.sessionId}`,
+            );
+            return;
+          }
           events.push({
             type: 'error',
             error: error.error,

@@ -83,6 +83,7 @@ export interface UniversalStreamEvent {
   error?: Error | string;
   role?: 'assistant' | 'user' | 'system';
   timestamp?: number;
+  sessionId?: string; // Session ID for routing events to correct session
 }
 
 export interface ChartConfig {
@@ -302,6 +303,8 @@ export interface ToolExecuteConfirmationDetails {
   onConfirm: (outcome: ToolConfirmationOutcome) => Promise<void>;
   command: string;
   rootCommand: string;
+  showPythonCode?: boolean; // Whether to show Python code in confirmation dialog (default: false)
+  pythonCode?: string; // The actual Python code to display (optional, avoids parsing command string)
 }
 
 export interface ToolMcpConfirmationDetails {

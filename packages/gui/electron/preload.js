@@ -45,7 +45,6 @@ const electronAPI = {
         // Real-time streaming with callback
         startStream: (onChunk, onComplete, onError) => {
           let cleanedUp = false;
-          let timeoutId = null;
 
           // Store handler references for precise removal
           const chunkHandler = (event, data) => {
@@ -73,12 +72,6 @@ const electronAPI = {
             if (cleanedUp) return; // Prevent multiple cleanup calls
             cleanedUp = true;
 
-            // Clear timeout
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-              timeoutId = null;
-            }
-
             // Remove specific event listeners
             ipcRenderer.removeListener('geminiChat-stream-chunk', chunkHandler);
             ipcRenderer.removeListener(
@@ -87,7 +80,7 @@ const electronAPI = {
             );
             ipcRenderer.removeListener('geminiChat-stream-error', errorHandler);
 
-            // Only cancel on backend if explicitly requested (e.g., user cancellation or timeout)
+            // Only cancel on backend if explicitly requested (e.g., user cancellation)
             if (shouldCancelBackend) {
               ipcRenderer
                 .invoke('geminiChat-cancel-stream', streamId)
@@ -102,15 +95,11 @@ const electronAPI = {
           ipcRenderer.on('geminiChat-stream-complete', completeHandler);
           ipcRenderer.on('geminiChat-stream-error', errorHandler);
 
-          // Set up timeout
-          timeoutId = setTimeout(
-            () => {
-              console.error('Stream timeout after 15 minutes');
-              cleanup(true); // true = cancel on backend
-              onError({ type: 'error', error: 'Stream timeout' });
-            },
-            15 * 60 * 1000,
-          ); // 15 minute timeout
+          // NOTE: Frontend timeout removed - rely on backend timeout mechanisms
+          // Backend has multiple layers of timeout protection:
+          // 1. Python tool timeout (configurable, default 300s)
+          // 2. Individual tool execution timeouts
+          // If stream is truly stuck, user can manually cancel with Stop button
 
           // NOW start the streaming request after event handlers are set
           ipcRenderer
@@ -206,8 +195,8 @@ const electronAPI = {
       return () =>
         ipcRenderer.removeListener('tool-confirmation-request', callback);
     },
-    sendToolConfirmationResponse: (outcome) =>
-      ipcRenderer.send('tool-confirmation-response', outcome),
+    sendToolConfirmationResponse: (outcome, sessionId) =>
+      ipcRenderer.send('tool-confirmation-response', { outcome, sessionId }),
   },
 };
 
