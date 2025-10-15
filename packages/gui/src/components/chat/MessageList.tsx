@@ -479,7 +479,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     },
     ref,
   ) => {
-    const { currentOperation, inputMultilineMode } = useChatStore();
+    const { currentOperation, inputMultilineMode, retryState } = useChatStore();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [showScrollButton, setShowScrollButton] = useState(false);
@@ -764,6 +764,30 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                 operation={currentOperation}
                 isThinking={isThinking}
               />
+            </div>
+          )}
+
+          {/* Show retry notification when retrying */}
+          {retryState?.isRetrying && (
+            <div className="mt-4">
+              <div className="flex justify-center">
+                <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300 dark:border-yellow-700/30 rounded-lg px-4 py-3 max-w-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-5 h-5 border-2 border-yellow-600 dark:border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                        API request busy, retrying ({retryState.attempt}/
+                        {retryState.maxAttempts})...
+                      </div>
+                      <div className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5">
+                        Please wait while we retry the request
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

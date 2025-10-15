@@ -27,6 +27,12 @@ export interface RetryOptions {
     authType?: string,
     error?: unknown,
   ) => Promise<string | boolean | null>;
+  onRetryAttempt?: (
+    attempt: number,
+    maxAttempts: number,
+    error: unknown,
+    delayMs: number,
+  ) => void;
   authType?: string;
 }
 
@@ -93,6 +99,7 @@ export async function retryWithBackoff<T>(
     initialDelayMs,
     maxDelayMs,
     onPersistent429,
+    onRetryAttempt,
     authType,
     shouldRetryOnError,
     shouldRetryOnContent,
@@ -165,6 +172,12 @@ export async function retryWithBackoff<T>(
       // Exponential backoff with jitter for non-quota errors
       const jitter = currentDelay * 0.3 * (Math.random() * 2 - 1);
       const delayWithJitter = Math.max(0, currentDelay + jitter);
+
+      // Notify external listeners about retry attempt
+      if (onRetryAttempt) {
+        onRetryAttempt(attempt, maxAttempts, error, delayWithJitter);
+      }
+
       await delay(delayWithJitter);
       currentDelay = Math.min(maxDelayMs, currentDelay * 2);
     }

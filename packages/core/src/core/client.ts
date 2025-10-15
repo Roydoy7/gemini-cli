@@ -805,6 +805,7 @@ ${this.getSystemReminder()}
         onPersistent429: async (authType?: string, error?: unknown) =>
           await handleFallback(this.config, modelToUse, authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
+        onRetryAttempt: this.config.onRetryAttemptHandler,
       });
 
       let text = getResponseText(result as GenerateContentResponse);
@@ -930,6 +931,7 @@ ${this.getSystemReminder()}
       const result = await retryWithBackoff(apiCall, {
         onPersistent429: onPersistent429Callback,
         authType: this.config.getContentGeneratorConfig()?.authType,
+        onRetryAttempt: this.config.onRetryAttemptHandler,
       });
       return result;
     } catch (error: unknown) {

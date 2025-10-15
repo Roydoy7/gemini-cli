@@ -333,6 +333,12 @@ export class Config {
     extensionName: string;
   }>;
   fallbackModelHandler?: FallbackModelHandler;
+  onRetryAttemptHandler?: (
+    attempt: number,
+    maxAttempts: number,
+    error: unknown,
+    delayMs: number,
+  ) => void;
   private quotaErrorOccurred: boolean = false;
   private readonly summarizeToolOutput:
     | Record<string, SummarizeToolOutputSettings>
@@ -599,6 +605,17 @@ export class Config {
 
   setFallbackModelHandler(handler: FallbackModelHandler): void {
     this.fallbackModelHandler = handler;
+  }
+
+  setOnRetryAttemptHandler(
+    handler: (
+      attempt: number,
+      maxAttempts: number,
+      error: unknown,
+      delayMs: number,
+    ) => void,
+  ): void {
+    this.onRetryAttemptHandler = handler;
   }
 
   getMaxSessionTurns(): number {

@@ -197,6 +197,13 @@ const electronAPI = {
     },
     sendToolConfirmationResponse: (outcome, sessionId) =>
       ipcRenderer.send('tool-confirmation-response', { outcome, sessionId }),
+    // Retry attempt notifications
+    onRetryAttempt: (callback) => {
+      ipcRenderer.on('geminiChat-retry-attempt', callback);
+      // Return cleanup function
+      return () =>
+        ipcRenderer.removeListener('geminiChat-retry-attempt', callback);
+    },
   },
 };
 

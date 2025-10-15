@@ -18,20 +18,30 @@ export type OperationStatus = {
     | 'tool_executing'
     | 'streaming'
     | 'compressing'
-    | 'tool_awaiting_approval';
+    | 'tool_awaiting_approval'
+    | 'retrying';
   message: string;
   details?: string;
   toolName?: string;
   progress?: number;
 };
 
+// Retry state for 429 errors
+export interface RetryState {
+  isRetrying: boolean;
+  attempt: number;
+  maxAttempts: number;
+  errorMessage: string;
+}
+
 // Per-session state that needs to be preserved when switching sessions
-interface SessionState {
+export interface SessionState {
   currentOperation: OperationStatus | null;
   error: string | null;
   streamingMessage: string;
   compressionNotification: CompressionInfo | null;
   toolConfirmation: ToolCallConfirmationDetails | null;
+  retryState: RetryState;
 }
 
 interface ChatState {
@@ -43,6 +53,7 @@ interface ChatState {
   toolConfirmation: ToolCallConfirmationDetails | null; // Tool confirmation request
   approvalMode: 'default' | 'autoEdit' | 'yolo'; // Current tool approval mode
   inputMultilineMode: boolean; // Track if input is in multiline mode
+  retryState: RetryState; // Retry state for 429 errors
 
   // Per-session state storage - key: sessionId, value: SessionState
   sessionStates: Map<string, SessionState>;
@@ -63,6 +74,7 @@ interface ChatState {
   ) => void;
   setApprovalMode: (mode: 'default' | 'autoEdit' | 'yolo') => void;
   setInputMultilineMode: (isMultiline: boolean) => void;
+  setRetryState: (state: Partial<RetryState>) => void;
   addMessage: (sessionId: string, message: ChatMessage) => void;
   updateMessage: (
     sessionId: string,
@@ -89,6 +101,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   toolConfirmation: null,
   approvalMode: 'default',
   inputMultilineMode: false,
+  retryState: {
+    isRetrying: false,
+    attempt: 0,
+    maxAttempts: 10,
+    errorMessage: '',
+  },
   sessionStates: new Map<string, SessionState>(),
   currentSessionId: null,
 
@@ -127,6 +145,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   setInputMultilineMode: (isMultiline: boolean) =>
     set({ inputMultilineMode: isMultiline }),
 
+  setRetryState: (state: Partial<RetryState>) =>
+    set((prev) => ({
+      retryState: { ...prev.retryState, ...state },
+    })),
+
   addMessage: (_sessionId: string, _message: ChatMessage) => {
     // This will be handled by appStore for persistence
     // But we can use this for optimistic updates
@@ -151,6 +174,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streamingMessage: state.streamingMessage,
       compressionNotification: state.compressionNotification,
       toolConfirmation: state.toolConfirmation,
+      retryState: state.retryState,
     };
 
     const newSessionStates = new Map(state.sessionStates);
@@ -196,6 +220,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           streamingMessage: sessionState.streamingMessage,
           compressionNotification: sessionState.compressionNotification,
           toolConfirmation: sessionState.toolConfirmation,
+          retryState: sessionState.retryState,
         });
       } else {
         // Clean slate for new session
@@ -206,6 +231,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           streamingMessage: '',
           compressionNotification: null,
           toolConfirmation: null,
+          retryState: {
+            isRetrying: false,
+            attempt: 0,
+            maxAttempts: 10,
+            errorMessage: '',
+          },
         });
       }
     } catch (error) {
@@ -220,6 +251,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           streamingMessage: '',
           compressionNotification: null,
           toolConfirmation: null,
+          retryState: {
+            isRetrying: false,
+            attempt: 0,
+            maxAttempts: 10,
+            errorMessage: '',
+          },
         }),
       });
     }
@@ -261,6 +298,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         streamingMessage: '',
         compressionNotification: null,
         toolConfirmation: null,
+        retryState: {
+          isRetrying: false,
+          attempt: 0,
+          maxAttempts: 10,
+          errorMessage: '',
+        },
       };
 
       sessionState.toolConfirmation = confirmation;

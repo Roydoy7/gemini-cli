@@ -194,6 +194,22 @@ const ensureInitialized = async (
 
       await config.initialize();
 
+      // Set up retry callback to notify renderer about retry attempts
+      config.setOnRetryAttemptHandler(
+        (attempt, maxAttempts, error, delayMs) => {
+          // Send retry notification to all renderer processes
+          BrowserWindow.getAllWindows().forEach((window) => {
+            window.webContents.send('geminiChat-retry-attempt', {
+              attempt,
+              maxAttempts,
+              error: error?.message || String(error),
+              delayMs,
+              timestamp: Date.now(),
+            });
+          });
+        },
+      );
+
       // Initialize SessionManager FIRST (before GeminiChatManager)
       // This ensures sessions are loaded when GeminiChatManager.initialize() tries to access them
       await SessionManager.getInstance().initializeWithConfig({

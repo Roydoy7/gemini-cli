@@ -20,6 +20,7 @@ import type {
   ToolConfirmationOutcome,
 } from '@/types';
 import { useChatStore } from '@/stores/chatStore';
+import type { SessionState } from '@/stores/chatStore';
 
 // Define Electron API interface
 interface ElectronAPI {
@@ -127,6 +128,19 @@ interface ElectronAPI {
       outcome: string,
       sessionId?: string, // CRITICAL: Include sessionId in response
     ) => void;
+    // Retry attempt notifications
+    onRetryAttempt: (
+      callback: (
+        event: unknown,
+        data: {
+          attempt: number;
+          maxAttempts: number;
+          error: string;
+          delayMs: number;
+          timestamp: number;
+        },
+      ) => void,
+    ) => () => void;
     // OAuth authentication
     startOAuthFlow: (
       providerType: string,
@@ -184,6 +198,23 @@ class GeminiChatService {
     sessionId?: string,
   ) => Promise<ToolConfirmationOutcome>;
 
+  // Helper function to create default session state
+  private static createDefaultSessionState(): SessionState {
+    return {
+      currentOperation: null,
+      error: null,
+      streamingMessage: '',
+      compressionNotification: null,
+      toolConfirmation: null,
+      retryState: {
+        isRetrying: false,
+        attempt: 0,
+        maxAttempts: 0,
+        errorMessage: '',
+      },
+    };
+  }
+
   private get api() {
     const electronAPI = (globalThis as GlobalThis).electronAPI;
     if (!electronAPI?.geminiChat) {
@@ -201,6 +232,9 @@ class GeminiChatService {
 
     // Set up tool confirmation listener
     this.setupConfirmationListener();
+
+    // Set up retry attempt listener
+    this.setupRetryListener();
   }
 
   isInitialized(): boolean {
@@ -252,6 +286,41 @@ class GeminiChatService {
           console.warn('No confirmation callback registered, auto-cancelling');
           this.api.sendToolConfirmationResponse('cancel', sessionId);
         }
+      });
+    }
+  }
+
+  // Set up the retry attempt listener from main process
+  private setupRetryListener(): void {
+    if (this.api.onRetryAttempt) {
+      this.api.onRetryAttempt((_, data) => {
+        console.log('Retry attempt notification from main process:', data);
+
+        // Update chatStore with retry state
+        const chatState = useChatStore.getState();
+        chatState.setRetryState({
+          isRetrying: true,
+          attempt: data.attempt,
+          maxAttempts: data.maxAttempts,
+          errorMessage: data.error,
+        });
+
+        // Auto-clear retry state after the delay plus a buffer
+        setTimeout(() => {
+          const currentState = useChatStore.getState();
+          // Only clear if we're still on the same attempt (hasn't been updated)
+          if (
+            currentState.retryState?.attempt === data.attempt &&
+            currentState.retryState?.maxAttempts === data.maxAttempts
+          ) {
+            currentState.setRetryState({
+              isRetrying: false,
+              attempt: 0,
+              maxAttempts: 0,
+              errorMessage: '',
+            });
+          }
+        }, data.delayMs + 1000); // Add 1s buffer
       });
     }
   }
@@ -360,15 +429,9 @@ class GeminiChatService {
             // Update background session state directly
             const chatState = useChatStore.getState();
             const sessionStates = chatState.sessionStates;
-            const backgroundSessionState = sessionStates.get(
-              chunk.sessionId,
-            ) || {
-              currentOperation: null,
-              error: null,
-              streamingMessage: '',
-              compressionNotification: null,
-              toolConfirmation: null,
-            };
+            const backgroundSessionState =
+              sessionStates.get(chunk.sessionId) ??
+              GeminiChatService.createDefaultSessionState();
 
             // Update background session state based on event type
             if (chunk.type === 'thought') {
@@ -496,15 +559,9 @@ class GeminiChatService {
           if (!isCurrentSession && data.sessionId) {
             const chatState = useChatStore.getState();
             const sessionStates = chatState.sessionStates;
-            const backgroundSessionState = sessionStates.get(
-              data.sessionId,
-            ) || {
-              currentOperation: null,
-              error: null,
-              streamingMessage: '',
-              compressionNotification: null,
-              toolConfirmation: null,
-            };
+            const backgroundSessionState =
+              sessionStates.get(data.sessionId) ??
+              GeminiChatService.createDefaultSessionState();
 
             // Clear operation state when stream completes
             backgroundSessionState.currentOperation = null;
@@ -544,15 +601,9 @@ class GeminiChatService {
           if (!isCurrentSession && error.sessionId) {
             const chatState = useChatStore.getState();
             const sessionStates = chatState.sessionStates;
-            const backgroundSessionState = sessionStates.get(
-              error.sessionId,
-            ) || {
-              currentOperation: null,
-              error: null,
-              streamingMessage: '',
-              compressionNotification: null,
-              toolConfirmation: null,
-            };
+            const backgroundSessionState =
+              sessionStates.get(error.sessionId) ??
+              GeminiChatService.createDefaultSessionState();
 
             // Set error state and clear operation
             backgroundSessionState.error = error.error;
