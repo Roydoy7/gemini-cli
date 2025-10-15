@@ -75,6 +75,8 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
       title: 'Confirm Python Code Execution',
       command: `python (embedded) -c "${this.params.code}"`,
       rootCommand: 'python_embedded',
+      showPythonCode: true, // Show code for direct Python execution
+      pythonCode: this.params.code, // Pass the actual code directly
       onConfirm: async (outcome: ToolConfirmationOutcome) => {
         if (outcome === ToolConfirmationOutcome.ProceedAlways) {
           this.allowlist.add('python_embedded');
@@ -282,8 +284,8 @@ sys.exit(_exit_code)`;
       const workingDir =
         this.params.workingDirectory || this.config.getTargetDir();
 
-      // Get timeout setting (default 30 seconds)
-      const timeoutMs = (this.params.timeout || 30) * 1000;
+      // Get timeout setting (default 300 seconds)
+      const timeoutMs = (this.params.timeout || 300) * 1000;
 
       // Execute Python script using ShellExecutionService with timeout
       const { result: pythonPromise } = await ShellExecutionService.execute(
@@ -307,7 +309,7 @@ sys.exit(_exit_code)`;
         setTimeout(() => {
           reject(
             new Error(
-              `Python execution timed out after ${this.params.timeout || 30} seconds`,
+              `Python execution timed out after ${this.params.timeout || 300} seconds`,
             ),
           );
         }, timeoutMs);
@@ -366,7 +368,7 @@ sys.exit(_exit_code)`;
             contextInfo = `\n\nLast executed line:\n${contextLines.join('\n')}`;
           }
 
-          const timeoutMessage = `❌ Python execution timed out after ${this.params.timeout || 30} seconds.
+          const timeoutMessage = `❌ Python execution timed out after ${this.params.timeout || 300} seconds.
 
 TIMEOUT DETAILS:
 ${lastLine > 0 ? `- Last executed line: ${lastLine}` : '- Unable to determine last executed line'}
@@ -381,7 +383,7 @@ The script took too long to complete. Consider:
 
           return {
             llmContent: timeoutMessage,
-            returnDisplay: `❌ Execution timed out after ${this.params.timeout || 30} seconds at line ${lastLine || 'unknown'}`,
+            returnDisplay: `❌ Execution timed out after ${this.params.timeout || 300} seconds at line ${lastLine || 'unknown'}`,
           };
         }
 
@@ -534,8 +536,8 @@ This tool uses an embedded Python 3.13.7 environment to ensure stable and consis
   *NOTICE*: If you're unsure how to use xlwings, or your xlwings code produces errors, refer to ${XlwingsDocTool.Name} for documentation and examples, follow the query examples provided in the tool description to find relevant information quickly
   **CRITICAL xlwings considerations**:
     - **UsedRangeAccuracy:** Be aware that 'sheet.used_range' might sometimes report the entire sheet's maximum range (e.g., 1048576 rows) even if actual data is much less. This can lead to COM errors or performance issues.
-    - **Robust Data Boundary Determination:** If 'sheet.used_range' is problematic, consider alternative methods to determine data boundaries, such as 'sheet.range('A1').expand('table')' or manually scanning for the last non-empty row/column.
-    - **Data Type Conversion for Comparison:** When filtering or comparing data, for numeric values, the value may likely be float (e.g., 42.0) even if the cell shows integer (42). Convert cell values to strings (e.g., 'str(int(float(cell.value)))') to avoid type mismatch issues.
+    - **Robust Data Boundary Determination:** Methods like 'sheet.used_range', 'expand()', 'end()' are UNRELIABLE with merged cells, empty cells, or complex formatting. When user provides explicit ranges (e.g., "columns A to Z", "rows 1 to 100"), ALWAYS use them directly. If range is unknown, manually scan for non-empty cells or ask user to specify the range.
+    - **Data Type Conversion for Comparison:** CRITICAL - Excel stores numbers as float even if displayed as text/integer. Leading zeros are lost ('027' becomes 27.0). When filtering by values like ['027', '211A', '306'], create a normalized set that includes all possible representations: original ('027'), without leading zeros ('27'), as int (27), as float (27.0). Then compare cell values against this normalized set. See detailed examples in the "Cell value comparison and filtering" section below.
 ### When to choose openpyxl:
   - As default option when unsure
   - User explicitly requests to use openpyxl
@@ -551,15 +553,279 @@ This tool uses an embedded Python 3.13.7 environment to ensure stable and consis
 - If your python code sucessfully runs and finishes the task as expected, consider use ${KnowledgeBaseTool.Name} to save the code snippet for future reference
 - When required to copy data between workbooks, always copy values only, avoid copying formulas or formats to prevent broken references unless explicitly requested
 
-## User may refer column letters like "A", "B", "C", or even "XA", "XB" in complex sheets, convert them to numerical indexes use a function like this:
+## CRITICAL: Iterative Debugging Strategy
+When Python code produces errors, follow this systematic approach:
+
+### 1. First Error - Direct Fix
+- Read the error message carefully
+- Identify the exact line and issue
+- Apply a targeted fix to that specific problem
+- Re-run immediately
+
+### 2. Second Error (Same Type) - Change Strategy
+- If the SAME type of error occurs again, your approach is fundamentally wrong
+- DO NOT try "more robust" variations of the same failed approach
+- Instead, try a COMPLETELY DIFFERENT method:
+  - If reading data failed: try a different API method or library
+  - If conversion failed: try a different data structure or algorithm
+  - If range access failed: try explicit coordinates instead of expansion
+
+### 3. Third Attempt - Seek External Help
+- If still failing after 2 genuine attempts, use ${GeminiSearchTool.Name}
+- Search for specific error messages or documentation
+- Look for working examples of similar tasks
+- If no solution found, inform user of technical limitations
+
+### Example: Handling xlwings.range() Errors
+**WRONG** (repeated failing approach):
 \`\`\`python
+# Attempt 1: sheet.range('A1').expand('right')
+# → Error: NoneType has no len() (merged cells!)
+
+# Attempt 2: sheet.range('A1').expand('right') with None filtering
+# → Still fails (same root cause: expand() doesn't handle merged cells)
+
+# Attempt 3: Read 'A1:Z1' then expand
+# → Still same error (still using unreliable expand() method)
+
+# Attempt 4-62: Various "more robust" versions of expand()...
+# → All fail because they all use the SAME unreliable approach
+\`\`\`
+
+**CORRECT** (progressive strategy change):
+\`\`\`python
+# Attempt 1: sheet.range('A1').expand('right')
+# → Error: NoneType has no len() (merged cells/empty cells cause failure)
+
+# Attempt 2: DIFFERENT STRATEGY - Use explicit range from user's specification
+# User said "columns XA to XS", so use that directly:
+headers = sheet.range('XA30:XS31').value
+# → Success! No dependency on cell content or formatting
+
+# Alternative: Use numeric indexes if string reference doesn't work
+xa_idx = col_letter_to_index('XA')  # 625
+xs_idx = col_letter_to_index('XS')  # 644
+headers = sheet.range((30, xa_idx), (31, xs_idx)).value
+# → Also succeeds!
+\`\`\`
+
+**Key Principle**:
+- Each retry should be a DIFFERENT approach, not a variation of the same idea
+- expand(), end(), used_range are UNRELIABLE - don't keep trying to "fix" them
+- When user gives explicit ranges, USE THEM DIRECTLY
+
+### Example 2: Handling Excel Data Type Mismatches
+**WRONG** (ignoring data type issue):
+\`\`\`python
+# User wants to filter rows where column XR is '027', '211A', '306', or '634'
+filter_values = ['027', '211A', '306', '634']
+
+# Attempt 1: Direct comparison
+for row in rows:
+    if row['XR'] in filter_values:  # Fails! row['XR'] is 27.0, not '027'
+        process(row)
+# → Found 0 matches (should have found 4!)
+
+# Attempt 2: Same logic, just reformatted
+matching_rows = [r for r in rows if r['XR'] in filter_values]
+# → Still 0 matches (same problem!)
+
+# Attempt 3-10: Various attempts at string conversion without understanding the issue
+\`\`\`
+
+**CORRECT** (understanding Excel's numeric storage):
+\`\`\`python
+# Understand the problem: Excel stores '027' as number 27.0 (leading zero lost!)
+filter_values = ['027', '211A', '306', '634']
+
+# Create normalized filter set with all possible representations
+normalized_filters = set()
+for val in filter_values:
+    normalized_filters.add(val)  # '027', '211A', '306', '634'
+    normalized_filters.add(val.lstrip('0') or '0')  # '27', '211A', '306', '634'
+    try:
+        normalized_filters.add(str(int(val)))  # '27', '306', '634'
+        normalized_filters.add(str(float(val)))  # '27.0', '306.0', '634.0'
+    except ValueError:
+        pass  # '211A' is not numeric, skip
+
+# Now filter with normalized comparison
+matching_rows = []
+for row in rows:
+    cell_str = str(row['XR'] or "").strip()
+    if cell_str in normalized_filters:
+        matching_rows.append(row)
+# → Found 4 matches! (27.0 matches with '027', '211A' matches exactly, etc.)
+\`\`\`
+
+**Lesson**: When Excel filtering returns 0 results unexpectedly, check data types first!
+
+## EXCEL COLUMN REFERENCE HANDLING
+When users mention column letters like "A", "B", "C", or even "XA", "XB", "XR" in complex sheets:
+
+### For xlwings:
+**PREFERRED**: Use explicit column ranges (direct string or numeric indexes):
+\`\`\`python
+# ✅ BEST: Direct column letter reference with explicit range
+sheet.range('XA30:XS31').value  # Read headers from columns XA to XS
+sheet.range('XR32').value       # Read specific cell in column XR
+
+# ✅ GOOD: Using numeric column index with col_letter_to_index
+xa_idx = col_letter_to_index('XA')  # Returns 625
+xs_idx = col_letter_to_index('XS')  # Returns 644
+sheet.range((30, xa_idx), (31, xs_idx)).value
+
+# ❌ UNRELIABLE: Methods that depend on cell content/formatting
+sheet.range('A1').expand('right')    # Fails with merged cells, empty cells
+sheet.range('A1').end('right')       # Unreliable with gaps or merged cells
+sheet.used_range                      # May return incorrect range with merged cells
+\`\`\`
+
+**CRITICAL**: When user specifies exact columns (like "XA to XS"):
+- ALWAYS use explicit range specifications
+- NEVER rely on expand(), end(), or used_range methods
+- These methods fail with: merged cells, empty cells, hidden rows/columns, or non-contiguous data
+\`\`\`
+
+### For openpyxl:
+**REQUIRED**: Convert column letters to numeric indexes (openpyxl uses 1-based column numbers):
+\`\`\`python
+from openpyxl.utils import column_index_from_string, get_column_letter
+
+# Convert letter to number
+xa_idx = column_index_from_string('XA')  # Returns 625
+# Or use custom function:
 def col_letter_to_index(col_letter):
+    """Convert Excel column letter to 1-based numeric index.
+    Examples: A=1, Z=26, AA=27, XA=625, XR=642, XS=644"""
     col_letter = col_letter.upper()
     index = 0
     for i, char in enumerate(reversed(col_letter)):
         index += (ord(char) - ord('A') + 1) * (26 ** i)
     return index
+
+# Verify the conversion (always validate for critical operations)
+assert col_letter_to_index('A') == 1
+assert col_letter_to_index('Z') == 26
+assert col_letter_to_index('AA') == 27
+assert col_letter_to_index('XR') == 642  # Example from task
 \`\`\`
+
+**CRITICAL**: When user specifies column ranges like "XA to XS":
+- These are Excel column positions (XA is column 625, XS is column 644)
+- NEVER assume "A to Z" (26 columns) when user mentions columns beyond Z
+- ALWAYS use the exact column range specified by the user
+
+## CRITICAL: xlwings Data Writing Best Practices
+
+### Finding Next Available Row (next_write_row)
+**❌ WRONG - Can exceed Excel row limit**:
+\`\`\`python
+# This can cause next_write_row to reach 1048577 (exceeds Excel's 1048576 limit!)
+next_write_row = 7  # Starting row
+while dest_sheet.range((next_write_row, 1)).value is not None:
+    next_write_row += 1  # Keeps incrementing even with empty rows
+# → Result: COM error when next_write_row exceeds Excel's maximum row limit
+\`\`\`
+
+**✅ CORRECT - Check starting row and use end('down')**:
+\`\`\`python
+# Check if the starting row (e.g., row 7) is empty
+if dest_sheet.range('A7').value is None:
+    next_write_row = 7  # Start from row 7 if it's empty
+else:
+    # Find the last row with data in column A below row 6
+    next_write_row = dest_sheet.range('A6').end('down').row + 1
+# → Result: Reliable and efficient, avoids exceeding Excel row limit
+\`\`\`
+
+**⚠️ NOTE**: While \`used_range.last_cell.row\` seems convenient, it can be unreliable with merged cells, empty cells, or complex formatting. The method above is more robust.
+
+### Writing Data Efficiently
+**❌ WRONG - Row-by-row writing is slow and error-prone**:
+\`\`\`python
+# This triggers COM interaction for EACH row - very slow for large datasets!
+for i, row_data in enumerate(data_to_write):
+    dest_sheet.range((next_write_row + i, 1)).value = [row_data]
+    # → Each iteration = one COM call = high overhead and error risk
+# → Result: Extremely slow for 100+ rows, prone to COM errors
+\`\`\`
+
+**✅ CORRECT - Batch write all data at once**:
+\`\`\`python
+# Prepare data as list of lists (2D array)
+data_to_write_formatted = [
+    [row[0], row[1], row[2], ...],  # Row 1
+    [row[0], row[1], row[2], ...],  # Row 2
+    # ... all rows
+]
+
+# Calculate target range dimensions
+num_rows = len(data_to_write_formatted)
+num_cols = len(data_to_write_formatted[0]) if data_to_write_formatted else 0
+
+# Write all data in ONE operation
+if data_to_write_formatted and num_cols > 0:
+    target_range = dest_sheet.range((next_write_row, 1), (next_write_row + num_rows - 1, num_cols))
+    target_range.value = data_to_write_formatted  # Single COM call for all data
+    dest_book.save()
+# → Result: 100x faster, much lower COM error risk
+\`\`\`
+
+### Complete Example: Copying Data Between Workbooks
+\`\`\`python
+import xlwings as xw
+
+# Open workbooks
+source_book = xw.Book('source.xlsx')
+dest_book = xw.Book('destination.xlsx')
+
+source_sheet = source_book.sheets['SourceSheet']
+dest_sheet = dest_book.sheets['DestSheet']
+
+# ✅ Step 1: Find next available row reliably
+if dest_sheet.range('A7').value is None:
+    next_write_row = 7
+else:
+    next_write_row = dest_sheet.range('A6').end('down').row + 1
+
+# ✅ Step 2: Read source data (assuming columns XA to XS, rows 32-200)
+source_data = source_sheet.range('XA32:XS200').value
+
+# ✅ Step 3: Filter and prepare data for batch write
+filtered_data = []
+for row in source_data:
+    if row[17] in ['027', '211A', '306', '436']:  # XR is column 18 (0-indexed)
+        filtered_data.append(row)
+
+# ✅ Step 4: Batch write all data at once
+if filtered_data:
+    # Method 1: Define target range explicitly
+    num_rows = len(filtered_data)
+    num_cols = len(filtered_data[0])
+    target_range = dest_sheet.range(
+        (next_write_row, 1),
+        (next_write_row + num_rows - 1, num_cols)
+    )
+    target_range.value = filtered_data
+
+    # Method 2: Simpler - assign directly to starting cell (xlwings auto-expands)
+    # dest_sheet.cells(next_write_row, 1).value = filtered_data
+
+    dest_book.save()
+    print(f"✅ Successfully wrote {num_rows} rows starting at row {next_write_row}")
+
+# ✅ Step 5: Always close workbooks
+source_book.close()
+dest_book.close()
+\`\`\`
+
+### Key Lessons from Real-World Debugging
+1. **next_write_row Calculation Error**: Using \`while dest_sheet.range((next_write_row, 1)).value is not None\` can cause \`next_write_row\` to exceed Excel's maximum row limit (1,048,576), resulting in COM errors. **Solution**: Check if the starting row is empty; if not, use \`dest_sheet.range('A6').end('down').row + 1\` to find the next available row. Avoid \`used_range.last_cell.row\` as it can be unreliable with merged cells or complex formatting.
+
+2. **Row-by-Row Writing Performance**: Writing data one row at a time with \`dest_sheet.range((next_write_row + i, 1)).value = [row_data]\` is extremely slow and prone to COM errors for large datasets. **Solution**: Prepare all data as a 2D list and write in a single batch operation with \`target_range.value = data_to_write_formatted\`.
+
+3. **Data Format for Batch Writing**: When using batch write, ensure data is formatted as a list of lists where each inner list represents a complete row: \`[[col1, col2, ...], [col1, col2, ...], ...]\`. Incorrect formatting can cause \`ValueError\` or write data to wrong cells.
 
 ## Common xlwings operations
 - Open or connect to an existing workbook:
@@ -633,20 +899,73 @@ def col_letter_to_index(col_letter):
   chart.api.Axes(2).AxisTitle.Text = "Y Axis Title"
   \`\`\`
 
-- Cell value comparison, try these patterns to avoid mismatches:
+- Cell value comparison and filtering:
   \`\`\`python
-  # For numeric comparison, convert to float first to avoid type issues (e.g., 42 vs 42.0)
+  # CRITICAL: Excel stores numbers as float, even if displayed as text or integer
+  # "027" in Excel might be read as 27.0 or 27 (leading zero lost!)
+  # "211A" stays as string (contains non-numeric character)
+
+  # ❌ WRONG: Direct comparison fails with type mismatch
+  filter_values = ['027', '211A', '306', '634']
+  if cell.value in filter_values:  # Fails if cell.value is 27.0 or 27
+      # do something
+
+  # ✅ CORRECT: Normalize both sides to strings for comparison
+  filter_values = ['027', '211A', '306', '634']
+  cell_str = str(cell.value or "").strip()
+
+  # Handle numeric values that might have lost leading zeros
+  if cell_str in filter_values:
+      # Exact match (works for '211A', '634')
+      matched = True
+  elif cell_str.replace('.0', '') in filter_values:
+      # Match '27.0' -> '27' -> '027'? No, this won't work!
+      pass
+
+  # ✅ BEST: Convert all filter values to possible formats
+  # Create a set of all possible representations
+  normalized_filters = set()
+  for val in filter_values:
+      normalized_filters.add(val)  # Original: '027', '211A'
+      normalized_filters.add(val.lstrip('0'))  # Remove leading zeros: '27', '211A'
+      try:
+          # Add numeric representations
+          normalized_filters.add(str(int(val)))  # '027' -> '27'
+          normalized_filters.add(str(float(val)))  # '027' -> '27.0'
+      except ValueError:
+          pass  # Skip non-numeric values like '211A'
+
+  # Now compare
+  cell_str = str(cell.value or "").strip()
+  if cell_str in normalized_filters:
+      # Matches: 27, 27.0, '27', '027' all match with filter '027'
+      matched = True
+
+  # ✅ ALTERNATIVE: Compare numeric values when possible
+  for filter_val in filter_values:
+      cell_str = str(cell.value or "").strip()
+      # Try exact string match first
+      if cell_str == filter_val:
+          matched = True
+          break
+      # Try numeric comparison (handles 27.0 == 27 == '027')
+      try:
+          if float(cell_str) == float(filter_val):
+              matched = True
+              break
+      except (ValueError, TypeError):
+          pass  # Not a number, skip numeric comparison
+
+  # For other comparison scenarios:
+  # For pure numeric comparison
   if float(cell.value) == 42.0:
-      # do something
-  # For integer comparison, convert to int first
-  if int(float(cell.value)) == 42:
-      # do something
-  # For string comparison, convert to str first
-  if str(cell.value).strip().lower() == "target":
-      # do something
-  # For robust comparison, convert to str and handle None
+      # Works for 42, 42.0, '42', '42.0'
+      pass
+
+  # For string comparison (case-insensitive)
   if str(cell.value or "").strip().lower() == "target":
-      # do something
+      # Safe for any cell value including None
+      pass
   \`\`\`
 `,
       Kind.Execute,
@@ -665,7 +984,7 @@ def col_letter_to_index(col_letter):
           },
           timeout: {
             type: 'number',
-            description: 'Execution timeout in seconds (default: 30)',
+            description: 'Execution timeout in seconds (default: 300)',
             minimum: 1,
             maximum: 300,
           },

@@ -1,4 +1,10 @@
-import React from 'react';
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import type React from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { AlertTriangle, Code, Info, Server, FileText } from 'lucide-react';
@@ -33,7 +39,7 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
         <AlertTriangle className="h-4 w-4 text-orange-600" />
       </div>
-      
+
       {/* Message Content */}
       <div className="flex-1 min-w-0">
         <Card className="border-orange-200 bg-orange-50/50 dark:bg-orange-950/10 dark:border-orange-800/50">
@@ -42,12 +48,12 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
               <Code className="h-4 w-4" />
               Tool wants to edit file
             </div>
-            
+
             <div className="flex items-center gap-2 text-sm">
               <FileText className="h-4 w-4" />
               <span className="font-mono text-sm">{details.fileName}</span>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-900 rounded-md border border-orange-200/50 dark:border-orange-800/50">
               <div className="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 border-b border-orange-200/50 dark:border-orange-800/50">
                 Changes Preview:
@@ -62,11 +68,13 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
             <div className="text-sm font-medium text-orange-800 dark:text-orange-200">
               Do you want to apply this change?
             </div>
-            
+
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
-                onClick={() => handleConfirm(ToolConfirmationOutcome.ProceedOnce)}
+                onClick={() =>
+                  handleConfirm(ToolConfirmationOutcome.ProceedOnce)
+                }
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
                 Allow once
@@ -74,7 +82,9 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleConfirm(ToolConfirmationOutcome.ProceedAlways)}
+                onClick={() =>
+                  handleConfirm(ToolConfirmationOutcome.ProceedAlways)
+                }
                 className="border-green-600 text-green-700 hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-950"
               >
                 Always allow
@@ -82,7 +92,9 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleConfirm(ToolConfirmationOutcome.ModifyWithEditor)}
+                onClick={() =>
+                  handleConfirm(ToolConfirmationOutcome.ModifyWithEditor)
+                }
               >
                 Modify with editor
               </Button>
@@ -103,19 +115,13 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
   const renderExecConfirmation = (details: ToolExecuteConfirmationDetails) => {
     // Extract Python code from command (remove "python toolname..." prefix)
     const extractPythonCode = (command: string): string => {
-      console.log('Original command:', command);
-      console.log('Command length:', command.length);
-
       // Command format: "python toolname (requires: ...)\n\n<actual python code>"
       // We need to extract just the Python code part
       const parts = command.split('\n\n');
-      console.log('Split parts:', parts.length);
 
       if (parts.length > 1) {
         // Return everything after the first "\n\n"
         const extracted = parts.slice(1).join('\n\n');
-        console.log('Extracted code:', extracted);
-        console.log('Extracted length:', extracted.length);
         return extracted;
       }
       return command;
@@ -146,8 +152,8 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
       const paramMatches = command.match(/(\w+)\s*=\s*["']([^"']+)["']/g);
       if (paramMatches) {
         parameters = paramMatches
-          .filter(p => !p.includes('op ='))
-          .map(p => {
+          .filter((p) => !p.includes('op ='))
+          .map((p) => {
             const [key, value] = p.split('=');
             return `${key.trim()}: ${value.replace(/["']/g, '').trim()}`;
           })
@@ -178,14 +184,18 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
               {/* Tool Information */}
               <div className="bg-white dark:bg-gray-900 rounded-md border border-red-200/50 dark:border-red-800/50 p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Tool:</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Tool:
+                  </span>
                   <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded border border-blue-300 dark:border-blue-600 font-mono">
                     {toolName}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Operation:</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Operation:
+                  </span>
                   <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded border border-green-300 dark:border-green-600 font-mono">
                     {operation}
                   </span>
@@ -193,10 +203,15 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
 
                 {parameters.length > 0 && (
                   <div className="flex items-start gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5">Parameters:</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5">
+                      Parameters:
+                    </span>
                     <div className="flex flex-wrap gap-1">
                       {parameters.map((param, idx) => (
-                        <span key={idx} className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-600 font-mono">
+                        <span
+                          key={idx}
+                          className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-600 font-mono"
+                        >
                           {param}
                         </span>
                       ))}
@@ -206,10 +221,15 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
 
                 {requirements.length > 0 && (
                   <div className="flex items-start gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5">Requires:</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5">
+                      Requires:
+                    </span>
                     <div className="flex flex-wrap gap-1">
                       {requirements.map((req, idx) => (
-                        <span key={idx} className="px-2 py-1 text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded border border-purple-300 dark:border-purple-600 font-mono">
+                        <span
+                          key={idx}
+                          className="px-2 py-1 text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded border border-purple-300 dark:border-purple-600 font-mono"
+                        >
                           {req.trim()}
                         </span>
                       ))}
@@ -218,24 +238,38 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
                 )}
               </div>
 
-              {/* Collapsible Code Section */}
-              <details open className="rounded-md border border-red-200/50 dark:border-red-800/50 overflow-hidden">
-                <summary className="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  🐍 Python Code (Click to collapse)
-                </summary>
-                <div>
-                  <CodeHighlight code={extractPythonCode(details.command)} language="python" maxHeight="400px" />
-                </div>
-              </details>
+              {/* Collapsible Code Section - Only show if showPythonCode is true */}
+              {details.showPythonCode && (
+                <details
+                  open
+                  className="rounded-md border border-red-200/50 dark:border-red-800/50 overflow-hidden"
+                >
+                  <summary className="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    🐍 Python Code (Click to collapse)
+                  </summary>
+                  <div>
+                    <CodeHighlight
+                      code={
+                        details.pythonCode || extractPythonCode(details.command)
+                      }
+                      language="python"
+                      maxHeight="400px"
+                    />
+                  </div>
+                </details>
+              )}
 
               <div className="text-sm font-medium text-red-800 dark:text-red-200">
-                Do you want to allow execution of "{toolName}" tool with operation "{operation}"?
+                Do you want to allow execution of `{toolName}` tool with
+                operation `{operation}`?
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  onClick={() => handleConfirm(ToolConfirmationOutcome.ProceedOnce)}
+                  onClick={() =>
+                    handleConfirm(ToolConfirmationOutcome.ProceedOnce)
+                  }
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   Allow once
@@ -243,7 +277,9 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleConfirm(ToolConfirmationOutcome.ProceedAlways)}
+                  onClick={() =>
+                    handleConfirm(ToolConfirmationOutcome.ProceedAlways)
+                  }
                   className="border-green-600 text-green-700 hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-950"
                 >
                   Always allow
@@ -278,7 +314,7 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
             {details.serverName}
           </span>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Tool:</span>
           <span className="px-2 py-1 text-xs bg-purple-200 dark:bg-purple-800 text-purple-700 dark:text-purple-200 rounded">
@@ -287,9 +323,10 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
         </div>
 
         <div className="text-sm font-medium">
-          Allow execution of MCP tool "{details.toolName}" from server "{details.serverName}"?
+          Allow execution of MCP tool `{details.toolName}` from server `
+          {details.serverName}`?
         </div>
-        
+
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -301,16 +338,20 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => handleConfirm(ToolConfirmationOutcome.ProceedAlwaysTool)}
+            onClick={() =>
+              handleConfirm(ToolConfirmationOutcome.ProceedAlwaysTool)
+            }
           >
-            Always allow tool "{details.toolName}"
+            Always allow tool `{details.toolName}`
           </Button>
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => handleConfirm(ToolConfirmationOutcome.ProceedAlwaysServer)}
+            onClick={() =>
+              handleConfirm(ToolConfirmationOutcome.ProceedAlwaysServer)
+            }
           >
-            Always allow server "{details.serverName}"
+            Always allow server `{details.serverName}`
           </Button>
           <Button
             size="sm"
@@ -338,7 +379,7 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
             {details.prompt}
           </div>
         </div>
-        
+
         {details.urls && details.urls.length > 0 && (
           <div>
             <div className="text-sm font-medium mb-2">URLs to fetch:</div>
@@ -355,7 +396,7 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
         )}
 
         <div className="text-sm font-medium">Do you want to proceed?</div>
-        
+
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -386,19 +427,28 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
   // Render appropriate confirmation based on type
   switch (confirmationDetails.type) {
     case 'edit':
-      return renderEditConfirmation(confirmationDetails as ToolEditConfirmationDetails);
+      return renderEditConfirmation(
+        confirmationDetails as ToolEditConfirmationDetails,
+      );
     case 'exec':
-      return renderExecConfirmation(confirmationDetails as ToolExecuteConfirmationDetails);
+      return renderExecConfirmation(
+        confirmationDetails as ToolExecuteConfirmationDetails,
+      );
     case 'mcp':
-      return renderMcpConfirmation(confirmationDetails as ToolMcpConfirmationDetails);
+      return renderMcpConfirmation(
+        confirmationDetails as ToolMcpConfirmationDetails,
+      );
     case 'info':
-      return renderInfoConfirmation(confirmationDetails as ToolInfoConfirmationDetails);
+      return renderInfoConfirmation(
+        confirmationDetails as ToolInfoConfirmationDetails,
+      );
     default:
       return (
         <Card className="border-gray-200 bg-gray-50 dark:bg-gray-950/20 dark:border-gray-800">
           <CardContent className="p-4">
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              Unknown confirmation type: {(confirmationDetails as any).type}
+              Unknown confirmation type:{' '}
+              {(confirmationDetails as { type: string }).type}
             </div>
           </CardContent>
         </Card>

@@ -615,6 +615,8 @@ export interface ToolExecuteConfirmationDetails {
   onConfirm: (outcome: ToolConfirmationOutcome) => Promise<void>;
   command: string;
   rootCommand: string;
+  showPythonCode?: boolean; // Whether to show Python code in confirmation dialog (default: false)
+  pythonCode?: string; // The actual Python code to display (optional, avoids parsing command string)
 }
 
 export interface ToolMcpConfirmationDetails {

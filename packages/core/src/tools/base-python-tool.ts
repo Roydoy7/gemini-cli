@@ -36,6 +36,13 @@ export abstract class BasePythonTool<
 > extends BaseDeclarativeTool<TParams, TResult> {
   private readonly allowlist = new Set<string>();
 
+  /**
+   * Whether to show Python code in confirmation dialog.
+   * Override in subclasses to control code visibility.
+   * Default: false (hide code for high-level tool operations)
+   */
+  protected readonly showPythonCode: boolean = false;
+
   constructor(
     name: string,
     displayName: string,
@@ -57,7 +64,9 @@ export abstract class BasePythonTool<
     );
   }
 
-  protected createInvocation(params: TParams): ToolInvocation<TParams, TResult> {
+  protected createInvocation(
+    params: TParams,
+  ): ToolInvocation<TParams, TResult> {
     return new BasePythonToolInvocation(
       this,
       params,
@@ -75,7 +84,10 @@ export abstract class BasePythonTool<
   /**
    * Parse the Python execution result into the expected tool result
    */
-  protected abstract parseResult(pythonOutput: string, params: TParams): TResult;
+  protected abstract parseResult(
+    pythonOutput: string,
+    params: TParams,
+  ): TResult;
 
   /**
    * Get the requirements for this specific tool execution
@@ -99,9 +111,8 @@ export abstract class BasePythonTool<
     const currentFileUrl = import.meta.url;
     const currentFilePath = new URL(currentFileUrl).pathname;
 
-    const normalizedPath = process.platform === 'win32'
-      ? currentFilePath.slice(1)
-      : currentFilePath;
+    const normalizedPath =
+      process.platform === 'win32' ? currentFilePath.slice(1) : currentFilePath;
 
     const toolsPath = path.dirname(normalizedPath);
     const srcPath = path.dirname(toolsPath);
@@ -110,11 +121,20 @@ export abstract class BasePythonTool<
     const packagesPath = path.dirname(corePath);
 
     // Try the calculated path first
-    let embeddedPythonPath = path.join(packagesPath, 'python-3.13.7', 'python.exe');
+    let embeddedPythonPath = path.join(
+      packagesPath,
+      'python-3.13.7',
+      'python.exe',
+    );
 
     // If not found, try relative to current working directory (for test environment)
     if (!fs.existsSync(embeddedPythonPath)) {
-      embeddedPythonPath = path.join(process.cwd(), 'packages', 'python-3.13.7', 'python.exe');
+      embeddedPythonPath = path.join(
+        process.cwd(),
+        'packages',
+        'python-3.13.7',
+        'python.exe',
+      );
     }
 
     // If still not found, try from project root
@@ -122,7 +142,12 @@ export abstract class BasePythonTool<
       const projectRoot = process.cwd().includes('packages')
         ? path.join(process.cwd(), '..', '..')
         : process.cwd();
-      embeddedPythonPath = path.join(projectRoot, 'packages', 'python-3.13.7', 'python.exe');
+      embeddedPythonPath = path.join(
+        projectRoot,
+        'packages',
+        'python-3.13.7',
+        'python.exe',
+      );
     }
 
     return embeddedPythonPath;
@@ -146,18 +171,17 @@ class BasePythonToolInvocation<
   override getDescription(): string {
     const pythonCode = this.tool['generatePythonCode'](this.params);
     let description = `Execute Python code for ${this.tool.displayName}`;
-    
-    const codePreview = pythonCode.length > 200 
-      ? pythonCode.slice(0, 200) + '...'
-      : pythonCode;
-    
+
+    const codePreview =
+      pythonCode.length > 200 ? pythonCode.slice(0, 200) + '...' : pythonCode;
+
     if (codePreview.includes('import')) {
       const imports = codePreview.match(/^import .+|^from .+ import .+/gm);
       if (imports) {
-        description += ` (imports: ${imports.map(i => i.split(' ')[1]).join(', ')})`;
+        description += ` (imports: ${imports.map((i) => i.split(' ')[1]).join(', ')})`;
       }
     }
-    
+
     return description;
   }
 
@@ -178,22 +202,23 @@ class BasePythonToolInvocation<
     const pythonCode = this.tool['generatePythonCode'](this.params);
 
     const requirements = this.requirements;
-    const requirementsStr = requirements.length > 0
-      ? ` (requires: ${requirements.join(', ')})`
-      : '';
+    const requirementsStr =
+      requirements.length > 0 ? ` (requires: ${requirements.join(', ')})` : '';
 
     const confirmationDetails: ToolExecuteConfirmationDetails = {
       type: 'exec',
       title: `Confirm ${this.tool.displayName} Execution`,
       command: `python ${this.tool.name}${requirementsStr}\n\n${pythonCode}`,
       rootCommand,
+      showPythonCode: this.tool['showPythonCode'], // Use tool's showPythonCode setting
+      pythonCode, // Pass the actual code directly
       onConfirm: async (outcome: ToolConfirmationOutcome) => {
         if (outcome === ToolConfirmationOutcome.ProceedAlways) {
           this.allowlist.add(rootCommand);
         }
       },
     };
-    
+
     return confirmationDetails;
   }
 
@@ -205,7 +230,7 @@ class BasePythonToolInvocation<
     try {
       // Get embedded Python path
       const embeddedPythonPath = this.tool['getEmbeddedPythonPath']();
-      
+
       // Verify embedded Python exists
       if (!fs.existsSync(embeddedPythonPath)) {
         return {
@@ -225,17 +250,21 @@ class BasePythonToolInvocation<
         for (const requirement of requirements) {
           try {
             const checkCommand = `"${embeddedPythonPath}" -c "import ${requirement.split('[')[0].replace('-', '_')}; print('installed')"`;
-            const { result: checkPromise } = await ShellExecutionService.execute(
-              checkCommand,
-              this.config.getTargetDir(),
-              () => {},
-              signal,
-              false,
-              shellExecutionConfig || {},
-            );
+            const { result: checkPromise } =
+              await ShellExecutionService.execute(
+                checkCommand,
+                this.config.getTargetDir(),
+                () => {},
+                signal,
+                false,
+                shellExecutionConfig || {},
+              );
             const checkResult = await checkPromise;
 
-            if (checkResult.exitCode !== 0 || !checkResult.output.includes('installed')) {
+            if (
+              checkResult.exitCode !== 0 ||
+              !checkResult.output.includes('installed')
+            ) {
               missingPackages.push(requirement);
             }
           } catch {
@@ -247,21 +276,24 @@ class BasePythonToolInvocation<
         // Only install missing packages
         if (missingPackages.length > 0) {
           if (updateOutput) {
-            updateOutput(`Installing missing Python packages: ${missingPackages.join(', ')}...\\n`);
+            updateOutput(
+              `Installing missing Python packages: ${missingPackages.join(', ')}...\\n`,
+            );
           }
 
           try {
             const installCommand = `"${embeddedPythonPath}" -m pip install ${missingPackages.join(' ')} --quiet`;
             const workingDir = this.config.getTargetDir();
 
-            const { result: installPromise } = await ShellExecutionService.execute(
-              installCommand,
-              workingDir,
-              () => {},
-              signal,
-              false,
-              shellExecutionConfig || {},
-            );
+            const { result: installPromise } =
+              await ShellExecutionService.execute(
+                installCommand,
+                workingDir,
+                () => {},
+                signal,
+                false,
+                shellExecutionConfig || {},
+              );
 
             const installResult = await installPromise;
 
@@ -288,13 +320,16 @@ class BasePythonToolInvocation<
 
       // Generate and execute Python code
       const pythonCode = this.tool['generatePythonCode'](this.params);
-      
+
       // Create temporary Python script file
       const tempDir = os.tmpdir();
       const timestamp = Date.now();
       const operation = this.params.op || 'unknown';
-      const scriptPath = path.join(tempDir, `${this.tool.name}_${operation}_${timestamp}.py`);
-      
+      const scriptPath = path.join(
+        tempDir,
+        `${this.tool.name}_${operation}_${timestamp}.py`,
+      );
+
       // Write Python code to temporary file with UTF-8 encoding and Base64 output wrapper
       const codeWithEncoding = `# -*- coding: utf-8 -*-
 import sys
@@ -319,7 +354,10 @@ def print(*args, **kwargs):
 
 # Execute the main tool code
 try:
-${pythonCode.split('\n').map(line => '    ' + line).join('\n')}
+${pythonCode
+  .split('\n')
+  .map((line) => '    ' + line)
+  .join('\n')}
 except Exception as e:
     import traceback
     error_output = f"Error: {str(e)}\\n{traceback.format_exc()}"
@@ -349,21 +387,23 @@ else:
 
       // Set working directory
       const workingDir = this.config.getTargetDir();
-      
+
       // Execute Python script
       const { result: pythonPromise } = await ShellExecutionService.execute(
         command,
         workingDir,
-        updateOutput ? (event) => {
-          if (event.type === 'data') {
-            updateOutput(event.chunk);
-          }
-        } : () => {},
+        updateOutput
+          ? (event) => {
+              if (event.type === 'data') {
+                updateOutput(event.chunk);
+              }
+            }
+          : () => {},
         signal,
         false,
         shellExecutionConfig || {},
       );
-      
+
       const result = await pythonPromise;
 
       // Clean up temporary file
@@ -379,7 +419,9 @@ else:
       let finalOutput = result.output.trim();
 
       // Check for Base64 encoded result marker
-      const base64Match = finalOutput.match(/__TOOL_RESULT_BASE64__([A-Za-z0-9+/=]*)__END__/);
+      const base64Match = finalOutput.match(
+        /__TOOL_RESULT_BASE64__([A-Za-z0-9+/=]*)__END__/,
+      );
       if (base64Match) {
         try {
           // Decode Base64 result if present
@@ -398,7 +440,6 @@ else:
 
       // Parse the Python output into the expected tool result format
       return this.tool['parseResult'](finalOutput, this.params);
-      
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       return {
