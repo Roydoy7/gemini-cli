@@ -32,7 +32,7 @@ import type {
   ModifiableDeclarativeTool,
   ModifyContext,
 } from './modifiable-tool.js';
-import { IdeClient } from '../ide/ide-client.js';
+// import { IdeClient } from '../ide/ide-client.js';
 import { safeLiteralReplace } from '../utils/textUtils.js';
 
 export function applyReplacement(
@@ -273,11 +273,11 @@ class EditToolInvocation implements ToolInvocation<EditToolParams, ToolResult> {
       'Proposed',
       DEFAULT_DIFF_OPTIONS,
     );
-    const ideClient = await IdeClient.getInstance();
-    const ideConfirmation =
-      this.config.getIdeMode() && ideClient.isDiffingEnabled()
-        ? ideClient.openDiff(this.params.file_path, editData.newContent)
-        : undefined;
+    // const ideClient = await IdeClient.getInstance();
+    // const ideConfirmation =
+    //   this.config.getIdeMode() && ideClient.isDiffingEnabled()
+    //     ? ideClient.openDiff(this.params.file_path, editData.newContent)
+    //     : undefined;
 
     const confirmationDetails: ToolEditConfirmationDetails = {
       type: 'edit',
@@ -292,17 +292,17 @@ class EditToolInvocation implements ToolInvocation<EditToolParams, ToolResult> {
           this.config.setApprovalMode(ApprovalMode.AUTO_EDIT);
         }
 
-        if (ideConfirmation) {
-          const result = await ideConfirmation;
-          if (result.status === 'accepted' && result.content) {
-            // TODO(chrstn): See https://github.com/google-gemini/gemini-cli/pull/5618#discussion_r2255413084
-            // for info on a possible race condition where the file is modified on disk while being edited.
-            this.params.old_string = editData.currentContent ?? '';
-            this.params.new_string = result.content;
-          }
-        }
+        // if (ideConfirmation) {
+        //   const result = await ideConfirmation;
+        //   if (result.status === 'accepted' && result.content) {
+        //     // TODO(chrstn): See https://github.com/google-gemini/gemini-cli/pull/5618#discussion_r2255413084
+        //     // for info on a possible race condition where the file is modified on disk while being edited.
+        //     this.params.old_string = editData.currentContent ?? '';
+        //     this.params.new_string = result.content;
+        //   }
+        // }
       },
-      ideConfirmation,
+      // ideConfirmation,
     };
     return confirmationDetails;
   }

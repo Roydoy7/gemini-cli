@@ -36,7 +36,7 @@ import type {
   ModifiableDeclarativeTool,
   ModifyContext,
 } from './modifiable-tool.js';
-import { IdeClient } from '../ide/ide-client.js';
+// import { IdeClient } from '../ide/ide-client.js';
 import { logFileOperation } from '../telemetry/loggers.js';
 import { FileOperationEvent } from '../telemetry/types.js';
 import { FileOperation } from '../telemetry/metrics.js';
@@ -195,11 +195,11 @@ class WriteFileToolInvocation extends BaseToolInvocation<
       DEFAULT_DIFF_OPTIONS,
     );
 
-    const ideClient = await IdeClient.getInstance();
-    const ideConfirmation =
-      this.config.getIdeMode() && ideClient.isDiffingEnabled()
-        ? ideClient.openDiff(this.params.file_path, correctedContent)
-        : undefined;
+    // const ideClient = await IdeClient.getInstance();
+    // const ideConfirmation =
+    //   this.config.getIdeMode() && ideClient.isDiffingEnabled()
+    //     ? ideClient.openDiff(this.params.file_path, correctedContent)
+    //     : undefined;
 
     const confirmationDetails: ToolEditConfirmationDetails = {
       type: 'edit',
@@ -214,14 +214,14 @@ class WriteFileToolInvocation extends BaseToolInvocation<
           this.config.setApprovalMode(ApprovalMode.AUTO_EDIT);
         }
 
-        if (ideConfirmation) {
-          const result = await ideConfirmation;
-          if (result.status === 'accepted' && result.content) {
-            this.params.content = result.content;
-          }
-        }
+        // if (ideConfirmation) {
+        //   const result = await ideConfirmation;
+        //   if (result.status === 'accepted' && result.content) {
+        //     this.params.content = result.content;
+        //   }
+        // }
       },
-      ideConfirmation,
+      // ideConfirmation,
     };
     return confirmationDetails;
   }
