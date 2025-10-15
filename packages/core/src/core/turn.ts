@@ -107,6 +107,7 @@ export interface ToolCallResponseInfo {
   structuredData?: ToolResponseData;
   outputFile?: string | undefined;
   contentLength?: number;
+  sessionId?: string; // Session ID for routing tool response to correct session
 }
 
 export interface ServerToolCallConfirmationDetails {

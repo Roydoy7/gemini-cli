@@ -317,6 +317,7 @@ export class GeminiChatManager {
                             error: undefined,
                             errorType: undefined,
                             structuredData: response.structuredData,
+                            sessionId, // CRITICAL: Include sessionId for routing to correct session
                           },
                         });
                       } else if (
@@ -354,6 +355,7 @@ export class GeminiChatManager {
                             error: toolCall.response.error,
                             errorType: toolCall.response.errorType,
                             structuredData: toolCall.response.structuredData,
+                            sessionId, // CRITICAL: Include sessionId for routing to correct session
                           },
                         });
                       } else if (
@@ -391,6 +393,7 @@ export class GeminiChatManager {
                             error: toolCall.response.error,
                             errorType: toolCall.response.errorType,
                             structuredData: toolCall.response.structuredData,
+                            sessionId, // CRITICAL: Include sessionId for routing to correct session
                           },
                         });
                       } else {
@@ -490,6 +493,7 @@ export class GeminiChatManager {
                   resultDisplay: toolResponse.resultDisplay,
                   error: toolResponse.error,
                   errorType: toolResponse.errorType,
+                  sessionId, // CRITICAL: Include sessionId for routing to correct session
                 },
               };
             }
@@ -623,12 +627,6 @@ export class GeminiChatManager {
       for (const part of content.parts || []) {
         if ('text' in part && part.text) {
           textContent += part.text;
-          // // Log if text contains thinking tags
-          // if (part.text.includes('<think>')) {
-          //   console.log(
-          //     `[GeminiChatManager] Found <think> tag in text part (${part.text.substring(0, 100)}...)`,
-          //   );
-          // }
         }
 
         // Extract function calls (tool calls from assistant)
@@ -637,19 +635,53 @@ export class GeminiChatManager {
           part.functionCall &&
           part.functionCall.name
         ) {
-          toolCalls.push({
-            id: `call_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-            name: part.functionCall.name,
-            arguments:
-              (part.functionCall.args as Record<string, unknown>) || {},
-          });
+          const args =
+            (part.functionCall.args as Record<string, unknown>) || {};
+
+          // CRITICAL: Restore callId from args if available
+          // We store callId in args.__callId to preserve it across conversions
+          let functionCallId: string;
+          if ('__callId' in args && typeof args['__callId'] === 'string') {
+            functionCallId = args['__callId'];
+            // Remove __callId from arguments before storing
+            const { __callId, ...cleanArgs } = args;
+            toolCalls.push({
+              id: functionCallId,
+              name: part.functionCall.name,
+              arguments: cleanArgs,
+            });
+          } else {
+            // Fallback: Use Gemini API's ID or generate one
+            functionCallId =
+              part.functionCall.id ??
+              `${part.functionCall.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            toolCalls.push({
+              id: functionCallId,
+              name: part.functionCall.name,
+              arguments: args,
+            });
+          }
         }
 
         // Extract function responses (tool responses)
         if ('functionResponse' in part && part.functionResponse) {
           toolName = part.functionResponse.name;
-          toolCallId = `call_${Date.now()}`;
           const response = part.functionResponse.response;
+
+          // CRITICAL: Restore callId from response if available
+          // We store callId in response.callId to preserve it across conversions
+          if (
+            response &&
+            typeof response === 'object' &&
+            'callId' in response &&
+            typeof response['callId'] === 'string'
+          ) {
+            toolCallId = response['callId'];
+          } else {
+            // Fallback: generate new ID if not found (shouldn't happen in normal flow)
+            toolCallId = `call_${Date.now()}`;
+          }
+
           if (
             response &&
             typeof response === 'object' &&
@@ -682,23 +714,10 @@ export class GeminiChatManager {
           message.toolCalls = toolCalls;
         }
 
-        // // Log message content summary
-        // const hasThinking = textContent.includes('<think>');
-        // const contentPreview =
-        //   textContent.length > 100
-        //     ? textContent.substring(0, 100) + '...'
-        //     : textContent;
-        // console.log(
-        //   `[GeminiChatManager] Created ${role} message (${textContent.length} chars, thinking: ${hasThinking}): ${contentPreview}`,
-        // );
-
         messages.push(message);
       }
     }
 
-    // console.log(
-    //   `[GeminiChatManager] Converted to ${messages.length} UniversalMessages`,
-    // );
     return messages;
   }
 
@@ -734,7 +753,12 @@ export class GeminiChatManager {
           parts.push({
             functionCall: {
               name: toolCall.name,
-              args: toolCall.arguments,
+              args: {
+                ...toolCall.arguments,
+                // CRITICAL: Store callId in args to preserve it across conversions
+                // We use a special key that won't conflict with actual tool arguments
+                __callId: toolCall.id,
+              },
             },
           });
         }
@@ -747,6 +771,8 @@ export class GeminiChatManager {
             name: msg.name || '',
             response: {
               output: msg.content,
+              // CRITICAL: Store callId in response to preserve it across conversions
+              callId: msg.tool_call_id,
             },
           },
         });
@@ -800,8 +826,21 @@ export class GeminiChatManager {
 
   /**
    * Switch session with client pool coordination
+   * CRITICAL: Save current session BEFORE switching to prevent data loss
    */
   async switchSession(sessionId: string): Promise<void> {
+    // Get current session ID BEFORE switching
+    const currentSessionId = this.sessionManager.getCurrentSessionId();
+
+    // Save current session history immediately to prevent data loss during concurrent streaming
+    if (currentSessionId) {
+      await this.clientPool.save(currentSessionId);
+      console.log(
+        `[GeminiChatManager] Saved current session ${currentSessionId} before switching`,
+      );
+    }
+
+    // Now switch to new session
     this.sessionManager.switchSession(sessionId);
     await this.loadSessionIntoClient(sessionId);
     console.log(`[GeminiChatManager] Switched to session: ${sessionId}`);
