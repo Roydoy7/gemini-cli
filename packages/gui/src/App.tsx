@@ -25,15 +25,13 @@ export const App: React.FC = () => {
 
   const [isWaitingForOAuth, setIsWaitingForOAuth] = useState(false);
 
-  // Continuously monitor authentication status changes
+  // Listen for auth-changed events (triggered when user modifies auth settings)
   useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
+    const handleAuthChanged = async () => {
+      console.log(
+        '[App] Auth changed event received, re-checking auth status...',
+      );
 
-    console.log('[App] Setting up continuous auth monitoring...');
-
-    const checkAuthChanges = async () => {
       try {
         const electronAPI = (
           globalThis as {
@@ -74,40 +72,27 @@ export const App: React.FC = () => {
           isAuthenticated = oauthStatus?.authenticated || false;
         }
 
-        // If authentication status changed, update state
-        if (
-          authStatus.authenticated !== isAuthenticated ||
-          authStatus.checking
-        ) {
-          console.log('[App] Auth status changed:', {
-            was: authStatus.authenticated,
-            now: isAuthenticated,
-            pref: authPref,
-          });
-          setAuthStatus({
-            checking: false,
-            authenticated: isAuthenticated,
-            // IMPORTANT: Only show needsSelection if we were checking initially (startup)
-            // Don't show it for subsequent changes (user is using AuthSettingsModal)
-            needsSelection:
-              authStatus.checking && (!authPref || !isAuthenticated),
-          });
-        }
+        console.log('[App] Auth status after change:', {
+          pref: authPref,
+          authenticated: isAuthenticated,
+        });
+
+        setAuthStatus({
+          checking: false,
+          authenticated: isAuthenticated,
+          needsSelection: false, // User explicitly changed auth, don't show selection
+        });
       } catch (error) {
-        console.error('[App] Failed to check auth changes:', error);
+        console.error('[App] Failed to check auth after change:', error);
       }
     };
 
-    // Check immediately
-    checkAuthChanges();
-
-    // Then check every 3 seconds
-    const interval = setInterval(checkAuthChanges, 3000);
+    window.addEventListener('auth-changed', handleAuthChanged);
 
     return () => {
-      clearInterval(interval);
+      window.removeEventListener('auth-changed', handleAuthChanged);
     };
-  }, [isHydrated, authStatus.authenticated, authStatus.checking]);
+  }, []);
 
   // Monitor OAuth status when waiting for user to complete OAuth login
   useEffect(() => {
@@ -384,18 +369,31 @@ export const App: React.FC = () => {
 
         await geminiChatService.initialize(configParams, currentRole);
 
-        // Set up tool confirmation callback
+        // Set up tool confirmation callback with sessionId support
         geminiChatService.setConfirmationCallback(
-          async (details) =>
+          async (details, sessionId) =>
             new Promise((resolve) => {
-              // Set the confirmation request in chat store
-              useChatStore.getState().setToolConfirmation(details);
+              // CRITICAL: Set the confirmation request for the SPECIFIC SESSION
+              // If sessionId is provided, route to that session; otherwise use current session
+              if (sessionId) {
+                useChatStore
+                  .getState()
+                  .setToolConfirmationForSession(sessionId, details);
+              } else {
+                useChatStore.getState().setToolConfirmation(details);
+              }
 
               // Override the onConfirm to resolve our promise
               const originalOnConfirm = details.onConfirm;
               details.onConfirm = async (outcome, payload) => {
-                // Clear the confirmation from store
-                useChatStore.getState().setToolConfirmation(null);
+                // Clear the confirmation from the SPECIFIC SESSION
+                if (sessionId) {
+                  useChatStore
+                    .getState()
+                    .setToolConfirmationForSession(sessionId, null);
+                } else {
+                  useChatStore.getState().setToolConfirmation(null);
+                }
 
                 // Call original handler if it exists
                 if (originalOnConfirm) {
@@ -467,7 +465,7 @@ export const App: React.FC = () => {
           if (sessionsInfo.length > 0) {
             const mostRecentSessionId = sessionsInfo[0].id;
             await geminiChatService.switchSession(mostRecentSessionId);
-            setActiveSession(mostRecentSessionId);
+            await setActiveSession(mostRecentSessionId); // CRITICAL: await to sync sessionId
             console.log(
               'Switched to most recent session:',
               mostRecentSessionId,
@@ -648,13 +646,72 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleSkipAuth = () => {
-    console.log('User skipped authentication');
-    setAuthStatus({
-      checking: false,
-      authenticated: false,
-      needsSelection: false,
-    });
+  const handleSkipAuth = async () => {
+    console.log('User skipped authentication, re-checking auth status...');
+
+    try {
+      const electronAPI = (
+        globalThis as {
+          electronAPI?: {
+            geminiChat?: {
+              getAuthPreference: (
+                providerType: string,
+              ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
+              checkEnvApiKey: (
+                providerType: string,
+              ) => Promise<{ detected: boolean }>;
+              getOAuthStatus: (
+                providerType: string,
+              ) => Promise<{ authenticated: boolean; userEmail?: string }>;
+            };
+          };
+        }
+      ).electronAPI;
+
+      if (!electronAPI?.geminiChat) {
+        setAuthStatus({
+          checking: false,
+          authenticated: false,
+          needsSelection: false,
+        });
+        return;
+      }
+
+      // Get current auth preference
+      const prefResult =
+        await electronAPI.geminiChat.getAuthPreference('gemini');
+      const authPref = prefResult?.preference;
+
+      // Check authentication based on preference
+      let isAuthenticated = false;
+      if (authPref === 'api_key') {
+        const apiKeyResult =
+          await electronAPI.geminiChat.checkEnvApiKey('gemini');
+        isAuthenticated = apiKeyResult?.detected || false;
+      } else if (authPref === 'oauth') {
+        const oauthStatus =
+          await electronAPI.geminiChat.getOAuthStatus('gemini');
+        isAuthenticated = oauthStatus?.authenticated || false;
+      }
+
+      console.log('[App] Auth status after skip:', {
+        pref: authPref,
+        authenticated: isAuthenticated,
+      });
+
+      setAuthStatus({
+        checking: false,
+        authenticated: isAuthenticated,
+        needsSelection: false,
+      });
+    } catch (error) {
+      console.error('[App] Failed to check auth after skip:', error);
+      setAuthStatus({
+        checking: false,
+        authenticated: false,
+        needsSelection: false,
+      });
+    }
   };
 
   // Always render AppLayout, show auth selection as modal overlay

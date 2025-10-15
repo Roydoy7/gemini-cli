@@ -683,6 +683,7 @@ ipcMain.handle('geminiChat-cancel-stream', async (event, streamId) => {
       // Send cancellation event to frontend
       event.sender.send('geminiChat-stream-error', {
         streamId,
+        sessionId: streamInfo.sessionId, // Include sessionId from tracked stream
         error: 'Stream cancelled by user',
       });
 
@@ -733,9 +734,10 @@ ipcMain.handle(
           }),
         };
 
-        // Send confirmation request to renderer process
+        // Send confirmation request to renderer process with sessionId
         event.sender.send('tool-confirmation-request', {
           streamId,
+          sessionId: currentSessionId, // CRITICAL: Include sessionId for proper routing
           confirmationDetails: confirmationRequest,
         });
 
@@ -743,9 +745,31 @@ ipcMain.handle(
         return new Promise((resolve) => {
           ipcMain.once(
             'tool-confirmation-response',
-            (responseEvent, outcome) => {
-              // console.log('Tool confirmation response received in main process:', outcome)
-              resolve(outcome);
+            (responseEvent, response) => {
+              console.log('[Main] Tool confirmation response received');
+              console.log('[Main] Response sessionId:', response.sessionId);
+              console.log(
+                '[Main] Expected sessionId (from stream start):',
+                currentSessionId,
+              );
+
+              // CRITICAL: Verify response belongs to correct session
+              if (
+                response.sessionId &&
+                response.sessionId !== currentSessionId
+              ) {
+                console.warn(
+                  `[Main] Ignoring tool confirmation response from session ${response.sessionId}, expected ${currentSessionId}`,
+                );
+                // Reject invalid response - tool execution will timeout or be cancelled
+                resolve({ approved: false, reason: 'Session mismatch' });
+                return;
+              }
+              console.log(
+                '[Main] SessionId matched, resolving with outcome:',
+                response.outcome,
+              );
+              resolve(response.outcome);
             },
           );
         });
@@ -757,13 +781,22 @@ ipcMain.handle(
       const lastMessage = messages[messages.length - 1];
       const request = [{ text: lastMessage.content }];
 
+      // Get current session ID BEFORE starting the stream
+      // This is critical: we need to associate the stream with the session it belongs to
+      const currentSessionId =
+        SessionManager.getInstance().getCurrentSessionId();
+      if (!currentSessionId) {
+        throw new Error('No active session - cannot start stream');
+      }
+
       // Create an AbortController for the signal
       const abortController = new AbortController();
 
-      // Register the stream for cancellation tracking
+      // Register the stream for cancellation tracking with sessionId
       activeStreams.set(streamId, {
         abortController,
         startTime: Date.now(),
+        sessionId: currentSessionId, // Associate stream with session
       });
 
       try {
@@ -819,6 +852,7 @@ ipcMain.handle(
             // Send error through IPC events
             const errorData = {
               streamId,
+              sessionId: currentSessionId, // Include sessionId
               type: 'error',
               error: errorMessage,
               timestamp: Date.now(),
@@ -835,6 +869,7 @@ ipcMain.handle(
             // Send compression event
             const compressionData = {
               streamId,
+              sessionId: currentSessionId, // Include sessionId
               type: 'compression',
               compressionInfo: chunk.compressionInfo,
               timestamp: Date.now(),
@@ -845,6 +880,7 @@ ipcMain.handle(
             const content = chunk.value || chunk.content || '';
             const chunkData = {
               streamId,
+              sessionId: currentSessionId, // Include sessionId
               type: 'content_delta', // Frontend expects 'content_delta'
               content: content,
               role: 'assistant',
@@ -862,6 +898,7 @@ ipcMain.handle(
             if (thoughtSummary && typeof thoughtSummary === 'object') {
               const chunkData = {
                 streamId,
+                sessionId: currentSessionId, // Include sessionId
                 type: 'thought', // Keep as 'thought' type for special frontend handling
                 thoughtSummary: {
                   subject: thoughtSummary.subject || '',
@@ -881,6 +918,7 @@ ipcMain.handle(
             const requestValue = chunk.value || {};
             const chunkData = {
               streamId,
+              sessionId: currentSessionId, // Include sessionId
               type: 'tool_call_request',
               toolCall: {
                 id: requestValue.callId,
@@ -898,6 +936,7 @@ ipcMain.handle(
             const isSuccess = !responseValue.error && !responseValue.errorType;
             const chunkData = {
               streamId,
+              sessionId: currentSessionId, // Include sessionId
               type: 'tool_call_response',
               toolCallId: responseValue.callId,
               toolName: responseValue.name || 'unknown',
@@ -914,6 +953,7 @@ ipcMain.handle(
             // Handle other event types
             const chunkData = {
               streamId,
+              sessionId: currentSessionId, // Include sessionId
               type: chunk.type,
               content: chunk.content || chunk.value || '',
               role: 'assistant',
@@ -933,6 +973,7 @@ ipcMain.handle(
         // Send completion signal
         const completionData = {
           streamId,
+          sessionId: currentSessionId, // Include sessionId
           type: 'complete',
           content: fullContent,
           role: 'assistant',
@@ -956,6 +997,7 @@ ipcMain.handle(
         // Send error through IPC events
         const errorData = {
           streamId,
+          sessionId: currentSessionId, // Include sessionId
           type: 'error',
           error: errorMessage,
           timestamp: Date.now(),
@@ -981,6 +1023,7 @@ ipcMain.handle(
       if (streamId) {
         const errorData = {
           streamId,
+          sessionId: currentSessionId, // Include sessionId
           type: 'error',
           error: errorMessage,
           timestamp: Date.now(),
