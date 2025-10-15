@@ -1048,8 +1048,19 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               }
             }
           } else if (event.type === 'tool_call_request') {
-            // Update status to show tool is executing
-            if (event.toolCall) {
+            // CRITICAL: Use sessionId from event if available, fallback to activeSessionId
+            // This ensures tool calls are saved to the correct session even if user switched
+            const targetSessionId: string = event.sessionId || activeSessionId;
+
+            console.log('[MessageInput] tool_call_request event', {
+              eventSessionId: event.sessionId,
+              activeSessionId,
+              targetSessionId,
+              toolCallId: event.toolCall?.id,
+            });
+
+            // Update status to show tool is executing only if it's the active session
+            if (event.toolCall && targetSessionId === activeSessionId) {
               setCurrentOperation({
                 type: 'tool_executing',
                 message: `Executing tool: ${event.toolCall.name}`,
@@ -1063,7 +1074,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               // Update the existing message with final content and add tool call
               const currentSession = useAppStore
                 .getState()
-                .sessions.find((s) => s.id === activeSessionId);
+                .sessions.find((s) => s.id === targetSessionId);
               if (currentSession) {
                 const messageIndex = currentSession.messages.findIndex(
                   (m) => m.id === currentAssistantMessageId,
@@ -1086,7 +1097,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       : existingToolCalls,
                   };
 
-                  updateSession(activeSessionId, {
+                  updateSession(targetSessionId, {
                     messages: updatedMessages,
                     updatedAt: new Date(),
                   });
@@ -1113,63 +1124,149 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 timestamp: new Date(),
               };
 
-              // Add tool call message to session immediately
+              // Add tool call message to the correct session (use targetSessionId from above)
               const currentSession = useAppStore
                 .getState()
-                .sessions.find((s) => s.id === activeSessionId);
+                .sessions.find((s) => s.id === targetSessionId);
               if (currentSession) {
-                updateSession(activeSessionId, {
+                updateSession(targetSessionId, {
                   messages: [...currentSession.messages, toolCallMessage],
                   updatedAt: new Date(),
                 });
               }
             }
           } else if (event.type === 'tool_call_response') {
-            // Set thinking status since AI will process the tool result
-            setCurrentOperation({
-              type: 'thinking',
-              message: 'AI is thinking',
-              details: 'Processing tool result...',
+            console.log('[MessageInput] Received tool_call_response event');
+            console.log('[MessageInput] Event data:', {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              toolSuccess: event.toolSuccess,
+              contentLength: event.content?.length,
+              sessionId: event.sessionId,
             });
 
-            // Update the tool call status in the assistant message
-            if (event.toolCallId) {
-              const currentSession = useAppStore
-                .getState()
-                .sessions.find((s) => s.id === activeSessionId);
+            // CRITICAL: Use sessionId from event to find the correct session
+            const targetSessionId: string = event.sessionId || activeSessionId;
+            const targetSession = useAppStore
+              .getState()
+              .sessions.find((s) => s.id === targetSessionId);
 
-              if (currentSession) {
-                // Find the assistant message that contains this tool call
-                const messageIndex = currentSession.messages.findIndex((msg) =>
-                  msg.toolCalls?.some((tc) => tc.id === event.toolCallId),
-                );
+            if (!targetSession) {
+              console.error(
+                '[MessageInput] Target session not found:',
+                targetSessionId,
+              );
+              continue;
+            }
 
-                if (messageIndex >= 0) {
-                  const updatedMessages = [...currentSession.messages];
-                  const message = updatedMessages[messageIndex];
+            // Set thinking status if this is the active session
+            if (targetSessionId === activeSessionId) {
+              setCurrentOperation({
+                type: 'thinking',
+                message: 'AI is thinking',
+                details: 'Processing tool result...',
+              });
+            }
 
-                  // Update the specific tool call's status and result
-                  if (message.toolCalls) {
-                    message.toolCalls = message.toolCalls.map((tc) =>
-                      tc.id === event.toolCallId
-                        ? {
-                            ...tc,
-                            status: event.toolSuccess ? 'completed' : 'failed',
-                            success: event.toolSuccess,
-                            result:
-                              event.content ||
-                              `Tool ${event.toolName} completed`,
-                          }
-                        : tc,
-                    );
-                  }
+            // CRITICAL: Match tool call by multiple features, not just ID
+            // Extract timestamp from response ID for fuzzy matching
+            const responseIdParts =
+              event.toolCallId?.match(/^(.+)-(\d+)-(.+)$/);
+            const responseToolName = responseIdParts?.[1];
+            const responseTimestamp = responseIdParts?.[2]
+              ? parseInt(responseIdParts[2], 10)
+              : null;
 
-                  updateSession(activeSessionId, {
-                    messages: updatedMessages,
-                    updatedAt: new Date(),
+            // Find the assistant message that contains a matching tool call
+            let messageIndex = -1;
+            let matchedToolCallIndex = -1;
+
+            for (let i = 0; i < targetSession.messages.length; i++) {
+              const msg = targetSession.messages[i];
+              if (!msg.toolCalls || msg.toolCalls.length === 0) continue;
+
+              for (let j = 0; j < msg.toolCalls.length; j++) {
+                const tc = msg.toolCalls[j];
+
+                // Try exact ID match first
+                if (tc.id === event.toolCallId) {
+                  messageIndex = i;
+                  matchedToolCallIndex = j;
+                  break;
+                }
+
+                // Fuzzy match: same tool name + similar timestamp
+                const callIdParts = tc.id?.match(/^(.+)-(\d+)-(.+)$/);
+                const callToolName = callIdParts?.[1];
+                const callTimestamp = callIdParts?.[2]
+                  ? parseInt(callIdParts[2], 10)
+                  : null;
+
+                if (
+                  callToolName === responseToolName &&
+                  callTimestamp &&
+                  responseTimestamp &&
+                  Math.abs(callTimestamp - responseTimestamp) < 10000 && // Within 10 seconds
+                  tc.name === event.toolName &&
+                  (!tc.status || tc.status === 'executing') // Not yet updated
+                ) {
+                  console.log('[MessageInput] Fuzzy matched tool call:', {
+                    callId: tc.id,
+                    responseId: event.toolCallId,
+                    timeDiff: Math.abs(callTimestamp - responseTimestamp),
                   });
+                  messageIndex = i;
+                  matchedToolCallIndex = j;
+                  break;
                 }
               }
+
+              if (messageIndex >= 0) break;
+            }
+
+            if (messageIndex >= 0 && matchedToolCallIndex >= 0) {
+              const updatedMessages = [...targetSession.messages];
+              const message = updatedMessages[messageIndex];
+
+              console.log('[MessageInput] Found message with tool call:', {
+                messageId: message.id,
+                matchedToolCallId: message.toolCalls![matchedToolCallIndex].id,
+                responseToolCallId: event.toolCallId,
+              });
+
+              // Update the specific tool call's status and result
+              if (message.toolCalls) {
+                message.toolCalls[matchedToolCallIndex] = {
+                  ...message.toolCalls[matchedToolCallIndex],
+                  status: event.toolSuccess ? 'completed' : 'failed',
+                  success: event.toolSuccess,
+                  result: event.content || `Tool ${event.toolName} completed`,
+                };
+
+                console.log('[MessageInput] Updated tool call status:', {
+                  id: message.toolCalls[matchedToolCallIndex].id,
+                  status: message.toolCalls[matchedToolCallIndex].status,
+                });
+              }
+
+              // Update the session
+              updateSession(targetSessionId, {
+                messages: updatedMessages,
+                updatedAt: new Date(),
+              });
+
+              console.log(
+                '[MessageInput] Session updated with new tool call status',
+              );
+            } else {
+              console.warn(
+                '[MessageInput] Could not find matching tool call for response:',
+                {
+                  toolCallId: event.toolCallId,
+                  toolName: event.toolName,
+                  sessionId: targetSessionId,
+                },
+              );
             }
 
             // Handle tool response events - create tool response message immediately
