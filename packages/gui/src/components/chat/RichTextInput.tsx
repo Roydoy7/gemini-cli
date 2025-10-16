@@ -64,6 +64,10 @@ interface RichTextInputProps {
   excelButton?: React.ReactNode;
   workspaceButton?: React.ReactNode;
   templateButton?: React.ReactNode;
+  // Default mode
+  defaultMultiline?: boolean;
+  // Allow full height expansion
+  fullHeight?: boolean;
 }
 
 export interface RichTextInputRef {
@@ -90,11 +94,13 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
       excelButton,
       workspaceButton,
       templateButton,
+      defaultMultiline = false,
+      fullHeight = false,
     },
     ref,
   ) => {
-    const [isMultilineMode, setIsMultilineMode] = useState(false);
-    const [showToolbar, setShowToolbar] = useState(false);
+    const [isMultilineMode, setIsMultilineMode] = useState(defaultMultiline);
+    const [showToolbar, setShowToolbar] = useState(defaultMultiline);
     const [showPreview, setShowPreview] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const { setInputMultilineMode } = useChatStore();
@@ -108,8 +114,10 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
       },
     }));
 
-    // Auto-adjust textarea height
+    // Auto-adjust textarea height (disabled in fullHeight mode)
     const adjustHeight = useCallback(() => {
+      if (fullHeight) return; // Don't auto-adjust when using fullHeight mode
+
       const textarea = textareaRef.current;
       if (!textarea) return;
 
@@ -118,7 +126,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
       const maxHeight = isMultilineMode ? 400 : 200;
       const newHeight = Math.min(scrollHeight, maxHeight);
       textarea.style.height = `${newHeight}px`;
-    }, [isMultilineMode]);
+    }, [isMultilineMode, fullHeight]);
 
     useEffect(() => {
       adjustHeight();
@@ -308,9 +316,11 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
         return;
       }
 
-      // In multi-line mode, Shift+Enter adds a new line
+      // In multi-line mode, Shift+Enter sends the message
       if (isMultilineMode && e.key === 'Enter' && e.shiftKey) {
-        // Default behavior (new line)
+        e.preventDefault(); // Prevent default new line
+        // Let parent handle send
+        onKeyDown?.(e);
         return;
       }
 
@@ -329,7 +339,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
     };
 
     return (
-      <div className={cn('flex flex-col gap-2', className)}>
+      <div
+        className={cn('flex flex-col gap-2', fullHeight && 'h-full', className)}
+      >
         {/* Quoted message display */}
         {quotedMessage && (
           <div className="bg-muted/50 border-l-4 border-primary rounded-r-lg px-3 py-2 relative group">
@@ -358,7 +370,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
         )}
 
         {/* Main input area */}
-        <div className="relative">
+        <div className={cn('relative', fullHeight && 'flex-1 flex flex-col')}>
           {/* Markdown toolbar - shows in multi-line mode or when explicitly shown */}
           {(isMultilineMode || showToolbar) && (
             <div className="flex items-center gap-1 mb-2 pb-2 border-b border-border flex-wrap">
@@ -607,9 +619,11 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
               disabled={disabled}
               placeholder={placeholder}
               className={cn(
-                isMultilineMode
-                  ? 'min-h-[200px] max-h-[400px]'
-                  : 'min-h-[44px] max-h-[200px]',
+                fullHeight
+                  ? 'h-full'
+                  : isMultilineMode
+                    ? 'min-h-[200px] max-h-[400px]'
+                    : 'min-h-[44px] max-h-[200px]',
                 'resize-none',
                 'focus:ring-1 focus:ring-primary/50',
                 '[&::-webkit-scrollbar]:w-2',
@@ -654,7 +668,8 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
         {/* Mode indicator and help text */}
         {isMultilineMode && (
           <div className="text-xs text-muted-foreground px-1">
-            Multi-line mode: Press Enter for new line • Markdown supported
+            Multi-line mode: Press Enter for new line • Shift+Enter to send •
+            Markdown supported
           </div>
         )}
         {!isMultilineMode && (
