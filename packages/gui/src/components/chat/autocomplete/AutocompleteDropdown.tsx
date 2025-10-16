@@ -17,6 +17,7 @@ import {
   File,
   Search,
   X,
+  RefreshCw,
 } from 'lucide-react';
 import type { AutocompleteItem } from './types';
 
@@ -25,6 +26,7 @@ interface AutocompleteDropdownProps {
   selectedIndex: number;
   onSelect: (item: AutocompleteItem) => void;
   onClose: () => void;
+  onRefresh?: () => Promise<void>;
   position: { top: number; left: number };
   visible: boolean;
 }
@@ -83,6 +85,7 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
   selectedIndex,
   onSelect,
   onClose,
+  onRefresh,
   position,
   visible,
 }) => {
@@ -93,6 +96,7 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
   );
   const [searchText, setSearchText] = useState('');
   const [fileTypeFilter, setFileTypeFilter] = useState<string>('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Filter items based on filter mode, search and file type
@@ -140,6 +144,20 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
 
   const handleFilterModeChange = (mode: 'all' | 'folders' | 'files') => {
     setFilterMode(mode);
+  };
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onRefresh || isRefreshing) return;
+
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } catch (error) {
+      console.error('Failed to refresh workspace files:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Reset filter to 'all' when dropdown opens
@@ -259,16 +277,31 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
             placeholder="Search files..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className="w-full pl-8 pr-8 py-1.5 text-sm bg-background border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full pl-8 pr-16 py-1.5 text-sm bg-background border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary"
           />
-          {searchText && (
-            <button
-              onClick={() => setSearchText('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X size={14} />
-            </button>
-          )}
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            {onRefresh && (
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                title="Refresh workspace files"
+              >
+                <RefreshCw
+                  size={14}
+                  className={cn(isRefreshing && 'animate-spin')}
+                />
+              </button>
+            )}
+            {searchText && (
+              <button
+                onClick={() => setSearchText('')}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
