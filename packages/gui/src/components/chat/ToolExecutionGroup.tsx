@@ -37,6 +37,46 @@ interface ToolExecutionGroupProps {
 }
 
 /**
+ * CopyableCodeBlock - A code block with a copy button
+ */
+const CopyableCodeBlock: React.FC<{
+  content: string;
+  className?: string;
+}> = ({ content, className = '' }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
+  return (
+    <div className="relative group">
+      <button
+        onClick={handleCopy}
+        className={cn(
+          'absolute top-1 right-1 px-2 py-0.5 rounded transition-all text-xs font-medium',
+          'bg-background/80 hover:bg-background border border-border/50',
+          'opacity-0 group-hover:opacity-100',
+          'focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary/50',
+          copied
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+      <pre className={className}>{content}</pre>
+    </div>
+  );
+};
+
+/**
  * Displays a group of tool executions (call + response pairs) in a compact, collapsible format.
  * Optimized to reduce vertical space while maintaining readability.
  */
@@ -397,9 +437,10 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                       </div>
                       <div className="flex-1 min-w-0">
                         {typeof value === 'object' && value !== null ? (
-                          <pre className="text-xs bg-green-100/50 dark:bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap font-mono overflow-x-auto border border-green-200 dark:border-border/50">
-                            {JSON.stringify(value, null, 2)}
-                          </pre>
+                          <CopyableCodeBlock
+                            content={JSON.stringify(value, null, 2)}
+                            className="text-xs bg-green-100/50 dark:bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap font-mono overflow-x-auto border border-green-200 dark:border-border/50"
+                          />
                         ) : key === 'code' ||
                           key === 'script' ||
                           key === 'query' ? (
@@ -410,9 +451,10 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                             />
                           </div>
                         ) : (
-                          <pre className="text-xs text-foreground/90 font-mono bg-green-100/50 dark:bg-muted/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto border border-green-200 dark:border-border/50">
-                            {String(value)}
-                          </pre>
+                          <CopyableCodeBlock
+                            content={String(value)}
+                            className="text-xs text-foreground/90 font-mono bg-green-100/50 dark:bg-muted/30 rounded px-2 py-1 whitespace-pre-wrap overflow-x-auto border border-green-200 dark:border-border/50"
+                          />
                         )}
                       </div>
                     </div>
