@@ -40,6 +40,8 @@ import type { ChatMessage, UniversalMessage, RoleDefinition } from '@/types';
 import { AutocompleteDropdown, useAutocomplete } from './autocomplete';
 import { RichTextInput } from './RichTextInput';
 import type { RichTextInputRef } from './RichTextInput';
+import { TemplateEditorDialog } from '../templates/TemplateEditorDialog';
+import type { PresetTemplate } from '@/types';
 
 interface Template {
   id: string;
@@ -104,12 +106,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [showTemplateMenu, setShowTemplateMenu] = useState(false);
     const [templates, setTemplates] = useState<Template[]>([]);
     const [loadingTemplates, setLoadingTemplates] = useState(false);
-    const [editingTemplate, setEditingTemplate] = useState<Template | null>(
-      null,
-    );
-    const [editContent, setEditContent] = useState('');
     const [deleteTemplateConfirm, setDeleteTemplateConfirm] =
       useState<Template | null>(null);
+    const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
+    const [templateEditorMode, setTemplateEditorMode] = useState<
+      'edit' | 'create'
+    >('edit');
+    const [templateToEdit, setTemplateToEdit] = useState<PresetTemplate | null>(
+      null,
+    );
     const [authSetupDialog, setAuthSetupDialog] = useState(false);
     const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
     const [newTemplateName, setNewTemplateName] = useState('');
@@ -346,35 +351,50 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     // Handle template editing
     const handleTemplateEdit = (e: React.MouseEvent, template: Template) => {
       e.stopPropagation();
-      setEditingTemplate(template);
-      setEditContent(template.content || template.template || '');
+      // Convert Template to PresetTemplate format for the editor
+      const presetTemplate: PresetTemplate = {
+        id: template.id,
+        name: template.name || '',
+        description: '',
+        category: 'custom',
+        icon: '📝',
+        template: template.content || template.template || '',
+        variables: [],
+        tags: [],
+        version: '1.0.0',
+        lastModified: new Date(),
+        isBuiltin: template.isBuiltin || false,
+      };
+      setTemplateToEdit(presetTemplate);
+      setTemplateEditorMode('edit');
+      setTemplateEditorOpen(true);
       setShowTemplateMenu(false);
     };
 
-    // Save template edits
-    const handleSaveTemplateEdit = async () => {
-      if (!editingTemplate) return;
+    // Save template from editor dialog
+    const handleSaveTemplateFromEditor = async (
+      template: Partial<PresetTemplate>,
+    ) => {
+      if (!template.id) return;
 
       try {
-        await geminiChatService.updateCustomTemplate(editingTemplate.id, {
-          content: editContent,
+        await geminiChatService.updateCustomTemplate(template.id, {
+          name: template.name || '',
+          content: template.template || '',
         });
+
         // Refresh templates list
         const backendTemplates = await geminiChatService.getAllTemplatesAsync();
         const customTemplates = backendTemplates.filter((t) => !t.isBuiltin);
         setTemplates(customTemplates);
-        setEditingTemplate(null);
-        setEditContent('');
+
+        // Close editor
+        setTemplateEditorOpen(false);
+        setTemplateToEdit(null);
       } catch (error) {
         console.error('Error updating template:', error);
         setError('Failed to update template');
       }
-    };
-
-    // Cancel template editing
-    const handleCancelTemplateEdit = () => {
-      setEditingTemplate(null);
-      setEditContent('');
     };
 
     // Handle save template button click
@@ -2311,6 +2331,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 selectedIndex={autocomplete.selectedIndex}
                 onSelect={autocomplete.selectItem}
                 onClose={autocomplete.hideAutocomplete}
+                onRefresh={autocomplete.refreshAutocomplete}
                 position={autocomplete.position}
                 visible={autocomplete.isVisible}
               />
@@ -2339,38 +2360,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           </div>
         </div>
 
-        {/* Template Edit Modal */}
-        {editingTemplate && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-            <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-2xl mx-4">
-              <div className="p-4 border-b border-border">
-                <h3 className="text-lg font-medium text-foreground">
-                  Edit Template: {editingTemplate.name || 'Untitled'}
-                </h3>
-              </div>
-              <div className="p-4">
-                <Textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  placeholder="Enter template content..."
-                  className="min-h-[200px] resize-none"
-                  autoFocus
-                />
-              </div>
-              <div className="p-4 border-t border-border flex justify-end gap-2">
-                <Button variant="ghost" onClick={handleCancelTemplateEdit}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveTemplateEdit}
-                  disabled={editContent.trim() === ''}
-                >
-                  Save Changes
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Template Editor Dialog */}
+        <TemplateEditorDialog
+          isOpen={templateEditorOpen}
+          onClose={() => {
+            setTemplateEditorOpen(false);
+            setTemplateToEdit(null);
+          }}
+          onSave={handleSaveTemplateFromEditor}
+          template={templateToEdit}
+          mode={templateEditorMode}
+        />
 
         {/* Delete Template Confirmation Dialog */}
         {deleteTemplateConfirm && (
