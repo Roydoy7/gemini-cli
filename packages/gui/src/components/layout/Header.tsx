@@ -92,20 +92,24 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 h-16 border-b border-border bg-card px-6 flex items-center justify-between">
+    <header className="sticky top-0 z-40 h-16 border-b border-border bg-card px-4 md:px-6 flex items-center justify-between">
       {/* Left Section - Model and Role Info */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1">
         <div className="relative">
           <Button
             variant="ghost"
             size="sm"
-            className="gap-2 h-8 px-3"
+            className="gap-1 md:gap-2 h-8 px-2 md:px-3"
             onClick={() => setShowModelSelector(true)}
           >
             {getProviderIcon()}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">Model:</span>
-              <span className="text-sm font-medium">{currentModel}</span>
+            <div className="flex items-center gap-1 md:gap-1.5">
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Model:
+              </span>
+              <span className="text-sm font-medium truncate max-w-[80px] sm:max-w-none">
+                {currentModel}
+              </span>
             </div>
           </Button>
         </div>
@@ -122,19 +126,23 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        <div className="w-px h-6 bg-border" />
+        <div className="w-px h-6 bg-border hidden sm:block" />
 
-        <div className="relative">
+        <div className="relative hidden sm:block">
           <Button
             variant="ghost"
             size="sm"
-            className="gap-2 h-8 px-3"
+            className="gap-1 md:gap-2 h-8 px-2 md:px-3"
             onClick={() => setShowRoleSelector(true)}
           >
             <User size={16} />
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">Role:</span>
-              <span className="text-sm">{currentRole.replace('_', ' ')}</span>
+            <div className="flex items-center gap-1 md:gap-1.5">
+              <span className="text-xs text-muted-foreground hidden md:inline">
+                Role:
+              </span>
+              <span className="text-sm truncate max-w-[60px] md:max-w-none">
+                {currentRole.replace('_', ' ')}
+              </span>
             </div>
           </Button>
         </div>
@@ -151,18 +159,18 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        <div className="w-px h-6 bg-border" />
+        <div className="w-px h-6 bg-border hidden sm:block" />
 
         {/* Workspace moved to Sidebar for better UX */}
       </div>
 
       {/* Right Section - Controls */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
         {/* Authentication Status Indicator */}
         {currentProvider === 'gemini' && (
           <button
             onClick={() => setShowAuthSettings(true)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors ${
+            className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-md text-xs transition-colors ${
               authStatus.authenticated
                 ? 'hover:bg-muted/50'
                 : 'bg-red-500/10 hover:bg-red-500/20 border border-red-500/30'
@@ -175,16 +183,21 @@ export const Header: React.FC<HeaderProps> = ({
           >
             {authStatus.authenticated ? (
               <>
-                <CheckCircle size={14} className="text-green-500" />
-                <span className="text-green-600 font-medium">
+                <CheckCircle
+                  size={14}
+                  className="text-green-500 flex-shrink-0"
+                />
+                <span className="text-green-600 font-medium hidden sm:inline">
                   {authStatus.type === 'oauth' ? 'OAuth' : 'API Key'}
                 </span>
               </>
             ) : (
               <>
-                <Key size={14} className="text-red-600" />
-                <span className="text-red-600 font-medium">Auth Required</span>
-                <span className="text-red-500/70 text-[10px]">
+                <Key size={14} className="text-red-600 flex-shrink-0" />
+                <span className="text-red-600 font-medium hidden sm:inline">
+                  Auth Required
+                </span>
+                <span className="text-red-500/70 text-[10px] hidden md:inline">
                   Click to Config
                 </span>
               </>
@@ -202,7 +215,7 @@ export const Header: React.FC<HeaderProps> = ({
           variant="ghost"
           size="icon"
           onClick={toggleTheme}
-          className="h-8 w-8"
+          className="h-8 w-8 flex-shrink-0"
           title={`Current theme: ${theme} (click to cycle)`}
         >
           {getThemeIcon()}
@@ -211,20 +224,24 @@ export const Header: React.FC<HeaderProps> = ({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-8 w-8 flex-shrink-0 hidden sm:flex"
           title={`Language: ${language}`}
         >
           <Globe size={16} />
         </Button>
 
-        <Button variant="ghost" size="icon" className="h-8 w-8">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 flex-shrink-0 hidden md:flex"
+        >
           <Settings size={16} />
         </Button>
 
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-8 w-8 flex-shrink-0"
           onClick={onToggleRightSidebar}
           title={`${isRightSidebarOpen ? 'Hide' : 'Show'} sidebar`}
         >
