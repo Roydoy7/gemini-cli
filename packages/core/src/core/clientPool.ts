@@ -80,6 +80,10 @@ export class GeminiClientPool {
       sessionId: string,
       client: GeminiClient,
     ) => void,
+    private readonly onRestoreSession: (
+      sessionId: string,
+      client: GeminiClient,
+    ) => Promise<void>,
   ) {
     this.config = config;
   }
@@ -102,6 +106,12 @@ export class GeminiClientPool {
     const client = new GeminiClient(this.config);
     await client.initialize();
     await client.updateToolsForCurrentRole();
+
+    // Restore session history from SessionManager
+    console.log(
+      `[GeminiClientPool] Restoring session history for session: ${sessionId}`,
+    );
+    await this.onRestoreSession(sessionId, client);
 
     // Wrap client with auto-save and timeout management
     const wrapper = new ClientWrapper(

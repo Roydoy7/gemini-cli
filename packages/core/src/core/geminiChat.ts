@@ -456,12 +456,95 @@ export class GeminiChat {
    * chat session.
    */
   getHistory(curated: boolean = false): Content[] {
-    const history = curated
-      ? extractCuratedHistory(this.history)
-      : this.history;
+    let history = curated ? extractCuratedHistory(this.history) : this.history;
+
+    // Remove unpaired tool calls to satisfy Gemini API requirements
+    history = this.removeUnpairedToolCalls(history);
+
     // Deep copy the history to avoid mutating the history outside of the
     // chat session.
     return structuredClone(history);
+  }
+
+  /**
+   * Remove unpaired function calls from history.
+   * Gemini requires that every functionCall must have a corresponding functionResponse.
+   * This method removes any functionCall parts that don't have a matching functionResponse.
+   */
+  private removeUnpairedToolCalls(history: Content[]): Content[] {
+    // Collect all function call IDs and their corresponding response IDs
+    const functionCallIds = new Set<string>();
+    const functionResponseIds = new Set<string>();
+
+    // First pass: collect all function call and response IDs
+    for (const content of history) {
+      if (!content.parts) continue;
+
+      for (const part of content.parts) {
+        if (part.functionCall?.id) {
+          functionCallIds.add(part.functionCall.id);
+        }
+        if (part.functionResponse?.name) {
+          // Extract callId from functionResponse
+          // We store it in response.callId (see chatManager.ts convertUniversalToGemini)
+          const response = part.functionResponse.response;
+          if (
+            response &&
+            typeof response === 'object' &&
+            'callId' in response
+          ) {
+            const callId = (response as { callId?: string }).callId;
+            if (callId) {
+              functionResponseIds.add(callId);
+            }
+          }
+        }
+      }
+    }
+
+    // Find unpaired function calls (calls without responses)
+    const unpairedCallIds = new Set<string>();
+    for (const callId of functionCallIds) {
+      if (!functionResponseIds.has(callId)) {
+        unpairedCallIds.add(callId);
+      }
+    }
+
+    if (unpairedCallIds.size > 0) {
+      console.log(
+        `[GeminiChat] Removing ${unpairedCallIds.size} unpaired tool calls: ${Array.from(unpairedCallIds).join(', ')}`,
+      );
+    }
+
+    // Second pass: filter out unpaired function calls
+    const cleanedHistory: Content[] = [];
+    for (const content of history) {
+      if (!content.parts) {
+        cleanedHistory.push(content);
+        continue;
+      }
+
+      const cleanedParts = content.parts.filter((part) => {
+        // Remove functionCall parts with unpaired IDs
+        if (
+          part.functionCall?.id &&
+          unpairedCallIds.has(part.functionCall.id)
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      // Only include content if it still has parts after filtering
+      if (cleanedParts.length > 0) {
+        cleanedHistory.push({
+          ...content,
+          parts: cleanedParts,
+        });
+      }
+    }
+
+    return cleanedHistory;
   }
 
   /**
@@ -536,6 +619,7 @@ export class GeminiChat {
     streamResponse: AsyncGenerator<GenerateContentResponse>,
   ): AsyncGenerator<GenerateContentResponse> {
     const modelResponseParts: Part[] = [];
+    const debugTurns: GenerateContentResponse[] = [];
 
     let hasToolCall = false;
     let hasFinishReason = false;
@@ -552,6 +636,12 @@ export class GeminiChat {
           }
           if (content.parts.some((part) => part.functionCall)) {
             hasToolCall = true;
+            //Set function call id
+            for (const part of content.parts) {
+              if (part.functionCall) {
+                part.functionCall.id = `${part.functionCall.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+              }
+            }
           }
 
           // Include all parts including thought parts
@@ -571,6 +661,7 @@ export class GeminiChat {
         }
       }
 
+      debugTurns.push(chunk);
       yield chunk; // Yield every chunk to the UI immediately.
     }
 
@@ -625,14 +716,32 @@ export class GeminiChat {
       !hasToolCall &&
       (!hasFinishReason || (!responseText && !hasThoughtSignature))
     ) {
+      // Helper function to format debug information from the stream
+      const formatDebugInfo = () => {
+        const toolCallCount = consolidatedParts.filter(
+          (part) => part.functionCall,
+        ).length;
+        const textPreview = responseText
+          ? responseText.length > 100
+            ? responseText.substring(0, 100) + '...'
+            : responseText
+          : '(empty)';
+        const chunkCount = debugTurns.length;
+        const finishReasons = debugTurns
+          .flatMap((turn) => turn.candidates?.map((c) => c.finishReason) || [])
+          .filter(Boolean);
+
+        return `LLM returned ${chunkCount} chunk(s), ${toolCallCount} tool call(s), response text: "${textPreview}", finish reasons: [${finishReasons.join(', ') || 'none'}], hasThoughtSignature: ${hasThoughtSignature}`;
+      };
+
       if (!hasFinishReason) {
         throw new InvalidStreamError(
-          'Model stream ended without a finish reason.',
+          `Model stream ended without a finish reason. ${formatDebugInfo()}`,
           'NO_FINISH_REASON',
         );
       } else {
         throw new InvalidStreamError(
-          'Model stream ended with empty response text.',
+          `Model stream ended with empty response text. ${formatDebugInfo()}`,
           'NO_RESPONSE_TEXT',
         );
       }

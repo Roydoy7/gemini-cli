@@ -55,10 +55,16 @@ export class GeminiChatManager {
     this.sessionManager = SessionManager.getInstance();
     this.roleManager = RoleManager.getInstance();
 
-    // Create client pool with save callback
-    this.clientPool = new GeminiClientPool(config, (sessionId, client) => {
-      this.saveSessionFromClient(sessionId, client);
-    });
+    // Create client pool with save and restore callbacks
+    this.clientPool = new GeminiClientPool(
+      config,
+      (sessionId, client) => {
+        this.saveSessionFromClient(sessionId, client);
+      },
+      async (sessionId, client) => {
+        await this.restoreSessionIntoClient(sessionId, client);
+      },
+    );
   }
 
   /**
@@ -767,6 +773,36 @@ export class GeminiChatManager {
     }
 
     return contents;
+  }
+
+  /**
+   * Restore session history into a specific GeminiClient instance
+   * Used by clientPool when creating a new client for an existing session
+   */
+  private async restoreSessionIntoClient(
+    sessionId: string,
+    client: GeminiClient,
+  ): Promise<void> {
+    // Get history from SessionManager (UniversalMessage[])
+    const universalHistory = this.sessionManager.getDisplayMessages(sessionId);
+
+    // Convert to Gemini format (Content[])
+    const geminiHistory = this.convertUniversalToGemini(universalHistory);
+
+    // Load into GeminiClient
+    if (geminiHistory.length > 0) {
+      // Restart chat with existing history
+      await client.startChat(geminiHistory);
+      console.log(
+        `[GeminiChatManager] Restored ${geminiHistory.length} messages into GeminiClient for session ${sessionId}`,
+      );
+    } else {
+      // Fresh chat
+      await client.resetChat();
+      console.log(
+        `[GeminiChatManager] Started fresh chat for session ${sessionId}`,
+      );
+    }
   }
 
   /**
