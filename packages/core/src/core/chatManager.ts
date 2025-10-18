@@ -660,17 +660,15 @@ export class GeminiChatManager {
           toolName = part.functionResponse.name;
           const response = part.functionResponse.response;
 
-          // CRITICAL: Restore callId from response if available
-          // We store callId in response.callId to preserve it across conversions
-          if (
-            response &&
-            typeof response === 'object' &&
-            'callId' in response &&
-            typeof response['callId'] === 'string'
-          ) {
-            toolCallId = response['callId'];
+          // CRITICAL: Extract callId from functionResponse.id field
+          // This ID matches the functionCall.id from the corresponding tool call
+          if (part.functionResponse.id) {
+            toolCallId = part.functionResponse.id;
           } else {
             // Fallback: generate new ID if not found (shouldn't happen in normal flow)
+            console.warn(
+              `[GeminiChatManager] functionResponse missing id field, generating fallback ID`,
+            );
             toolCallId = `call_${Date.now()}`;
           }
 
@@ -757,11 +755,10 @@ export class GeminiChatManager {
       if (msg.role === 'tool' && msg.tool_call_id) {
         parts.push({
           functionResponse: {
+            id: msg.tool_call_id, // CRITICAL: Set id field to match functionCall.id
             name: msg.name || '',
             response: {
               output: msg.content,
-              // CRITICAL: Store callId in response to preserve it across conversions
-              callId: msg.tool_call_id,
             },
           },
         });

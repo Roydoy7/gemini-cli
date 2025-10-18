@@ -64,7 +64,7 @@ interface ContentRetryOptions {
 }
 
 const INVALID_CONTENT_RETRY_OPTIONS: ContentRetryOptions = {
-  maxAttempts: 2, // 1 initial call + 1 retry
+  maxAttempts: 1, // 1 initial call + 0 retry
   initialDelayMs: 500,
 };
 
@@ -470,8 +470,23 @@ export class GeminiChat {
    * Remove unpaired function calls from history.
    * Gemini requires that every functionCall must have a corresponding functionResponse.
    * This method removes any functionCall parts that don't have a matching functionResponse.
+   *
+   * IMPORTANT: Pending tool calls (in the last model message) are NOT considered unpaired,
+   * as they are currently being processed and waiting for responses.
    */
   private removeUnpairedToolCalls(history: Content[]): Content[] {
+    // Collect IDs of pending tool calls (from the last model message)
+    const pendingToolCallIds = new Set<string>();
+    const lastMessage =
+      history.length > 0 ? history[history.length - 1] : undefined;
+    if (lastMessage?.role === 'model' && lastMessage.parts) {
+      for (const part of lastMessage.parts) {
+        if (part.functionCall?.id) {
+          pendingToolCallIds.add(part.functionCall.id);
+        }
+      }
+    }
+
     // Collect all function call IDs and their corresponding response IDs
     const functionCallIds = new Set<string>();
     const functionResponseIds = new Set<string>();
@@ -484,28 +499,21 @@ export class GeminiChat {
         if (part.functionCall?.id) {
           functionCallIds.add(part.functionCall.id);
         }
-        if (part.functionResponse?.name) {
-          // Extract callId from functionResponse
-          // We store it in response.callId (see chatManager.ts convertUniversalToGemini)
-          const response = part.functionResponse.response;
-          if (
-            response &&
-            typeof response === 'object' &&
-            'callId' in response
-          ) {
-            const callId = (response as { callId?: string }).callId;
-            if (callId) {
-              functionResponseIds.add(callId);
-            }
+        if (part.functionResponse) {
+          // Extract callId from functionResponse.id field
+          // This ID should match the functionCall.id from the corresponding tool call
+          if (part.functionResponse.id) {
+            functionResponseIds.add(part.functionResponse.id);
           }
         }
       }
     }
 
     // Find unpaired function calls (calls without responses)
+    // Exclude pending tool calls as they are currently being processed
     const unpairedCallIds = new Set<string>();
     for (const callId of functionCallIds) {
-      if (!functionResponseIds.has(callId)) {
+      if (!functionResponseIds.has(callId) && !pendingToolCallIds.has(callId)) {
         unpairedCallIds.add(callId);
       }
     }
@@ -714,7 +722,8 @@ export class GeminiChat {
     // - Empty response text AND no thoughtSignature
     if (
       !hasToolCall &&
-      (!hasFinishReason || (!responseText && !hasThoughtSignature))
+      !responseText &&
+      (!hasFinishReason || !hasThoughtSignature)
     ) {
       // Helper function to format debug information from the stream
       const formatDebugInfo = () => {
@@ -731,7 +740,12 @@ export class GeminiChat {
           .flatMap((turn) => turn.candidates?.map((c) => c.finishReason) || [])
           .filter(Boolean);
 
-        return `LLM returned ${chunkCount} chunk(s), ${toolCallCount} tool call(s), response text: "${textPreview}", finish reasons: [${finishReasons.join(', ') || 'none'}], hasThoughtSignature: ${hasThoughtSignature}`;
+        const lastFinishReason =
+          finishReasons.length > 0
+            ? finishReasons[finishReasons.length - 1]
+            : 'none';
+
+        return `Last finish reason: ${lastFinishReason}\nLLM returned ${chunkCount} chunk(s), ${toolCallCount} tool call(s), response text: "${textPreview}", all finish reasons: [${finishReasons.join(', ') || 'none'}], hasThoughtSignature: ${hasThoughtSignature}`;
       };
 
       if (!hasFinishReason) {

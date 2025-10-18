@@ -381,22 +381,6 @@ export class SessionManager {
       session.conversationHistory = [...history];
       session.lastUpdated = new Date();
       this.saveSession(session);
-
-      // Log thinking content summary
-      const messagesWithThinking = history.filter((msg) =>
-        msg.content.includes('<think>'),
-      );
-      console.log(
-        `[SessionManager] Saved ${history.length} messages to session ${sessionId} (${messagesWithThinking.length} with thinking)`,
-      );
-      messagesWithThinking.forEach((msg, idx) => {
-        const thinkingMatch = msg.content.match(/<think>([\s\S]*?)<\/think>/);
-        if (thinkingMatch) {
-          console.log(
-            `[SessionManager]   Message ${idx + 1}: ${thinkingMatch[1].substring(0, 50)}...`,
-          );
-        }
-      });
     } else {
       console.warn(
         `[SessionManager] Cannot save history: session ${sessionId} not found`,
@@ -473,17 +457,6 @@ export class SessionManager {
     // Filter out "Please continue." continuation prompts from display
     const displayMessages = session.conversationHistory.filter(
       (msg) => !(msg.role === 'user' && msg.content === 'Please continue.'),
-    );
-
-    // Log thinking content summary
-    const messagesWithThinking = displayMessages.filter((msg) =>
-      msg.content.includes('<think>'),
-    );
-    console.log(
-      `[SessionManager] Retrieved ${displayMessages.length} display messages (filtered ${session.conversationHistory.length - displayMessages.length} continuation prompts) for session ${targetSessionId}`,
-    );
-    console.log(
-      `[SessionManager]   ${messagesWithThinking.length} messages contain thinking content`,
     );
 
     return displayMessages;
