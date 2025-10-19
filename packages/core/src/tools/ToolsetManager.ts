@@ -32,8 +32,15 @@ import { EconomicCalendarTool } from './economic-calendar-tool.js';
 import { FinancialAnalyzer } from './financial-analyzer-tool.js';
 import { EconomicNewsTool } from './economic-news-tool.js';
 import { KnowledgeBaseTool } from './knowledge-base-tool.js';
-// import { XlwingsDocTool } from './xlwings-doc-tool.js';
+import { DocumentIndexerAgent } from '../agents/document-indexer.js';
+import { DocumentRetrieverAgent } from '../agents/document-retriever.js';
+import type { AgentDefinition } from '../agents/types.js';
 
+/**
+ * Type for tool constructor/class (not instance).
+ * Tools are stored as classes and instantiated when needed.
+ * Using 'any' here because different tools have different constructor signatures.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolClass = any;
 
@@ -112,6 +119,17 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
   ],
 };
 
+/**
+ * Type for subagent definition with any output schema.
+ * Subagents can have different output schemas, so we use a generic bound.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyAgentDefinition = AgentDefinition<any>;
+
+const ROLE_SUBAGENT_MAP: Record<string, AnyAgentDefinition[]> = {
+  office_assistant: [DocumentIndexerAgent, DocumentRetrieverAgent],
+};
+
 export class ToolsetManager {
   getToolsForRole(roleId: string): ToolClass[] {
     return ROLE_TOOLSET_MAP[roleId] || [];
@@ -119,5 +137,9 @@ export class ToolsetManager {
 
   getSupportedRoles(): string[] {
     return Object.keys(ROLE_TOOLSET_MAP);
+  }
+
+  getSubagentForRole(roleId: string): AgentDefinition[] {
+    return ROLE_SUBAGENT_MAP[roleId] || [];
   }
 }
