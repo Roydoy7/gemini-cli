@@ -354,6 +354,16 @@ knowledge_base(op="search",
     );
   }
 
+  /**
+   * KnowledgeBase operations are safe for non-interactive execution in subagents.
+   * Operations are idempotent and only affect the vector database.
+   */
+  protected override requiresConfirmation(
+    _params: KnowledgeBaseParams,
+  ): boolean {
+    return false;
+  }
+
   protected override validateToolParamValues(
     params: KnowledgeBaseParams,
   ): string | null {

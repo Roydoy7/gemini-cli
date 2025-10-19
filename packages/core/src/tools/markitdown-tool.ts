@@ -92,7 +92,10 @@ export interface MarkItDownResult extends ToolResult {
 /**
  * Tool for converting documents to Markdown using MarkItDown
  */
-export class MarkItDownTool extends BasePythonTool<MarkItDownParams, MarkItDownResult> {
+export class MarkItDownTool extends BasePythonTool<
+  MarkItDownParams,
+  MarkItDownResult
+> {
   static readonly Name: string = 'markitdown_tools';
 
   constructor(config: Config) {
@@ -107,35 +110,54 @@ export class MarkItDownTool extends BasePythonTool<MarkItDownParams, MarkItDownR
         properties: {
           op: {
             type: 'string',
-            enum: ['convert', 'extract_text', 'analyze_structure', 'convert_path_only'],
-            description: 'Operation to perform: convert (full conversion to markdown), extract_text (simple text extraction), analyze_structure (document structure analysis), convert_path_only (convert and return only the output path for LLM to use later)'
+            enum: [
+              'convert',
+              'extract_text',
+              'analyze_structure',
+              'convert_path_only',
+            ],
+            description:
+              'Operation to perform: convert (full conversion to markdown), extract_text (simple text extraction), analyze_structure (document structure analysis), convert_path_only (convert and return only the output path for LLM to use later)',
           },
           file_path: {
             type: 'string',
-            description: 'Path to the document file (supports PDF, DOCX, PPTX, XLSX)'
+            description:
+              'Path to the document file (supports PDF, DOCX, PPTX, XLSX)',
           },
           output_path: {
             type: 'string',
-            description: 'Optional output path for converted markdown (defaults to same directory with .md extension)'
+            description:
+              'Optional output path for converted markdown (defaults to same directory with .md extension)',
           },
           include_metadata: {
             type: 'boolean',
-            description: 'Whether to include metadata in the output (default: true)'
+            description:
+              'Whether to include metadata in the output (default: true)',
           },
           extract_images: {
             type: 'boolean',
-            description: 'Whether to extract images if supported (default: false)'
+            description:
+              'Whether to extract images if supported (default: false)',
           },
           max_length: {
             type: 'number',
-            description: 'Maximum length of output for large documents (default: unlimited)'
-          }
-        }
+            description:
+              'Maximum length of output for large documents (default: unlimited)',
+          },
+        },
       },
       config,
       true, // isOutputMarkdown
-      false // canUpdateOutput
+      false, // canUpdateOutput
     );
+  }
+
+  /**
+   * MarkItDown operations are safe for non-interactive execution in subagents.
+   * Only creates new files, doesn't modify existing ones.
+   */
+  protected override requiresConfirmation(_params: MarkItDownParams): boolean {
+    return false;
   }
 
   protected generatePythonCode(params: MarkItDownParams): string {
@@ -215,19 +237,27 @@ try:
     if (operation === 'convert') {
       pythonCode += `
             # Full conversion with optional output
-            ${outputPath ? `
+            ${
+              outputPath
+                ? `
             output_path = r"${outputPath}"
-            ` : `
+            `
+                : `
             output_path = file_path.rsplit('.', 1)[0] + '.md'
-            `}
+            `
+            }
 
             # Apply max length if specified
             content_to_save = markdown_content
-            ${maxLength > 0 ? `
+            ${
+              maxLength > 0
+                ? `
             if len(markdown_content) > ${maxLength}:
                 content_to_save = markdown_content[:${maxLength}]
                 content_to_save += f"\\n\\n... (truncated, total length: {len(markdown_content)} characters)"
-            ` : ''}
+            `
+                : ''
+            }
 
             # Save markdown file
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -244,19 +274,27 @@ try:
     } else if (operation === 'convert_path_only') {
       pythonCode += `
             # Convert and save markdown, return only path
-            ${outputPath ? `
+            ${
+              outputPath
+                ? `
             output_path = r"${outputPath}"
-            ` : `
+            `
+                : `
             output_path = file_path.rsplit('.', 1)[0] + '.md'
-            `}
+            `
+            }
 
             # Apply max length if specified
             content_to_save = markdown_content
-            ${maxLength > 0 ? `
+            ${
+              maxLength > 0
+                ? `
             if len(markdown_content) > ${maxLength}:
                 content_to_save = markdown_content[:${maxLength}]
                 content_to_save += f"\\n\\n... (truncated, total length: {len(markdown_content)} characters)"
-            ` : ''}
+            `
+                : ''
+            }
 
             # Save markdown file
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -281,10 +319,14 @@ try:
             text_content = re.sub(r'^[\\*\\-\\+]\\s+', '', text_content, flags=re.MULTILINE)  # Remove list markers
             text_content = re.sub(r'\\n{3,}', '\\n\\n', text_content)  # Normalize line breaks
 
-            ${maxLength > 0 ? `
+            ${
+              maxLength > 0
+                ? `
             if len(text_content) > ${maxLength}:
                 text_content = text_content[:${maxLength}] + "..."
-            ` : ''}
+            `
+                : ''
+            }
 
             result["conversion"] = {
                 "success": True,
@@ -389,31 +431,44 @@ print(json.dumps(result, ensure_ascii=False, indent=2))
     return pythonCode;
   }
 
-  protected parseResult(pythonOutput: string, params: MarkItDownParams): MarkItDownResult {
+  protected parseResult(
+    pythonOutput: string,
+    params: MarkItDownParams,
+  ): MarkItDownResult {
     try {
       const result = JSON.parse(pythonOutput) as MarkItDownResult;
 
       // Map Python error types to ToolErrorType
       // Note: typeof null === 'object' in JavaScript, so check !== null first
-      if (result.error !== null && result.error !== undefined && typeof result.error === 'object') {
+      if (
+        result.error !== null &&
+        result.error !== undefined &&
+        typeof result.error === 'object'
+      ) {
         const errorTypeMap: Record<string, ToolErrorType> = {
-          'FileNotFound': ToolErrorType.FILE_NOT_FOUND,
-          'DependencyError': ToolErrorType.EXECUTION_FAILED,
-          'FileNotFoundError': ToolErrorType.FILE_NOT_FOUND,
-          'ImportError': ToolErrorType.EXECUTION_FAILED,
-          'ConversionError': ToolErrorType.EXECUTION_FAILED,
+          FileNotFound: ToolErrorType.FILE_NOT_FOUND,
+          DependencyError: ToolErrorType.EXECUTION_FAILED,
+          FileNotFoundError: ToolErrorType.FILE_NOT_FOUND,
+          ImportError: ToolErrorType.EXECUTION_FAILED,
+          ConversionError: ToolErrorType.EXECUTION_FAILED,
         };
 
         // Map the error type if it exists in our map, otherwise use UNKNOWN
         if (result.error.type) {
-          const mappedType = errorTypeMap[result.error.type as string] || ToolErrorType.UNKNOWN;
+          const mappedType =
+            errorTypeMap[result.error.type as string] || ToolErrorType.UNKNOWN;
           result.error.type = mappedType;
         }
       }
 
       // Generate helpful response based on operation
       // Note: typeof null === 'object' in JavaScript, so check !== null first
-      if (result.error !== null && result.error !== undefined && typeof result.error === 'object' && result.error.message) {
+      if (
+        result.error !== null &&
+        result.error !== undefined &&
+        typeof result.error === 'object' &&
+        result.error.message
+      ) {
         const errorMessage = result.error.message || 'Unknown error occurred';
         const errorDetails = result.error.details || '';
         result.returnDisplay = `❌ **Error:** ${errorMessage}\n\n${errorDetails}`;
@@ -433,9 +488,9 @@ print(json.dumps(result, ensure_ascii=False, indent=2))
 ${preview}${truncated ? '\n...(truncated)' : ''}
 \`\`\``;
 
-        result.llmContent = result.conversion?.full_content ||
+        result.llmContent =
+          result.conversion?.full_content ||
           `Document converted successfully. Output saved to ${result.conversion?.output_path}. Content length: ${result.conversion?.markdown_length} characters.`;
-
       } else if (params.op === 'convert_path_only') {
         result.returnDisplay = `✅ **Document converted successfully!**
 
@@ -446,7 +501,6 @@ ${preview}${truncated ? '\n...(truncated)' : ''}
 💡 **Path returned for LLM use:** The markdown file has been created and the path is available for further processing.`;
 
         result.llmContent = `Document converted successfully. Markdown file saved to: ${result.conversion?.output_path}. Length: ${result.conversion?.markdown_length} characters. Use this path to read the content when needed.`;
-
       } else if (params.op === 'extract_text') {
         result.returnDisplay = `✅ **Text extracted successfully!**
 
@@ -456,8 +510,8 @@ ${preview}${truncated ? '\n...(truncated)' : ''}
 **Content:**
 ${result.conversion?.full_content || '(no content)'}`;
 
-        result.llmContent = result.conversion?.full_content || 'No text content extracted.';
-
+        result.llmContent =
+          result.conversion?.full_content || 'No text content extracted.';
       } else if (params.op === 'analyze_structure') {
         const structure = result.structure || {};
         result.returnDisplay = `✅ **Document structure analyzed!**
@@ -473,10 +527,14 @@ ${result.conversion?.full_content || '(no content)'}`;
 - **Code blocks:** ${structure.code_blocks_count || 0}
 - **Paragraphs:** ${structure.total_paragraphs || 0}
 
-${structure.headings && structure.headings.length > 0 ? `**Document Outline:**
+${
+  structure.headings && structure.headings.length > 0
+    ? `**Document Outline:**
 \`\`\`
 ${structure.headings.join('\n')}
-\`\`\`` : ''}`;
+\`\`\``
+    : ''
+}`;
 
         result.llmContent = `Document structure: ${structure.headings?.length || 0} headings, ${structure.tables_count || 0} tables, ${structure.images_count || 0} images, ${structure.total_paragraphs || 0} paragraphs.`;
       }
@@ -489,10 +547,9 @@ ${structure.headings.join('\n')}
         error: {
           type: ToolErrorType.EXECUTION_FAILED,
           message: String(error),
-          details: pythonOutput
-        }
+          details: pythonOutput,
+        },
       };
     }
   }
-
 }
