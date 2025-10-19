@@ -227,6 +227,9 @@ Remember: Users value working solutions, not elaborate thinking processes. Act, 
 - **Use code blocks** for any code, commands, or file paths
 - **Summarize actions taken** briefly after completing tasks
 
+# SUBAGENTS
+- Use subagent to save context windows as necessary
+
 `,
     // tools: ['read-file', 'write-file', 'edit', 'web-fetch', 'web-search'],
     // tools: ['read_file', 'write_file', 'replace', 'web_fetch', 'google_web_search']

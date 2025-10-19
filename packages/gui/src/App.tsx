@@ -365,6 +365,7 @@ export const App: React.FC = () => {
           interactive: true,
           telemetry: { enabled: false },
           approvalMode: 'default', // Require user confirmation for important tool calls
+          enableSubagents: true,
         };
 
         await geminiChatService.initialize(configParams, currentRole);
