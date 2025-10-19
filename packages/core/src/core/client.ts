@@ -262,6 +262,35 @@ Reminder: Do not return an empty response when a tool call is required.
       return toolInstance.schema;
     });
 
+    // Register role-specific subagents as tools
+    const roleSubagentDefinitions = toolsetManager.getSubagentForRole(
+      currentRole.id,
+    );
+    if (roleSubagentDefinitions && roleSubagentDefinitions.length > 0) {
+      const { SubagentToolWrapper } = await import(
+        '../agents/subagent-tool-wrapper.js'
+      );
+
+      for (const definition of roleSubagentDefinitions) {
+        try {
+          const messageBusEnabled =
+            this.config.getEnableMessageBusIntegration();
+          const wrapper = new SubagentToolWrapper(
+            definition,
+            this.config,
+            messageBusEnabled ? this.config.getMessageBus() : undefined,
+          );
+          toolRegistry.registerTool(wrapper);
+          toolDeclarations.push(wrapper.schema);
+        } catch (error) {
+          console.error(
+            `[GeminiClient] Failed to register subagent ${definition.name}:`,
+            error,
+          );
+        }
+      }
+    }
+
     // Set tools on GeminiChat
     const tools = [{ functionDeclarations: toolDeclarations }];
     this.chat.setTools(tools);

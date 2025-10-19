@@ -42,6 +42,10 @@ import { templateString } from './utils.js';
 import { parseThought } from '../utils/thoughtUtils.js';
 import { type z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { PDFTool } from '../tools/pdf-tool.js';
+import { MarkItDownTool } from '../tools/markitdown-tool.js';
+import { KnowledgeBaseTool } from '../tools/knowledge-base-tool.js';
+import { GeminiSearchTool } from '../tools/gemini-search-tool.js';
 
 /** A callback function to report on agent activity. */
 export type ActivityCallback = (activity: SubagentActivityEvent) => void;
@@ -717,6 +721,10 @@ Important Rules:
       ReadManyFilesTool.Name,
       MemoryTool.Name,
       WebSearchTool.Name,
+      PDFTool.Name,
+      MarkItDownTool.Name,
+      KnowledgeBaseTool.Name,
+      GeminiSearchTool.Name,
     ]);
     for (const tool of toolRegistry.getAllTools()) {
       if (!allowlist.has(tool.name)) {
