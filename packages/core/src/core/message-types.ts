@@ -78,3 +78,39 @@ export interface CompressionInfo {
   newTokenCount: number;
   compressionRatio: number;
 }
+
+/**
+ * Tool execution stage enumeration
+ */
+export enum ToolExecutionStage {
+  VALIDATING = 'validating', // Validating parameters
+  CONFIRMING = 'confirming', // Awaiting user confirmation
+  PREPARING = 'preparing', // Preparing execution environment
+  INSTALLING_DEPS = 'installing_deps', // Installing dependencies (Python)
+  EXECUTING = 'executing', // Executing
+  PROCESSING = 'processing', // Processing results
+  COMPLETED = 'completed', // Completed
+  FAILED = 'failed', // Failed
+  CANCELLED = 'cancelled', // Cancelled
+}
+
+/**
+ * Tool execution progress event
+ * Used to report real-time progress during tool execution
+ */
+export interface ToolProgressEvent {
+  /** Tool call ID */
+  callId: string;
+  /** Tool name */
+  toolName: string;
+  /** Current execution stage */
+  stage: ToolExecutionStage;
+  /** Progress percentage (0-100), optional */
+  progress?: number;
+  /** Status message describing current operation */
+  message?: string;
+  /** Additional structured details */
+  details?: Record<string, unknown>;
+  /** Timestamp when the event occurred */
+  timestamp: number;
+}
