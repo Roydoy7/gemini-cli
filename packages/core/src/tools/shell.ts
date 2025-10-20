@@ -174,6 +174,9 @@ export class ShellToolInvocation extends BaseToolInvocation<
     signal: AbortSignal,
     updateOutput?: (output: string | AnsiOutput) => void,
     shellExecutionConfig?: ShellExecutionConfig,
+    progressCallback?: (
+      event: import('../core/message-types.js').ToolProgressEvent,
+    ) => void,
     setPidCallback?: (pid: number) => void,
   ): Promise<ToolResult> {
     const strippedCommand = stripShellWrapper(this.params.command);
@@ -212,8 +215,13 @@ export class ShellToolInvocation extends BaseToolInvocation<
         // to avoid workspace validation issues
         const hasAbsolutePath = /[A-Z]:\\|^\//.test(strippedCommand);
         if (hasAbsolutePath) {
-          const workspaceDirectories = this.config.getWorkspaceContext().getDirectories();
-          cwd = workspaceDirectories.length > 0 ? workspaceDirectories[0] : this.config.getTargetDir();
+          const workspaceDirectories = this.config
+            .getWorkspaceContext()
+            .getDirectories();
+          cwd =
+            workspaceDirectories.length > 0
+              ? workspaceDirectories[0]
+              : this.config.getTargetDir();
         } else {
           cwd = this.config.getTargetDir();
         }

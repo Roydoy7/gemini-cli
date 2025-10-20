@@ -20,6 +20,10 @@ import {
   ToolConfirmationOutcome,
   Kind,
 } from './tools.js';
+import {
+  ToolExecutionStage,
+  type ToolProgressEvent,
+} from '../core/message-types.js';
 import { getErrorMessage } from '../utils/errors.js';
 import { ShellExecutionService } from '../services/shellExecutionService.js';
 import type { ShellExecutionConfig } from '../services/shellExecutionService.js';
@@ -226,24 +230,70 @@ class BasePythonToolInvocation<
     signal: AbortSignal,
     updateOutput?: (output: string | AnsiOutput) => void,
     shellExecutionConfig?: ShellExecutionConfig,
+    progressCallback?: (event: ToolProgressEvent) => void,
   ): Promise<TResult> {
+    const callId = `${this.tool.name}_${Date.now()}`;
+
+    const emitProgress = (
+      stage: ToolExecutionStage,
+      progress?: number,
+      message?: string,
+      details?: Record<string, unknown>,
+    ) => {
+      if (progressCallback) {
+        progressCallback({
+          callId,
+          toolName: this.tool.name,
+          stage,
+          progress,
+          message,
+          details,
+          timestamp: Date.now(),
+        });
+      }
+    };
+
     try {
+      emitProgress(
+        ToolExecutionStage.PREPARING,
+        0,
+        'Initializing Python environment',
+      );
+
       // Get embedded Python path
       const embeddedPythonPath = this.tool['getEmbeddedPythonPath']();
 
       // Verify embedded Python exists
       if (!fs.existsSync(embeddedPythonPath)) {
+        emitProgress(
+          ToolExecutionStage.FAILED,
+          undefined,
+          'Embedded Python not found',
+        );
         return {
           llmContent: `Embedded Python not found at: ${embeddedPythonPath}`,
           returnDisplay: `❌ Embedded Python not found at: ${embeddedPythonPath}`,
         } as TResult;
       }
 
+      emitProgress(
+        ToolExecutionStage.PREPARING,
+        10,
+        'Python environment ready',
+      );
+
       // Get requirements for this execution
       const requirements = this.requirements;
 
       // Check and install requirements if specified
       if (requirements.length > 0) {
+        emitProgress(
+          ToolExecutionStage.INSTALLING_DEPS,
+          20,
+          `Checking ${requirements.length} dependencies`,
+          { packages: requirements },
+        );
+
         // First check which packages are missing
         const missingPackages: string[] = [];
 
@@ -275,6 +325,13 @@ class BasePythonToolInvocation<
 
         // Only install missing packages
         if (missingPackages.length > 0) {
+          emitProgress(
+            ToolExecutionStage.INSTALLING_DEPS,
+            30,
+            `Installing ${missingPackages.length} packages: ${missingPackages.join(', ')}`,
+            { missingPackages },
+          );
+
           if (updateOutput) {
             updateOutput(
               `Installing missing Python packages: ${missingPackages.join(', ')}...\\n`,
@@ -298,27 +355,55 @@ class BasePythonToolInvocation<
             const installResult = await installPromise;
 
             if (installResult.exitCode !== 0) {
+              emitProgress(
+                ToolExecutionStage.FAILED,
+                undefined,
+                'Failed to install dependencies',
+              );
               return {
                 llmContent: `Failed to install Python requirements: ${installResult.output}`,
                 returnDisplay: `❌ Failed to install Python requirements`,
               } as TResult;
             }
 
+            emitProgress(
+              ToolExecutionStage.INSTALLING_DEPS,
+              50,
+              'Dependencies installed successfully',
+            );
+
             if (updateOutput) {
               updateOutput(`✅ Packages installed successfully\\n\\n`);
             }
           } catch (installError) {
+            emitProgress(
+              ToolExecutionStage.FAILED,
+              undefined,
+              'Failed to install dependencies',
+            );
             return {
               llmContent: `Failed to install Python requirements: ${getErrorMessage(installError)}`,
               returnDisplay: `❌ Failed to install Python requirements`,
             } as TResult;
           }
-        } else if (updateOutput) {
-          updateOutput(`✅ All required packages already installed\\n\\n`);
+        } else {
+          emitProgress(
+            ToolExecutionStage.INSTALLING_DEPS,
+            50,
+            'All required packages already installed',
+          );
+          if (updateOutput) {
+            updateOutput(`✅ All required packages already installed\\n\\n`);
+          }
         }
       }
 
       // Generate and execute Python code
+      emitProgress(
+        ToolExecutionStage.EXECUTING,
+        60,
+        'Generating Python script',
+      );
       const pythonCode = this.tool['generatePythonCode'](this.params);
 
       // Create temporary Python script file
@@ -330,15 +415,47 @@ class BasePythonToolInvocation<
         `${this.tool.name}_${operation}_${timestamp}.py`,
       );
 
-      // Write Python code to temporary file with UTF-8 encoding and Base64 output wrapper
+      emitProgress(ToolExecutionStage.EXECUTING, 65, 'Preparing Python script');
+      // Write Python code to temporary file with UTF-8 encoding and progress protocol
       const codeWithEncoding = `# -*- coding: utf-8 -*-
 import sys
 import io
 import base64
 import json
+import time
+
 # Force UTF-8 for internal processing
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', line_buffering=True)
+
+# Progress reporting function
+class ProgressTracker:
+    def __init__(self):
+        self.start_time = time.time()
+
+    def report(self, stage, progress=None, message=None, **kwargs):
+        """
+        Report execution progress to Node.js
+
+        Args:
+            stage: Execution stage (e.g., 'loading', 'processing', 'analyzing')
+            progress: Progress percentage (0-100)
+            message: Status message
+            **kwargs: Additional details
+        """
+        event = {
+            '__PROGRESS__': True,
+            'stage': stage,
+            'progress': progress,
+            'message': message,
+            'details': kwargs,
+            'timestamp': time.time(),
+            'elapsed': time.time() - self.start_time
+        }
+        print(f"__GEMINI_PROGRESS__{json.dumps(event)}__END__", file=sys.stderr, flush=True)
+
+_progress = ProgressTracker()
+report_progress = _progress.report
 
 # Capture the original print function
 _original_print = print
@@ -362,6 +479,7 @@ except Exception as e:
     import traceback
     error_output = f"Error: {str(e)}\\n{traceback.format_exc()}"
     _output_lines.append(error_output)
+    report_progress('failed', message=str(e))
 
 # Restore original print
 print = _original_print
@@ -388,23 +506,77 @@ else:
       // Set working directory
       const workingDir = this.config.getTargetDir();
 
+      emitProgress(ToolExecutionStage.EXECUTING, 70, 'Running Python script');
+
+      // Progress parser for Python stdout/stderr
+      const progressParser = (output: string): string => {
+        const progressRegex = /__GEMINI_PROGRESS__(\{.*?\})__END__/g;
+        let match;
+        let cleanedOutput = output;
+
+        while ((match = progressRegex.exec(output)) !== null) {
+          try {
+            const eventData = JSON.parse(match[1]);
+
+            if (eventData.__PROGRESS__ && progressCallback) {
+              // Map Python stage to ToolExecutionStage
+              const stage = this.mapPythonStageToToolStage(eventData.stage);
+
+              progressCallback({
+                callId,
+                toolName: this.tool.name,
+                stage,
+                progress: eventData.progress,
+                message: eventData.message,
+                details: eventData.details,
+                timestamp: Date.now(),
+              });
+            }
+          } catch {
+            // Ignore parse errors for progress events
+          }
+        }
+
+        // Remove progress markers from output
+        cleanedOutput = output.replace(progressRegex, '');
+        return cleanedOutput;
+      };
+
       // Execute Python script
       const { result: pythonPromise } = await ShellExecutionService.execute(
         command,
         workingDir,
-        updateOutput
-          ? (event) => {
-              if (event.type === 'data') {
-                updateOutput(event.chunk);
-              }
+        (event) => {
+          if (event.type === 'data') {
+            // Handle both string and AnsiOutput types
+            let chunk: string;
+            if (typeof event.chunk === 'string') {
+              chunk = event.chunk;
+            } else {
+              // AnsiOutput is AnsiLine[] (array of arrays of tokens)
+              // Convert to string for progress parsing
+              chunk = event.chunk
+                .map((line) => line.map((token) => token.text).join(''))
+                .join('\n');
             }
-          : () => {},
+
+            // Parse and extract progress events
+            const cleanedChunk = progressParser(chunk);
+
+            // Pass cleaned output to updateOutput callback
+            if (updateOutput && cleanedChunk) {
+              updateOutput(cleanedChunk);
+            }
+          }
+        },
         signal,
         false,
         shellExecutionConfig || {},
       );
 
       const result = await pythonPromise;
+
+      emitProgress(ToolExecutionStage.PROCESSING, 90, 'Processing results');
 
       // Clean up temporary file
       // COMMENTED OUT FOR DEBUGGING - DO NOT COMMIT
@@ -439,13 +611,40 @@ else:
       }
 
       // Parse the Python output into the expected tool result format
-      return this.tool['parseResult'](finalOutput, this.params);
+      const parsedResult = this.tool['parseResult'](finalOutput, this.params);
+
+      emitProgress(
+        ToolExecutionStage.COMPLETED,
+        100,
+        'Execution completed successfully',
+      );
+
+      return parsedResult;
     } catch (error) {
       const errorMessage = getErrorMessage(error);
+      emitProgress(
+        ToolExecutionStage.FAILED,
+        undefined,
+        `Execution failed: ${errorMessage}`,
+      );
       return {
         llmContent: `Failed to execute ${this.tool.name}: ${errorMessage}`,
         returnDisplay: `❌ ${this.tool.displayName} failed: ${errorMessage}`,
       } as TResult;
     }
+  }
+
+  private mapPythonStageToToolStage(pythonStage: string): ToolExecutionStage {
+    const stageMap: Record<string, ToolExecutionStage> = {
+      loading: ToolExecutionStage.PREPARING,
+      cleaning: ToolExecutionStage.PROCESSING,
+      analyzing: ToolExecutionStage.EXECUTING,
+      processing: ToolExecutionStage.PROCESSING,
+      reporting: ToolExecutionStage.PROCESSING,
+      completed: ToolExecutionStage.COMPLETED,
+      failed: ToolExecutionStage.FAILED,
+    };
+
+    return stageMap[pythonStage] || ToolExecutionStage.EXECUTING;
   }
 }

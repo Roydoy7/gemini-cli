@@ -15,6 +15,8 @@ import type {
   ToolCallConfirmationDetails,
   ToolExecuteConfirmationDetails,
 } from './tools.js';
+import type { ToolProgressEvent } from '../core/message-types.js';
+import { ToolExecutionStage } from '../core/message-types.js';
 import {
   BaseDeclarativeTool,
   BaseToolInvocation,
@@ -77,6 +79,7 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
       rootCommand: 'python_embedded',
       showPythonCode: true, // Show code for direct Python execution
       pythonCode: this.params.code, // Pass the actual code directly
+      description: this.params.description, // Pass the description to help user understand the purpose
       onConfirm: async (outcome: ToolConfirmationOutcome) => {
         if (outcome === ToolConfirmationOutcome.ProceedAlways) {
           this.allowlist.add('python_embedded');
@@ -90,21 +93,67 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
     signal: AbortSignal,
     updateOutput?: (output: string | AnsiOutput) => void,
     shellExecutionConfig?: ShellExecutionConfig,
+    progressCallback?: (event: ToolProgressEvent) => void,
   ): Promise<ToolResult> {
+    const callId = `python_embedded_${Date.now()}`;
+
+    // Helper function to emit progress events
+    const emitProgress = (
+      stage: ToolExecutionStage,
+      progress?: number,
+      message?: string,
+      details?: Record<string, unknown>,
+    ) => {
+      if (progressCallback) {
+        progressCallback({
+          callId,
+          toolName: 'python-embedded-tools',
+          stage,
+          progress,
+          message,
+          details,
+          timestamp: Date.now(),
+        });
+      }
+    };
+
     try {
+      emitProgress(
+        ToolExecutionStage.PREPARING,
+        0,
+        'Initializing Python environment',
+      );
+
       // Get embedded Python path
       const embeddedPythonPath = this.getEmbeddedPythonPath();
 
       // Verify embedded Python exists
       if (!fs.existsSync(embeddedPythonPath)) {
+        emitProgress(
+          ToolExecutionStage.FAILED,
+          undefined,
+          'Embedded Python not found',
+        );
         return {
           llmContent: `Embedded Python not found at: ${embeddedPythonPath}`,
           returnDisplay: `❌ Embedded Python not found at: ${embeddedPythonPath}`,
         };
       }
 
+      emitProgress(
+        ToolExecutionStage.PREPARING,
+        10,
+        'Python environment ready',
+      );
+
       // Install requirements if specified
       if (this.params.requirements?.length) {
+        emitProgress(
+          ToolExecutionStage.INSTALLING_DEPS,
+          20,
+          `Checking ${this.params.requirements.length} dependencies`,
+          { packages: this.params.requirements },
+        );
         const workingDir =
           this.params.workingDirectory || this.config.getTargetDir();
 
@@ -124,6 +173,13 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
 
         // Only install packages that are not already installed
         if (packagesToInstall.length > 0) {
+          emitProgress(
+            ToolExecutionStage.INSTALLING_DEPS,
+            30,
+            `Installing ${packagesToInstall.length} packages: ${packagesToInstall.join(', ')}`,
+            { missingPackages: packagesToInstall },
+          );
+
           if (updateOutput) {
             updateOutput(
               `Installing Python packages: ${packagesToInstall.join(', ')}...\n`,
@@ -146,11 +202,22 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
             const installResult = await installPromise;
 
             if (installResult.exitCode !== 0) {
+              emitProgress(
+                ToolExecutionStage.FAILED,
+                undefined,
+                'Failed to install dependencies',
+              );
               return {
                 llmContent: `Failed to install Python requirements: ${installResult.output}`,
                 returnDisplay: `❌ Failed to install Python requirements`,
               };
             }
+
+            emitProgress(
+              ToolExecutionStage.INSTALLING_DEPS,
+              40,
+              'Dependencies installed',
+            );
 
             if (updateOutput) {
               updateOutput(`✅ Packages installed successfully\n\n`);
@@ -165,6 +232,8 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
         // If all packages already installed, skip silently (no output to save time)
       }
 
+      emitProgress(ToolExecutionStage.EXECUTING, 50, 'Running Python script');
+
       // Create temporary Python script file
       const tempDir = os.tmpdir();
       const scriptId = crypto.randomUUID();
@@ -172,17 +241,53 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
 
       // Write Python code to temporary file with UTF-8 encoding
       // Wrap output in Base64 to avoid encoding issues on Windows with non-ASCII characters
-      // Add line tracing for timeout detection
+      // Add line tracing for timeout detection and progress reporting
       const codeWithEncoding = `# -*- coding: utf-8 -*-
 import sys
 import io
 import base64
 import json
 import traceback
+import time
 
 # Force UTF-8 for internal processing
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+# Progress reporting function
+class ProgressTracker:
+    def __init__(self):
+        self.start_time = time.time()
+
+    def report(self, stage, progress=None, message=None, **kwargs):
+        """
+        Report execution progress to the application.
+
+        Args:
+            stage: Execution stage (e.g., 'loading', 'processing', 'analyzing', 'writing')
+            progress: Progress percentage (0-100), optional
+            message: Status message describing what's happening
+            **kwargs: Additional details (e.g., rows_processed=100, total_rows=500)
+
+        Example:
+            report_progress('loading', 10, 'Opening workbooks')
+            report_progress('processing', 50, 'Processing data', rows_processed=500, total_rows=1000)
+            report_progress('writing', 90, 'Writing results to file')
+        """
+        event = {
+            '__PROGRESS__': True,
+            'stage': stage,
+            'progress': progress,
+            'message': message,
+            'details': kwargs,
+            'timestamp': time.time(),
+            'elapsed': time.time() - self.start_time
+        }
+        # Use original stderr to bypass our capture
+        _original_stderr_write(f"__GEMINI_PROGRESS__{json.dumps(event)}__END__\\n")
+
+_progress = ProgressTracker()
+report_progress = _progress.report
 
 # Capture all output
 _output_lines = []
@@ -200,8 +305,10 @@ def print(*args, **kwargs):
     _output_lines.append(output)
 
 def stderr_write(text):
-    """Capture stderr output"""
-    _error_lines.append(text)
+    """Capture stderr output (except progress events)"""
+    # Don't capture progress events
+    if '__GEMINI_PROGRESS__' not in text:
+        _error_lines.append(text)
     return len(text)
 
 sys.stderr.write = stderr_write
@@ -306,18 +413,64 @@ sys.exit(_exit_code)`;
       // Get timeout setting (default 300 seconds)
       const timeoutMs = (this.params.timeout || 300) * 1000;
 
+      // Progress event parser
+      const progressParser = (chunk: string): string => {
+        const progressRegex = /__GEMINI_PROGRESS__(.+?)__END__/g;
+        let match;
+        let cleanedChunk = chunk;
+
+        while ((match = progressRegex.exec(chunk)) !== null) {
+          try {
+            const eventData = JSON.parse(match[1]);
+            if (eventData.__PROGRESS__ && progressCallback) {
+              // Map Python stage to ToolExecutionStage
+              progressCallback({
+                callId,
+                toolName: 'python-embedded-tools',
+                stage: ToolExecutionStage.EXECUTING,
+                progress: eventData.progress,
+                message: eventData.message || eventData.stage,
+                details: {
+                  ...eventData.details,
+                  pythonStage: eventData.stage,
+                  elapsed: eventData.elapsed,
+                },
+                timestamp: Date.now(),
+              });
+            }
+          } catch (parseError) {
+            // Ignore parsing errors
+            console.warn('Failed to parse Python progress event:', parseError);
+          }
+          // Remove progress markers from output
+          cleanedChunk = cleanedChunk.replace(match[0], '');
+        }
+
+        return cleanedChunk;
+      };
+
       // Execute Python script using ShellExecutionService with timeout
       const { result: pythonPromise } = await ShellExecutionService.execute(
         command,
         workingDir,
-        updateOutput
-          ? (event) => {
-              if (event.type === 'data') {
-                // For now, just call updateOutput with the chunk
-                updateOutput(event.chunk);
-              }
+        (event) => {
+          if (event.type === 'data') {
+            // Parse and extract progress events from stderr
+            const chunk =
+              typeof event.chunk === 'string'
+                ? event.chunk
+                : event.chunk
+                    .map((line) => line.map((token) => token.text).join(''))
+                    .join('\n');
+
+            const cleanedChunk = progressParser(chunk);
+
+            // Pass cleaned output to updateOutput callback
+            if (updateOutput && cleanedChunk) {
+              updateOutput(cleanedChunk);
             }
-          : () => {},
+          }
+        },
         signal,
         false, // Don't use NodePty for Python execution
         shellExecutionConfig || {},
@@ -415,6 +568,12 @@ The script took too long to complete. Consider:
         throw error;
       }
 
+      emitProgress(
+        ToolExecutionStage.PROCESSING,
+        90,
+        'Processing execution results',
+      );
+
       // Clean up temporary file
       try {
         await fs.promises.unlink(scriptPath);
@@ -455,6 +614,20 @@ The script took too long to complete. Consider:
 
       const hasError = actualExitCode !== 0;
 
+      if (hasError) {
+        emitProgress(
+          ToolExecutionStage.FAILED,
+          100,
+          `Execution failed (exit code: ${actualExitCode})`,
+        );
+      } else {
+        emitProgress(
+          ToolExecutionStage.COMPLETED,
+          100,
+          'Execution completed successfully',
+        );
+      }
+
       const formattedOutput =
         output ||
         (hasError
@@ -473,6 +646,7 @@ The script took too long to complete. Consider:
         returnDisplay: finalOutput,
       };
     } catch (error) {
+      emitProgress(ToolExecutionStage.FAILED, undefined, 'Execution error');
       const errorMessage = getErrorMessage(error);
       return {
         llmContent: `Failed to execute Python code: ${errorMessage}`,
@@ -1071,7 +1245,7 @@ dest_book.close()
       Kind.Execute,
       {
         type: 'object',
-        required: ['code'],
+        required: ['code', 'description'],
         properties: {
           code: {
             type: 'string',
@@ -1080,7 +1254,8 @@ dest_book.close()
           },
           description: {
             type: 'string',
-            description: 'Optional description of what the code does',
+            description:
+              'REQUIRED: Clear description of what this code will do and why. This description will be shown to the user in the confirmation dialog to help them understand the purpose of the code execution. Should be concise (1-2 sentences) but informative enough for the user to make an informed decision.',
           },
           timeout: {
             type: 'number',

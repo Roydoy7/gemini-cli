@@ -21,6 +21,8 @@ import type {
   ToolInvocation,
   ToolCallConfirmationDetails,
 } from './tools.js';
+import type { ToolProgressEvent } from '../core/message-types.js';
+import { ToolExecutionStage } from '../core/message-types.js';
 
 // PDF manipulation libraries
 import PDFDocument from 'pdfkit';
@@ -173,56 +175,153 @@ class PDFInvocation extends BaseToolInvocation<PDFParams, PDFResult> {
   async execute(
     signal?: AbortSignal,
     liveOutputCallback?: (chunk: string) => void,
+    _shellExecutionConfig?: unknown,
+    progressCallback?: (event: ToolProgressEvent) => void,
   ): Promise<PDFResult> {
     const { file, op, pages, query, output, text } = this.params;
+    const callId = `pdf_${Date.now()}`;
+
+    // Helper function to emit progress
+    const emitProgress = (
+      stage: ToolExecutionStage,
+      progress?: number,
+      message?: string,
+      details?: Record<string, unknown>,
+    ) => {
+      if (progressCallback) {
+        progressCallback({
+          callId,
+          toolName: 'pdf',
+          stage,
+          progress,
+          message,
+          details,
+          timestamp: Date.now(),
+        });
+      }
+    };
 
     try {
+      // Report initial preparation stage
+      emitProgress(
+        ToolExecutionStage.PREPARING,
+        0,
+        `Preparing PDF operation: ${op}`,
+      );
       // Validate file exists for read operations
       if (['extracttext', 'search', 'info', 'split'].includes(op)) {
         // Commented out operations: 'metadata', 'forms', 'protect', 'optimize', 'convert', 'annotate', 'watermark', 'compress'
+        emitProgress(
+          ToolExecutionStage.PREPARING,
+          10,
+          'Validating file existence',
+        );
         if (!existsSync(file)) {
+          emitProgress(ToolExecutionStage.FAILED, undefined, 'File not found');
           return this.createFileNotFoundError(file);
         }
       }
 
+      emitProgress(
+        ToolExecutionStage.EXECUTING,
+        20,
+        `Executing ${op} operation`,
+      );
+
+      let result: PDFResult;
       switch (op) {
         case 'create':
-          return await this.createPDF(file, text || 'Hello World');
+          emitProgress(
+            ToolExecutionStage.EXECUTING,
+            30,
+            'Creating PDF document',
+          );
+          result = await this.createPDF(file, text || 'Hello World');
+          break;
 
         case 'merge':
-          return await this.mergePDFs(
+          emitProgress(ToolExecutionStage.EXECUTING, 30, 'Merging PDF files');
+          result = await this.mergePDFs(
             this.params.sources || [],
             output || file,
           );
+          break;
 
         case 'split':
-          return await this.splitPDF(file, pages, output);
+          emitProgress(ToolExecutionStage.EXECUTING, 30, 'Splitting PDF file');
+          result = await this.splitPDF(file, pages, output);
+          break;
 
         case 'extracttext':
-          return await this.extractText(file, pages, output);
+          emitProgress(
+            ToolExecutionStage.EXECUTING,
+            30,
+            'Extracting text from PDF',
+          );
+          result = await this.extractText(file, pages, output);
+          break;
 
         case 'search':
           if (!query || query.trim().length === 0) {
+            emitProgress(
+              ToolExecutionStage.FAILED,
+              undefined,
+              'Search query is required',
+            );
             return this.createErrorResult(
               'Search operation requires a query parameter',
             );
           }
-          return await this.searchText(
+          emitProgress(
+            ToolExecutionStage.EXECUTING,
+            30,
+            `Searching for: ${query}`,
+          );
+          result = await this.searchText(
             file,
             query,
             pages,
             liveOutputCallback,
             signal,
           );
+          break;
 
         case 'info':
-          return await this.getPDFInfo(file, pages);
+          emitProgress(
+            ToolExecutionStage.EXECUTING,
+            30,
+            'Getting PDF information',
+          );
+          result = await this.getPDFInfo(file, pages);
+          break;
 
         default:
+          emitProgress(
+            ToolExecutionStage.FAILED,
+            undefined,
+            `Unsupported operation: ${op}`,
+          );
           return this.createErrorResult(`Unsupported operation: ${op}`);
       }
+
+      // Report processing stage
+      emitProgress(ToolExecutionStage.PROCESSING, 90, 'Processing results');
+
+      // Report completion
+      emitProgress(
+        ToolExecutionStage.COMPLETED,
+        100,
+        'PDF operation completed successfully',
+      );
+
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      emitProgress(
+        ToolExecutionStage.FAILED,
+        undefined,
+        `PDF operation failed: ${message}`,
+      );
       return this.createErrorResult(`PDF operation failed: ${message}`);
     }
   }

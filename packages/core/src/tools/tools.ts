@@ -17,6 +17,7 @@ import {
   type ToolConfirmationRequest,
   type ToolConfirmationResponse,
 } from '../confirmation-bus/types.js';
+import type { ToolProgressEvent } from '../core/message-types.js';
 
 /**
  * Represents a validated and ready-to-execute tool call.
@@ -56,12 +57,15 @@ export interface ToolInvocation<
    * Executes the tool with the validated parameters.
    * @param signal AbortSignal for tool cancellation.
    * @param updateOutput Optional callback to stream output.
+   * @param shellExecutionConfig Optional shell execution configuration.
+   * @param progressCallback Optional callback to report execution progress.
    * @returns Result of the tool execution.
    */
   execute(
     signal: AbortSignal,
     updateOutput?: (output: string | AnsiOutput) => void,
     shellExecutionConfig?: ShellExecutionConfig,
+    progressCallback?: (event: ToolProgressEvent) => void,
   ): Promise<TResult>;
 }
 
@@ -207,6 +211,7 @@ export abstract class BaseToolInvocation<
     signal: AbortSignal,
     updateOutput?: (output: string | AnsiOutput) => void,
     shellExecutionConfig?: ShellExecutionConfig,
+    progressCallback?: (event: ToolProgressEvent) => void,
   ): Promise<TResult>;
 }
 
@@ -320,6 +325,8 @@ export abstract class DeclarativeTool<
    * @param params The raw, untrusted parameters from the model.
    * @param signal AbortSignal for tool cancellation.
    * @param updateOutput Optional callback to stream output.
+   * @param shellExecutionConfig Optional shell execution configuration.
+   * @param progressCallback Optional callback to report execution progress.
    * @returns The result of the tool execution.
    */
   async buildAndExecute(
@@ -327,9 +334,15 @@ export abstract class DeclarativeTool<
     signal: AbortSignal,
     updateOutput?: (output: string | AnsiOutput) => void,
     shellExecutionConfig?: ShellExecutionConfig,
+    progressCallback?: (event: ToolProgressEvent) => void,
   ): Promise<TResult> {
     const invocation = this.build(params);
-    return invocation.execute(signal, updateOutput, shellExecutionConfig);
+    return invocation.execute(
+      signal,
+      updateOutput,
+      shellExecutionConfig,
+      progressCallback,
+    );
   }
 
   /**
@@ -617,6 +630,7 @@ export interface ToolExecuteConfirmationDetails {
   rootCommand: string;
   showPythonCode?: boolean; // Whether to show Python code in confirmation dialog (default: false)
   pythonCode?: string; // The actual Python code to display (optional, avoids parsing command string)
+  description?: string; // User-friendly description of what this code will do (shown in confirmation dialog)
 }
 
 export interface ToolMcpConfirmationDetails {
