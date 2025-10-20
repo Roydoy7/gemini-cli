@@ -13,7 +13,7 @@ import { SessionManager } from '../sessions/SessionManager.js';
 import { RoleManager } from '../roles/RoleManager.js';
 import { WorkspaceManager } from '../utils/WorkspaceManager.js';
 import { TemplateManager } from '../templates/TemplateManager.js';
-import type { UniversalMessage } from './message-types.js';
+import type { UniversalMessage, ToolProgressEvent } from './message-types.js';
 import {
   GeminiEventType,
   type ToolCallRequestInfo,
@@ -48,6 +48,7 @@ export class GeminiChatManager {
   private toolConfirmationHandler?: (
     details: ToolCallConfirmationDetails,
   ) => Promise<ToolConfirmationOutcome>;
+  private toolProgressHandler?: (event: ToolProgressEvent) => void;
   private activeToolScheduler?: CoreToolScheduler;
 
   constructor(config: Config) {
@@ -218,6 +219,21 @@ export class GeminiChatManager {
                 config: this.config,
                 getPreferredEditor: () => undefined,
                 onEditorClose: () => {},
+
+                // Progress update handler for real-time tool execution progress
+                onToolProgressUpdate: this.toolProgressHandler
+                  ? (event: ToolProgressEvent) => {
+                      // Emit progress event through the stream
+                      collectedEvents.push({
+                        type: GeminiEventType.ToolProgress,
+                        value: event,
+                      });
+                      // Also call the external handler if set
+                      if (this.toolProgressHandler) {
+                        this.toolProgressHandler(event);
+                      }
+                    }
+                  : undefined,
 
                 // This is called every time any tool's status changes
                 onToolCallsUpdate: async (
@@ -599,6 +615,20 @@ export class GeminiChatManager {
       ) => Promise<ToolConfirmationOutcome>)
     | undefined {
     return this.toolConfirmationHandler;
+  }
+
+  /**
+   * Set the tool progress handler for real-time progress updates
+   */
+  setToolProgressHandler(handler: (event: ToolProgressEvent) => void): void {
+    this.toolProgressHandler = handler;
+  }
+
+  /**
+   * Get the tool progress handler
+   */
+  getToolProgressHandler(): ((event: ToolProgressEvent) => void) | undefined {
+    return this.toolProgressHandler;
   }
 
   /**

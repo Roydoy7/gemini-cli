@@ -18,6 +18,7 @@ import type {
   AnyToolInvocation,
   AnsiOutput,
 } from '../index.js';
+import type { ToolProgressEvent } from './message-types.js';
 import {
   ToolConfirmationOutcome,
   ApprovalMode,
@@ -141,6 +142,8 @@ export type AllToolCallsCompleteHandler = (
 ) => Promise<void>;
 
 export type ToolCallsUpdateHandler = (toolCalls: ToolCall[]) => void;
+
+export type ToolProgressUpdateHandler = (event: ToolProgressEvent) => void;
 
 /**
  * Formats tool output for a Gemini FunctionResponse.
@@ -323,6 +326,7 @@ interface CoreToolSchedulerOptions {
   outputUpdateHandler?: OutputUpdateHandler;
   onAllToolCallsComplete?: AllToolCallsCompleteHandler;
   onToolCallsUpdate?: ToolCallsUpdateHandler;
+  onToolProgressUpdate?: ToolProgressUpdateHandler;
   getPreferredEditor: () => EditorType | undefined;
   onEditorClose: () => void;
 }
@@ -333,6 +337,7 @@ export class CoreToolScheduler {
   private outputUpdateHandler?: OutputUpdateHandler;
   private onAllToolCallsComplete?: AllToolCallsCompleteHandler;
   private onToolCallsUpdate?: ToolCallsUpdateHandler;
+  private onToolProgressUpdate?: ToolProgressUpdateHandler;
   private getPreferredEditor: () => EditorType | undefined;
   private config: Config;
   private onEditorClose: () => void;
@@ -351,6 +356,7 @@ export class CoreToolScheduler {
     this.outputUpdateHandler = options.outputUpdateHandler;
     this.onAllToolCallsComplete = options.onAllToolCallsComplete;
     this.onToolCallsUpdate = options.onToolCallsUpdate;
+    this.onToolProgressUpdate = options.onToolProgressUpdate;
     this.getPreferredEditor = options.getPreferredEditor;
     this.onEditorClose = options.onEditorClose;
   }
@@ -987,6 +993,19 @@ export class CoreToolScheduler {
         // Introduce a generic callbacks object for the execute method to handle
         // things like `onPid` and `onLiveOutput`. This will make the scheduler
         // agnostic to the invocation type.
+        // Create progress callback with callId automatically injected
+        const progressCallback = this.onToolProgressUpdate
+          ? (event: ToolProgressEvent) => {
+              if (this.onToolProgressUpdate) {
+                // Override the callId with the correct one from the tool call request
+                this.onToolProgressUpdate({
+                  ...event,
+                  callId,
+                });
+              }
+            }
+          : undefined;
+
         let promise: Promise<ToolResult>;
         if (invocation instanceof ShellToolInvocation) {
           const setPidCallback = (pid: number) => {
@@ -1001,13 +1020,15 @@ export class CoreToolScheduler {
             signal,
             liveOutputCallback,
             shellExecutionConfig,
-            setPidCallback,
+            progressCallback, // ShellToolInvocation has progressCallback in 4th position
+            setPidCallback, // setPidCallback in 5th position
           );
         } else {
           promise = invocation.execute(
             signal,
             liveOutputCallback,
             shellExecutionConfig,
+            progressCallback,
           );
         }
 

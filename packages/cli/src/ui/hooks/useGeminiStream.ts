@@ -748,6 +748,9 @@ export const useGeminiStream = (
           case ServerGeminiEventType.Retry:
             // Will add the missing logic later
             break;
+          case ServerGeminiEventType.ToolProgress:
+            // CLI doesn't display tool progress UI, silently ignore
+            break;
           default: {
             // enforces exhaustive switch-case
             const unreachable: never = event;

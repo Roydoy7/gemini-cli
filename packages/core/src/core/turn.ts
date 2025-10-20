@@ -51,6 +51,7 @@ export enum GeminiEventType {
   ToolCallRequest = 'tool_call_request',
   ToolCallResponse = 'tool_call_response',
   ToolCallConfirmation = 'tool_call_confirmation',
+  ToolProgress = 'tool_progress',
   UserCancelled = 'user_cancelled',
   Error = 'error',
   ChatCompressed = 'chat_compressed',
@@ -140,6 +141,11 @@ export type ServerGeminiToolCallConfirmationEvent = {
   value: ServerToolCallConfirmationDetails;
 };
 
+export type ServerGeminiToolProgressEvent = {
+  type: GeminiEventType.ToolProgress;
+  value: import('./message-types.js').ToolProgressEvent;
+};
+
 export type ServerGeminiUserCancelledEvent = {
   type: GeminiEventType.UserCancelled;
 };
@@ -205,6 +211,7 @@ export type ServerGeminiStreamEvent =
   | ServerGeminiToolCallConfirmationEvent
   | ServerGeminiToolCallRequestEvent
   | ServerGeminiToolCallResponseEvent
+  | ServerGeminiToolProgressEvent
   | ServerGeminiUserCancelledEvent
   | ServerGeminiRetryEvent
   | ServerGeminiContextWindowWillOverflowEvent;
