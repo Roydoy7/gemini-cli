@@ -1320,6 +1320,126 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               currentAssistantMessageId = null;
               hasCreatedInitialMessage = false;
             }
+          } else if (event.type === 'tool_progress') {
+            console.log('[MessageInput] Received tool_progress event');
+            console.log('[MessageInput] Progress data:', {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              stage: event.stage,
+              progress: event.progress,
+              message: event.message,
+              sessionId: event.sessionId,
+            });
+
+            // CRITICAL: Use sessionId from event to find the correct session
+            const targetSessionId: string = event.sessionId || activeSessionId;
+            const targetSession = useAppStore
+              .getState()
+              .sessions.find((s) => s.id === targetSessionId);
+
+            if (!targetSession) {
+              console.error(
+                '[MessageInput] Target session not found for progress update:',
+                targetSessionId,
+              );
+              continue;
+            }
+
+            // Find the message with matching tool call
+            let messageIndex = -1;
+            let matchedToolCallIndex = -1;
+
+            for (let i = 0; i < targetSession.messages.length; i++) {
+              const msg = targetSession.messages[i];
+              if (!msg.toolCalls || msg.toolCalls.length === 0) continue;
+
+              for (let j = 0; j < msg.toolCalls.length; j++) {
+                const tc = msg.toolCalls[j];
+                // Match by tool call ID or by tool name if executing
+                if (
+                  tc.id === event.toolCallId ||
+                  (tc.name === event.toolName && tc.status === 'executing')
+                ) {
+                  messageIndex = i;
+                  matchedToolCallIndex = j;
+                  break;
+                }
+              }
+
+              if (messageIndex >= 0) break;
+            }
+
+            if (messageIndex >= 0 && matchedToolCallIndex >= 0) {
+              const updatedMessages = [...targetSession.messages];
+              const message = updatedMessages[messageIndex];
+
+              console.log('[MessageInput] Updating tool call progress:', {
+                messageId: message.id,
+                toolCallId: message.toolCalls![matchedToolCallIndex].id,
+                stage: event.stage,
+                progress: event.progress,
+              });
+
+              // Update the specific tool call's progress fields
+              if (message.toolCalls) {
+                message.toolCalls[matchedToolCallIndex] = {
+                  ...message.toolCalls[matchedToolCallIndex],
+                  stage: event.stage,
+                  progress: event.progress,
+                  statusMessage: event.message,
+                  progressDetails: event.details,
+                };
+              }
+
+              // Update the session
+              updateSession(targetSessionId, {
+                messages: updatedMessages,
+                updatedAt: new Date(),
+              });
+
+              // Update currentOperation to show real-time progress if this is the active session
+              if (
+                targetSessionId === activeSessionId &&
+                event.stage &&
+                event.message
+              ) {
+                const stageLabels = {
+                  validating: 'Validating',
+                  confirming: 'Confirming',
+                  preparing: 'Preparing',
+                  installing_deps: 'Installing Dependencies',
+                  executing: 'Executing',
+                  processing: 'Processing',
+                  completed: 'Completed',
+                  failed: 'Failed',
+                  cancelled: 'Cancelled',
+                };
+                const stageLabel = stageLabels[event.stage] || event.stage;
+                const progressText =
+                  event.progress !== undefined
+                    ? ` (${Math.round(event.progress)}%)`
+                    : '';
+
+                setCurrentOperation({
+                  type: 'tool_executing',
+                  message: `Executing tool: ${event.toolName}`,
+                  toolName: event.toolName,
+                  details: `${stageLabel}${progressText} - ${event.message}`,
+                  progress: event.progress,
+                });
+              }
+
+              console.log('[MessageInput] Session updated with tool progress');
+            } else {
+              console.warn(
+                '[MessageInput] Could not find matching tool call for progress update:',
+                {
+                  toolCallId: event.toolCallId,
+                  toolName: event.toolName,
+                  sessionId: targetSessionId,
+                },
+              );
+            }
           } else if (event.type === 'compression') {
             // Update status to show compression is happening
             setCurrentOperation({

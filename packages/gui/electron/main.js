@@ -722,6 +722,23 @@ ipcMain.handle(
       // console.log('MultiModel sendMessageStream called with:', messages?.length, 'messages', 'streamId:', streamId)
       const system = await ensureInitialized();
 
+      // Set up tool progress handler for real-time progress updates
+      system.setToolProgressHandler((progressEvent) => {
+        // Send progress event to renderer process
+        event.sender.send('geminiChat-stream-chunk', {
+          streamId,
+          sessionId: currentSessionId,
+          type: 'tool_progress',
+          toolCallId: progressEvent.callId,
+          toolName: progressEvent.toolName,
+          stage: progressEvent.stage,
+          progress: progressEvent.progress,
+          message: progressEvent.message,
+          details: progressEvent.details,
+          timestamp: progressEvent.timestamp,
+        });
+      });
+
       // Set up tool confirmation handler for this stream session
       system.setToolConfirmationHandler(async (confirmationDetails) => {
         // console.log('Tool confirmation requested from main process:', confirmationDetails)
@@ -740,6 +757,9 @@ ipcMain.handle(
           ...(confirmationDetails.type === 'exec' && {
             command: confirmationDetails.command,
             rootCommand: confirmationDetails.rootCommand,
+            showPythonCode: confirmationDetails.showPythonCode,
+            pythonCode: confirmationDetails.pythonCode,
+            description: confirmationDetails.description,
           }),
           ...(confirmationDetails.type === 'mcp' && {
             toolName: confirmationDetails.toolName,
@@ -962,6 +982,22 @@ ipcMain.handle(
               error: responseValue.error,
               errorType: responseValue.errorType,
               role: 'assistant',
+              timestamp: Date.now(),
+            };
+            event.sender.send('geminiChat-stream-chunk', chunkData);
+          } else if (chunk.type === 'tool_progress') {
+            // Handle tool progress events
+            const progressValue = chunk.value || {};
+            const chunkData = {
+              streamId,
+              sessionId: currentSessionId,
+              type: 'tool_progress',
+              toolCallId: progressValue.callId,
+              toolName: progressValue.toolName,
+              stage: progressValue.stage,
+              progress: progressValue.progress,
+              message: progressValue.message,
+              details: progressValue.details,
               timestamp: Date.now(),
             };
             event.sender.send('geminiChat-stream-chunk', chunkData);

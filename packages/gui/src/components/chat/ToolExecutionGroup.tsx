@@ -8,6 +8,7 @@ import { useState, useRef } from 'react';
 import {
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Hammer,
   CheckCircle2,
   XCircle,
@@ -19,7 +20,7 @@ import { ShimmerBorder } from '@/components/ui/ShimmerBorder';
 import { CodeHighlight } from '@/components/ui/CodeHighlight';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SmartVisualization } from '@/components/charts/SmartVisualization';
-import type { ToolCall, ToolResponseData } from '@/types';
+import type { ToolCall, ToolResponseData, ToolExecutionStage } from '@/types';
 
 interface ToolExecutionPair {
   toolCall: ToolCall;
@@ -74,6 +75,24 @@ const CopyableCodeBlock: React.FC<{
       <pre className={className}>{content}</pre>
     </div>
   );
+};
+
+/**
+ * Format execution stage to human-readable text
+ */
+const formatStage = (stage: ToolExecutionStage): string => {
+  const stageMap: Record<ToolExecutionStage, string> = {
+    validating: 'Validating',
+    confirming: 'Confirming',
+    preparing: 'Preparing',
+    installing_deps: 'Installing Dependencies',
+    executing: 'Executing',
+    processing: 'Processing',
+    completed: 'Completed',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+  };
+  return stageMap[stage] || stage;
 };
 
 /**
@@ -315,7 +334,17 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
   };
 
   const getStatusText = () => {
-    if (!toolResponse) return 'Executing...';
+    if (!toolResponse) {
+      // Show stage and progress if available
+      if (toolCall.stage) {
+        const stageText = formatStage(toolCall.stage);
+        if (toolCall.progress !== undefined) {
+          return `${stageText} (${Math.round(toolCall.progress)}%)`;
+        }
+        return stageText;
+      }
+      return 'Executing...';
+    }
     if (toolResponse.success === false) return 'Failed';
     return 'Success';
   };
@@ -419,6 +448,25 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
             )}
           </div>
         </button>
+
+        {/* Progress bar - shown when executing with progress info */}
+        {!toolResponse && toolCall.progress !== undefined && (
+          <div className="px-3 pb-2">
+            <div className="w-full bg-muted/30 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-blue-500 h-full transition-all duration-300 ease-out"
+                style={{
+                  width: `${Math.min(100, Math.max(0, toolCall.progress))}%`,
+                }}
+              />
+            </div>
+            {toolCall.statusMessage && (
+              <div className="text-xs text-muted-foreground mt-1">
+                {toolCall.statusMessage}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Expanded content */}
         {isExpanded && (
@@ -590,6 +638,17 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
                 )}
               </div>
             )}
+
+            {/* Bottom collapse button - shown at the end of expanded content */}
+            <div className="border-t border-border/30 px-3 py-2 bg-green-50 dark:bg-background/30">
+              <button
+                onClick={handleToggle}
+                className="w-full flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                <ChevronUp size={14} />
+                <span>Collapse</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

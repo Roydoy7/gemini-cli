@@ -181,6 +181,23 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
                 Tool wants to execute Python code
               </div>
 
+              {/* Description - Prominently displayed */}
+              {details.description && (
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                        What this code will do:
+                      </div>
+                      <div className="text-sm text-blue-900 dark:text-blue-100">
+                        {details.description}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Tool Information */}
               <div className="bg-white dark:bg-gray-900 rounded-md border border-red-200/50 dark:border-red-800/50 p-3 space-y-2">
                 <div className="flex items-center gap-2">
@@ -240,12 +257,9 @@ const ToolConfirmationMessage: React.FC<ToolConfirmationMessageProps> = ({
 
               {/* Collapsible Code Section - Only show if showPythonCode is true */}
               {details.showPythonCode && (
-                <details
-                  open
-                  className="rounded-md border border-red-200/50 dark:border-red-800/50 overflow-hidden"
-                >
+                <details className="rounded-md border border-red-200/50 dark:border-red-800/50 overflow-hidden">
                   <summary className="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    🐍 Python Code (Click to collapse)
+                    🐍 Python Code (Click to expand)
                   </summary>
                   <div>
                     <CodeHighlight

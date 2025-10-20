@@ -14,6 +14,7 @@ import type {
   ToolCall,
   ChatMessage,
   ToolResponseData,
+  ToolExecutionStage,
 } from '@/types';
 import type {
   ToolCallConfirmationDetails,
@@ -417,6 +418,10 @@ class GeminiChatService {
           toolSuccess?: boolean;
           toolResponseData?: ToolResponseData;
           thoughtSummary?: { subject: string; description: string };
+          stage?: ToolExecutionStage;
+          progress?: number;
+          message?: string;
+          details?: Record<string, unknown>;
         }) => {
           // CRITICAL: Check if this event belongs to current session or another session
           const isCurrentSession =
@@ -535,6 +540,31 @@ class GeminiChatService {
             );
 
             // Wake up the generator for tool response event
+            if (resolveNext) {
+              resolveNext();
+              resolveNext = null;
+            }
+          } else if (chunk.type === 'tool_progress') {
+            // Handle tool progress events
+            console.log('[GeminiChatService] Received tool_progress event');
+            console.log('[GeminiChatService] toolCallId:', chunk.toolCallId);
+            console.log('[GeminiChatService] toolName:', chunk.toolName);
+            console.log('[GeminiChatService] stage:', chunk.stage);
+            console.log('[GeminiChatService] progress:', chunk.progress);
+            console.log('[GeminiChatService] message:', chunk.message);
+
+            events.push({
+              type: 'tool_progress',
+              toolCallId: chunk.toolCallId,
+              toolName: chunk.toolName,
+              stage: chunk.stage,
+              progress: chunk.progress,
+              message: chunk.message,
+              details: chunk.details,
+              timestamp: chunk.timestamp,
+            });
+
+            // Wake up the generator for tool progress event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;

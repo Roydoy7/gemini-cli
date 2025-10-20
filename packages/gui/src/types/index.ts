@@ -66,6 +66,7 @@ export interface UniversalStreamEvent {
     | 'content_delta'
     | 'tool_call_request'
     | 'tool_call_response'
+    | 'tool_progress'
     | 'done'
     | 'message_complete'
     | 'error'
@@ -84,6 +85,11 @@ export interface UniversalStreamEvent {
   role?: 'assistant' | 'user' | 'system';
   timestamp?: number;
   sessionId?: string; // Session ID for routing events to correct session
+  // Tool progress fields
+  stage?: ToolExecutionStage;
+  progress?: number;
+  message?: string;
+  details?: Record<string, unknown>;
 }
 
 export interface ChartConfig {
@@ -218,6 +224,19 @@ export interface ChatMessage {
   name?: string; // For tool response messages - the tool name
 }
 
+// Tool execution stages aligned with core package
+export enum ToolExecutionStage {
+  VALIDATING = 'validating',
+  CONFIRMING = 'confirming',
+  PREPARING = 'preparing',
+  INSTALLING_DEPS = 'installing_deps',
+  EXECUTING = 'executing',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  CANCELLED = 'cancelled',
+}
+
 export interface ToolCall {
   id: string;
   name: string;
@@ -225,6 +244,11 @@ export interface ToolCall {
   result?: string;
   status?: 'executing' | 'completed' | 'failed';
   success?: boolean;
+  // Progress tracking fields
+  stage?: ToolExecutionStage;
+  progress?: number; // 0-100 percentage
+  statusMessage?: string; // Human-readable status message
+  progressDetails?: Record<string, unknown>; // Additional progress context
 }
 
 export interface SessionConfig {
@@ -305,6 +329,7 @@ export interface ToolExecuteConfirmationDetails {
   rootCommand: string;
   showPythonCode?: boolean; // Whether to show Python code in confirmation dialog (default: false)
   pythonCode?: string; // The actual Python code to display (optional, avoids parsing command string)
+  description?: string; // User-friendly description of what this code will do (shown in confirmation dialog)
 }
 
 export interface ToolMcpConfirmationDetails {

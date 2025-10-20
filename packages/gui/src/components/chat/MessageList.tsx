@@ -21,6 +21,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   BookTemplate,
   Target,
   Brain,
@@ -921,6 +922,17 @@ const ThinkingSection: React.FC<{
                 </div>
               </div>
             ))}
+
+            {/* Bottom collapse button - shown at the end of expanded content */}
+            <div className="border-t border-purple-100/50 dark:border-purple-800/30 px-3 py-2 bg-purple-50 dark:bg-purple-950/30">
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="w-full flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                <ChevronUp size={14} />
+                <span>Collapse</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
