@@ -21,6 +21,8 @@ import {
   logExtensionInstallEvent,
   logExtensionUninstall,
   logExtensionDisable,
+  getEmbeddedPythonPath,
+  loadBuiltinExtensions as loadBuiltinExtensionsFromCore,
 } from '@google/gemini-cli-core';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -153,7 +155,7 @@ export function loadExtensions(
   workspaceDir: string = process.cwd(),
 ): GeminiCLIExtension[] {
   const settings = loadSettings(workspaceDir).merged;
-  const allExtensions = [...loadUserExtensions()];
+  const allExtensions = [...loadBuiltinExtensions(), ...loadUserExtensions()];
 
   if (
     (isWorkspaceTrusted(settings) ?? true) &&
@@ -175,6 +177,32 @@ export function loadExtensions(
   }
 
   return Array.from(uniqueExtensions.values());
+}
+
+/**
+ * Load built-in extensions from packages/extensions directory.
+ * These are extensions shipped with Gemini CLI.
+ * Delegates to core implementation for consistency with GUI.
+ */
+export function loadBuiltinExtensions(
+  workspaceDir: string = process.cwd(),
+): GeminiCLIExtension[] {
+  // Get basic extension info from core
+  const basicExtensions = loadBuiltinExtensionsFromCore(workspaceDir);
+
+  // Process each extension with full CLI loading logic
+  const processedExtensions: GeminiCLIExtension[] = [];
+  for (const basicExt of basicExtensions) {
+    const extension = loadExtension({
+      extensionDir: basicExt.path,
+      workspaceDir,
+    });
+    if (extension != null) {
+      processedExtensions.push(extension);
+    }
+  }
+
+  return processedExtensions;
 }
 
 export function loadUserExtensions(): GeminiCLIExtension[] {
@@ -649,6 +677,7 @@ export function loadExtensionConfig(
     const config = recursivelyHydrateStrings(JSON.parse(configContent), {
       extensionPath: extensionDir,
       workspacePath: workspaceDir,
+      embeddedPythonPath: getEmbeddedPythonPath(),
       '/': path.sep,
       pathSeparator: path.sep,
     }) as unknown as ExtensionConfig;

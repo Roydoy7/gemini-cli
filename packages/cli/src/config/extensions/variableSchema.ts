@@ -34,6 +34,10 @@ export const VARIABLE_SCHEMA = {
     type: 'string',
     description: 'The absolute path of the current workspace.',
   },
+  embeddedPythonPath: {
+    type: 'string',
+    description: 'The path to the embedded Python 3.13.7 executable.',
+  },
   '/': PATH_SEPARATOR_DEFINITION,
   pathSeparator: PATH_SEPARATOR_DEFINITION,
 } as const;
