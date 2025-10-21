@@ -64,7 +64,7 @@ interface ContentRetryOptions {
 }
 
 const INVALID_CONTENT_RETRY_OPTIONS: ContentRetryOptions = {
-  maxAttempts: 1, // 1 initial call + 0 retry
+  maxAttempts: 2, // 1 initial call + 2 retry
   initialDelayMs: 500,
 };
 
