@@ -6,6 +6,7 @@
 
 import type { Part } from '@google/genai';
 import type { Config } from '../config/config.js';
+import os from 'node:os';
 // import { getFolderStructure } from './getFolderStructure.js';
 
 /**
@@ -60,16 +61,30 @@ export async function getEnvironmentContext(config: Config): Promise<Part[]> {
   const platform = process.platform;
   const directoryContext = await getDirectoryContextString(config);
 
-//   const context = `
-// This is the Gemini CLI. We are setting up the context for our chat.
-// Today's date is ${today} (formatted according to the user's locale).
-// My operating system is: ${platform}
-// ${directoryContext}
-//         `.trim();
+  // Get detailed system information
+  const osType = os.type();
+  const osRelease = os.release();
+  const osArch = os.arch();
+  const systemLocale = Intl.DateTimeFormat().resolvedOptions().locale;
+  const systemLanguage = systemLocale.split('-')[0];
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Get platform-specific information
+  let osVersion = `${osType} ${osRelease}`;
+  if (platform === 'win32') {
+    // Windows-specific version info
+    osVersion = `Windows ${osRelease}`;
+  } else if (platform === 'darwin') {
+    osVersion = `macOS ${osRelease}`;
+  } else if (platform === 'linux') {
+    osVersion = `Linux ${osRelease}`;
+  }
+
   const context = `
 We are setting up the context for our chat.
 Today's date is ${today} (formatted according to the user's locale).
-My operating system is: ${platform}
+System locale: ${systemLocale} (language: ${systemLanguage}, timezone: ${timeZone})
+Operating system: ${osVersion} (${osArch})
 ${directoryContext}
 IMPORTANT: REFUSE to operate outside of <workspace> tags above, if the user asks you to do so, warn them that you can only operate within <workspace>.
 Operate under subfolders of <workspace> is allowed.
