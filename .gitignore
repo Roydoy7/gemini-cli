@@ -68,3 +68,9 @@ packages/python-3.13.7/
 
 # Windows special files
 nul
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
