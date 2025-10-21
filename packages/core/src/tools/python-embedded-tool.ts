@@ -766,7 +766,7 @@ This tool uses an embedded Python 3.13.7 environment to ensure stable and consis
   **CRITICAL xlwings considerations**:
     - **UsedRangeAccuracy:** Be aware that 'sheet.used_range' might sometimes report the entire sheet's maximum range (e.g., 1048576 rows) even if actual data is much less. This can lead to COM errors or performance issues.
     - **Robust Data Boundary Determination:** Methods like 'sheet.used_range', 'expand()', 'end()' are UNRELIABLE with merged cells, empty cells, or complex formatting. When user provides explicit ranges (e.g., "columns A to Z", "rows 1 to 100"), ALWAYS use them directly. If range is unknown, manually scan for non-empty cells or ask user to specify the range.
-    - **Data Type Conversion for Comparison:** CRITICAL - Excel stores numbers as float even if displayed as text/integer. Leading zeros are lost ('027' becomes 27.0). When filtering by values like ['027', '211A', '306'], create a normalized set that includes all possible representations: original ('027'), without leading zeros ('27'), as int (27), as float (27.0). Then compare cell values against this normalized set. See detailed examples in the "Cell value comparison and filtering" section below.
+    - **Data Type Conversion for Comparison:** CRITICAL - Excel stores numbers as float even if displayed as text/integer. Leading zeros are lost ('027' becomes 27.0).
 ### When to choose openpyxl:
   - As default option when unsure
   - User explicitly requests to use openpyxl
@@ -781,6 +781,8 @@ This tool uses an embedded Python 3.13.7 environment to ensure stable and consis
 - NEVER assume you can write correct python code in one attempt, always use print statement to output helpful information, if errors occur, use these message to iteratively fix your code. If you can not resolve the errors, use ${GeminiSearchTool.Name} to search for solutions or examples, if you are still stuck, inform the user about the technical limitations
 - If your python code sucessfully runs and finishes the task as expected, consider use ${KnowledgeBaseTool.Name} to save the code snippet for future reference
 - When required to copy data between workbooks, always copy values only, avoid copying formulas or formats to prevent broken references unless explicitly requested
+- For data filtering tasks, never assume what user tells you is the exact content in the cells, try to find out unique values in the target column first, then find out what use wants to filter after normalizing data types (e.g., strings vs numbers, leading zeros)
+- When writing code for this task, especially with libraries like \`xlwings\` or \`openpyxl\`, you must operate under a 'defensive programming' principle. Do not assume that column names will match perfectly, and do not assume data types are consistent. When comparing cell values for filtering, your code must be robust enough to handle unexpected types. For example, explicitly cast the cell's value to multiple potential types (string, integer, float) and check against all of them to prevent misses due to Excel's implicit type conversions.
 
 ## CRITICAL: Verification After Excel Modifications
 **MANDATORY: Always verify modifications by re-reading the affected data**
