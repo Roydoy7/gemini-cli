@@ -311,6 +311,66 @@ export const App: React.FC = () => {
     }
   }, [theme]);
 
+  // Listen for retry attempts from backend
+  useEffect(() => {
+    const electronAPI = (
+      globalThis as {
+        electronAPI?: {
+          geminiChat?: {
+            onRetryAttempt: (
+              callback: (
+                event: unknown,
+                data: {
+                  attempt: number;
+                  maxAttempts: number;
+                  error: string;
+                  delayMs: number;
+                  timestamp: number;
+                },
+              ) => void,
+            ) => () => void;
+          };
+        };
+      }
+    ).electronAPI;
+
+    if (!electronAPI?.geminiChat?.onRetryAttempt) {
+      return;
+    }
+
+    const cleanup = electronAPI.geminiChat.onRetryAttempt((_event, data) => {
+      console.log(
+        `[App] Retry attempt ${data.attempt}/${data.maxAttempts}:`,
+        data.error,
+      );
+
+      // Show retry notification to user via currentOperation
+      const { setCurrentOperation } = useChatStore.getState();
+      setCurrentOperation({
+        type: 'retrying',
+        message: `Retrying request (${data.attempt}/${data.maxAttempts})`,
+        details: `${data.error}. Retrying in ${Math.round(data.delayMs / 1000)}s...`,
+      });
+
+      // Clear the retry notification after the delay + a small buffer
+      // The buffer ensures we don't clear it if the next retry starts immediately
+      setTimeout(() => {
+        const { currentOperation } = useChatStore.getState();
+        // Only clear if still showing the same retry (not a new one or error)
+        if (
+          currentOperation?.type === 'retrying' &&
+          currentOperation?.message.includes(
+            `(${data.attempt}/${data.maxAttempts})`,
+          )
+        ) {
+          useChatStore.getState().setCurrentOperation(null);
+        }
+      }, data.delayMs + 500); // Add 500ms buffer
+    });
+
+    return cleanup;
+  }, []);
+
   useEffect(() => {
     // Only initialize if authenticated (skip if user hasn't configured auth yet)
     if (
@@ -366,6 +426,7 @@ export const App: React.FC = () => {
           telemetry: { enabled: false },
           approvalMode: 'default', // Require user confirmation for important tool calls
           enableSubagents: true,
+          chatCompression: { contextPercentageThreshold: 0.7 },
         };
 
         await geminiChatService.initialize(configParams, currentRole);
