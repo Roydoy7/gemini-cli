@@ -1006,7 +1006,24 @@ ${this.getSystemReminder()}
       };
     }
 
-    const originalTokenCount = uiTelemetryService.getLastPromptTokenCount();
+    // Estimate token count using a local approximation
+    // Gemini tokenization: roughly 1 token ≈ 4 characters (for English/code)
+    // This is much faster than calling the API and good enough for compression decisions
+    const estimateTokens = (contents: Content[]): number =>
+      Math.ceil(
+        contents.reduce(
+          (total, content) => total + JSON.stringify(content).length,
+          0,
+        ) / 4,
+      );
+
+    let originalTokenCount = estimateTokens(curatedHistory);
+
+    // If we have a more accurate count from the last API response, use it
+    const lastPromptTokens = uiTelemetryService.getLastPromptTokenCount();
+    if (lastPromptTokens > 0) {
+      originalTokenCount = lastPromptTokens;
+    }
 
     const contextPercentageThreshold =
       this.config.getChatCompression()?.contextPercentageThreshold;
@@ -1056,26 +1073,23 @@ ${this.getSystemReminder()}
       );
     const summary = getResponseText(summaryResponse) ?? '';
 
-    const chat = await this.startChat([
+    const newHistory = [
       {
-        role: 'user',
+        role: 'user' as const,
         parts: [{ text: summary }],
       },
       {
-        role: 'model',
+        role: 'model' as const,
         parts: [{ text: 'Got it. Thanks for the additional context!' }],
       },
       ...historyToKeep,
-    ]);
+    ];
+
+    const chat = await this.startChat(newHistory);
     this.forceFullIdeContext = true;
 
-    // Estimate token count 1 token ≈ 4 characters
-    const newTokenCount = Math.floor(
-      chat
-        .getHistory()
-        .reduce((total, content) => total + JSON.stringify(content).length, 0) /
-        4,
-    );
+    // Estimate new token count using the same method
+    const newTokenCount = estimateTokens(newHistory);
 
     logChatCompression(
       this.config,
