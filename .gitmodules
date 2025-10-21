@@ -1,0 +1,3 @@
+[submodule "packages/extensions/excel-mcp-server"]
+	path = packages/extensions/excel-mcp-server
+	url = https://github.com/Roydoy7/excel-mcp-server.git
