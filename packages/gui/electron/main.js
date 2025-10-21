@@ -17,6 +17,7 @@ const {
   SessionManager,
   AuthManager,
   TemplateManager,
+  loadBuiltinExtensions,
 } = require('@google/gemini-cli-core');
 
 // GeminiChatManager instance - we'll initialize this when needed
@@ -157,8 +158,58 @@ const ensureInitialized = async (
         ...configParams,
       };
 
+      // Load built-in extensions (like windows-mcp)
+      const extensions = loadBuiltinExtensions(workingDirectory);
+      console.log(
+        '[ensureInitialized] Loaded built-in extensions:',
+        extensions.map((e) => e.name),
+      );
+
+      // Merge MCP servers from extensions
+      const mcpServers = {};
+      for (const extension of extensions) {
+        console.log(
+          '[ensureInitialized] Processing extension:',
+          extension.name,
+          'with servers:',
+          Object.keys(extension.mcpServers || {}),
+        );
+        if (extension.mcpServers) {
+          Object.entries(extension.mcpServers).forEach(([key, server]) => {
+            if (mcpServers[key]) {
+              console.warn(
+                `Skipping extension MCP server "${key}" from ${extension.name} - already exists`,
+              );
+              return;
+            }
+            mcpServers[key] = {
+              ...server,
+              extensionName: extension.name,
+            };
+            console.log(
+              '[ensureInitialized] Added MCP server:',
+              key,
+              'from extension:',
+              extension.name,
+            );
+          });
+        }
+      }
+      console.log(
+        '[ensureInitialized] Merged MCP servers:',
+        Object.keys(mcpServers),
+      );
+      console.log(
+        '[ensureInitialized] MCP server details:',
+        JSON.stringify(mcpServers, null, 2),
+      );
+
       // Create the Config instance
-      const config = new Config(configParameters);
+      const config = new Config({
+        ...configParameters,
+        extensions,
+        mcpServers,
+      });
 
       // Check auth preference and initialize accordingly
       const { AuthType } = require('@google/gemini-cli-core');
@@ -718,9 +769,18 @@ ipcMain.handle('geminiChat-cancel-stream', async (event, streamId) => {
 ipcMain.handle(
   'geminiChat-send-message-stream',
   async (event, messages, streamId) => {
+    // Get current session ID at the very beginning
+    // This is critical: we need it for progress handler, confirmation handler, and stream association
+    const currentSessionId = SessionManager.getInstance().getCurrentSessionId();
+
     try {
       // console.log('MultiModel sendMessageStream called with:', messages?.length, 'messages', 'streamId:', streamId)
       const system = await ensureInitialized();
+
+      // Validate session exists
+      if (!currentSessionId) {
+        throw new Error('No active session - cannot start stream');
+      }
 
       // Set up tool progress handler for real-time progress updates
       system.setToolProgressHandler((progressEvent) => {
@@ -816,14 +876,6 @@ ipcMain.handle(
       // History is managed internally by GeminiClient's GeminiChat
       const lastMessage = messages[messages.length - 1];
       const request = [{ text: lastMessage.content }];
-
-      // Get current session ID BEFORE starting the stream
-      // This is critical: we need to associate the stream with the session it belongs to
-      const currentSessionId =
-        SessionManager.getInstance().getCurrentSessionId();
-      if (!currentSessionId) {
-        throw new Error('No active session - cannot start stream');
-      }
 
       // Create an AbortController for the signal
       const abortController = new AbortController();
