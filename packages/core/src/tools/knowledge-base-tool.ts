@@ -45,6 +45,7 @@ export interface KnowledgeBaseParams {
     title?: string;
     author?: string;
     date?: string;
+    url?: string;
     [key: string]: string | undefined;
   };
 
@@ -52,20 +53,17 @@ export interface KnowledgeBaseParams {
   collection?: string;
 
   /** Advanced search and retrieval options */
-  where?: Record<string, unknown>; // Metadata filtering: {"author": "John", "page": {"$gt": 10}}
+  where?: Record<string, unknown>; // Metadata filtering: {"author": "John", "page": {"$gt": 10}} - also used for delete operation
   where_document?: Record<string, unknown>; // Full-text search: {"$contains": "search term"}
   content_mode?: 'chunks' | 'full' | 'metadata_only'; // Content inclusion level
   similarity_threshold?: number; // Minimum similarity score (0-1)
 
   /** Document management */
-  document_ids?: string[]; // Specific document IDs to retrieve or delete
+  document_ids?: string[]; // Specific document IDs to retrieve or delete (delete operation: either document_ids or where required)
 
   /** Result formatting */
   include_metadata?: boolean; // Include metadata in results (default: true)
   include_distances?: boolean; // Include similarity distances (default: true)
-
-  /** Delete operations */
-  collection_name?: string; // Collection name to delete (for delete_collection operation)
 }
 
 /**
@@ -99,10 +97,12 @@ export class KnowledgeBaseTool extends BasePythonTool<
 {
   "op": "store",
   "content": "# Excel Data Export\\n\\nSuccessfully exported data using xlwings:\\n\\n\`\`\`python\\nimport xlwings as xw\\nbook = xw.Book('data.xlsx')\\nsheet = book.sheets[0]\\ndata = sheet.range('A1').expand('table').value\\n\`\`\`",
+  "collection": "code_snippets",
   "metadata": {
     "title": "Excel Export with xlwings",
-    "category": "code_snippet",
-    "language": "python"
+    "category": "data_processing",
+    "language": "python",
+    "url": "https://docs.xlwings.org"
   }
 }
 \`\`\`
@@ -112,6 +112,7 @@ export class KnowledgeBaseTool extends BasePythonTool<
 {
   "op": "search",
   "query": "how to read excel file with xlwings",
+  "collection": "code_snippets",
   "limit": 3
 }
 \`\`\`
@@ -121,9 +122,19 @@ export class KnowledgeBaseTool extends BasePythonTool<
 {
   "op": "advanced_search",
   "query": "data visualization",
-  "where": {"category": "code_snippet", "language": "python"},
+  "collection": "code_snippets",
+  "where": {"category": "data_processing", "language": "python"},
   "similarity_threshold": 0.7,
   "limit": 5
+}
+\`\`\`
+
+### Delete documents by metadata
+\`\`\`json
+{
+  "op": "delete",
+  "collection": "code_snippets",
+  "where": {"category": "data_processing"}
 }
 \`\`\`
 
@@ -247,24 +258,31 @@ knowledge_base(op="search",
 - Useful for organizing different types of content
 
 ## delete - Remove specific documents (requires confirmation)
-- Delete documents by their IDs (obtained from search results)
-- Provide \`document_ids\` array with the IDs to delete
+- Delete documents by their IDs or by metadata filter
+- **By IDs**: Provide \`document_ids\` array with specific chunk IDs
+- **By Metadata** (recommended): Use \`where\` parameter to delete by metadata:
+  - \`{"source_file": "path/to/file.pdf"}\` - Delete all chunks from a file
+  - \`{"content_id": "abc123"}\` - Delete all chunks of a document
+  - \`{"category": "python"}\` - Delete all documents in a category
+  - \`{"url": "https://example.com"}\` - Delete documents from a URL
 - This is a destructive operation and requires user confirmation
-- Useful for removing outdated or incorrect information
+- Metadata-based deletion is more efficient for removing entire documents
 
 ## delete_collection - Remove entire collection (requires confirmation)
 - Delete an entire collection and all its documents
-- Provide \`collection_name\` to specify which collection to delete
+- Deletes the collection specified by the \`collection\` parameter (defaults to "default")
 - This is a destructive operation and requires user confirmation
 - Use with caution - all documents in the collection will be permanently removed
 
 # BEST PRACTICES
+- **Always specify \`collection\`**: Organize content into meaningful collections (e.g., "code_snippets", "books", "project_docs") instead of using "default"
+- **Use rich metadata**: Include title, author, date, url, category, and other custom fields for better organization and filtering
+- **Metadata is key for deletion**: Add meaningful metadata (especially source_file, url, content_id) to make deletion easier later
+- **Delete by metadata**: Use \`where\` parameter to delete entire documents efficiently instead of tracking individual chunk IDs
 - Save successful solutions immediately after they work
-- Use descriptive titles and consistent metadata for better searchability
 - Search before solving - check if you've encountered similar problems before
-- Organize related content into collections (e.g., "excel_automation", "api_examples")
-- Include context in metadata (date, project, source) for better filtering
 - For large documents, let the tool handle chunking automatically
+- The tool uses \`upsert\` - re-storing the same content will update it instead of creating duplicates
 
 # TECHNICAL DETAILS
 - Uses ChromaDB for vector storage and semantic search
@@ -312,13 +330,14 @@ knowledge_base(op="search",
           },
           metadata: {
             description:
-              'Optional metadata for the content (source_file, title, author, date, etc.)',
+              'Optional metadata for the content (source_file, title, author, date, url, etc.)',
             type: 'object',
             properties: {
               source_file: { type: 'string' },
               title: { type: 'string' },
               author: { type: 'string' },
               date: { type: 'string' },
+              url: { type: 'string' },
             },
             additionalProperties: { type: 'string' },
           },
@@ -354,11 +373,6 @@ knowledge_base(op="search",
               'Specific document IDs to retrieve (get operation) or delete (delete operation)',
             type: 'array',
             items: { type: 'string' },
-          },
-          collection_name: {
-            description:
-              'Collection name to delete (delete_collection operation)',
-            type: 'string',
           },
           include_metadata: {
             description: 'Include metadata in results (default: true)',
@@ -424,18 +438,17 @@ knowledge_base(op="search",
         break;
 
       case 'delete':
-        if (!document_ids || document_ids.length === 0) {
-          return 'document_ids is required and cannot be empty for delete operation';
+        // Either document_ids or where is required for delete
+        if (
+          (!document_ids || document_ids.length === 0) &&
+          (!params.where || Object.keys(params.where).length === 0)
+        ) {
+          return 'Either document_ids or where parameter is required for delete operation';
         }
         break;
 
       case 'delete_collection':
-        if (
-          !params.collection_name ||
-          params.collection_name.trim().length === 0
-        ) {
-          return 'collection_name is required and cannot be empty for delete_collection operation';
-        }
+        // No additional validation needed - will delete the collection specified by the collection parameter
         break;
 
       case 'list_collections':
@@ -571,24 +584,38 @@ knowledge_base(op="search",
       } else if (params.op === 'delete') {
         const deletedCount = result.deleted_count || 0;
         const deletedIds = result.deleted_ids || [];
-        return {
-          returnDisplay: `✅ **Documents deleted successfully!**
+        const method = result.method || 'unknown';
+        const whereFilter = result.where_filter;
+
+        let displayMessage = `✅ **Documents deleted successfully!**
 
 🗂️ **Collection:** ${result.collection || params.collection || 'default'}
 🗑️ **Deleted:** ${deletedCount} document(s)
+🔧 **Method:** ${method === 'by_ids' ? 'By IDs' : 'By Metadata Filter'}`;
 
-**Deleted IDs:**
-${deletedIds.map((id: string) => `• ${id}`).join('\n')}`,
-          llmContent: `Successfully deleted ${deletedCount} documents from collection '${result.collection || params.collection || 'default'}'. IDs: ${deletedIds.join(', ')}`,
+        if (whereFilter) {
+          displayMessage += `\n🔍 **Filter:** ${JSON.stringify(whereFilter)}`;
+        }
+
+        if (deletedIds.length > 0) {
+          displayMessage += `\n\n**Deleted IDs${deletedIds.length > 10 ? ' (first 10)' : ''}:**\n${deletedIds
+            .slice(0, 10)
+            .map((id: string) => `• ${id}`)
+            .join('\n')}`;
+        }
+
+        return {
+          returnDisplay: displayMessage,
+          llmContent: `Successfully deleted ${deletedCount} documents from collection '${result.collection || params.collection || 'default'}'. ${whereFilter ? `Filter: ${JSON.stringify(whereFilter)}` : `IDs: ${deletedIds.slice(0, 10).join(', ')}`}`,
         };
       } else if (params.op === 'delete_collection') {
         return {
           returnDisplay: `✅ **Collection deleted successfully!**
 
-🗂️ **Deleted Collection:** ${result.deleted_collection || params.collection_name}
+🗂️ **Deleted Collection:** ${result.deleted_collection || params.collection || 'default'}
 
 ⚠️ **Warning:** All documents in this collection have been permanently removed.`,
-          llmContent: `Successfully deleted collection '${result.deleted_collection || params.collection_name}' and all its documents.`,
+          llmContent: `Successfully deleted collection '${result.deleted_collection || params.collection || 'default'}' and all its documents.`,
         };
       }
 
@@ -756,8 +783,8 @@ class SimpleKnowledgeBase:
                 }
                 chunk_metadatas.append(chunk_metadata)
 
-            # Store in Chroma
-            self.collection.add(
+            # Store in Chroma (use upsert to allow updating existing content)
+            self.collection.upsert(
                 documents=chunk_documents,
                 metadatas=chunk_metadatas,
                 ids=chunk_ids
@@ -863,38 +890,64 @@ class SimpleKnowledgeBase:
         except Exception as e:
             return {"error": str(e)}
 
-    def delete_documents(self, document_ids: list) -> Dict[str, Any]:
-        """Delete specific documents by their IDs"""
+    def delete_documents(self, document_ids: list = None, where: dict = None) -> Dict[str, Any]:
+        """Delete documents by IDs or metadata filter"""
         try:
-            if not document_ids:
+            if not document_ids and not where:
                 return {
                     "status": "error",
-                    "error": "No document IDs provided for deletion"
+                    "error": "Either document_ids or where filter must be provided for deletion"
                 }
 
-            # Delete the documents
-            self.collection.delete(ids=document_ids)
+            # Build delete parameters
+            delete_params = {}
 
-            return {
-                "status": "success",
-                "deleted_count": len(document_ids),
-                "deleted_ids": document_ids,
-                "collection": self.collection_name
-            }
+            if document_ids:
+                # Delete by IDs
+                delete_params["ids"] = document_ids
+                self.collection.delete(**delete_params)
+                return {
+                    "status": "success",
+                    "deleted_count": len(document_ids),
+                    "deleted_ids": document_ids,
+                    "collection": self.collection_name,
+                    "method": "by_ids"
+                }
+            elif where:
+                # Delete by metadata filter
+                delete_params["where"] = where
+
+                # Get count before deletion (for reporting)
+                try:
+                    pre_delete = self.collection.get(where=where, include=["metadatas"])
+                    deleted_count = len(pre_delete["ids"]) if pre_delete["ids"] else 0
+                    deleted_ids = pre_delete["ids"] if pre_delete["ids"] else []
+                except:
+                    deleted_count = 0
+                    deleted_ids = []
+
+                # Perform deletion
+                self.collection.delete(**delete_params)
+
+                return {
+                    "status": "success",
+                    "deleted_count": deleted_count,
+                    "deleted_ids": deleted_ids[:10],  # Limit to first 10 IDs for display
+                    "collection": self.collection_name,
+                    "method": "by_metadata",
+                    "where_filter": where
+                }
+
         except Exception as e:
             return {
                 "status": "error",
                 "error": str(e)
             }
 
-    def delete_collection(self, collection_name: str) -> Dict[str, Any]:
-        """Delete an entire collection"""
+    def delete_collection(self) -> Dict[str, Any]:
+        """Delete the current collection"""
         try:
-            if not collection_name:
-                return {
-                    "status": "error",
-                    "error": "No collection name provided for deletion"
-                }
+            collection_name = self.collection_name
 
             # Check if collection exists
             try:
@@ -1039,11 +1092,14 @@ def main():
 
         elif operation == "delete":
             document_ids = ${JSON.stringify(document_ids)}
-            result = kb.delete_documents(document_ids)
+            where_filter = ${JSON.stringify(where)}
+            result = kb.delete_documents(
+                document_ids=document_ids if document_ids else None,
+                where=where_filter if where_filter else None
+            )
 
         elif operation == "delete_collection":
-            collection_name = """${params.collection_name || ''}"""
-            result = kb.delete_collection(collection_name)
+            result = kb.delete_collection()
 
         else:
             result = {"status": "error", "error": f"Unknown operation: {operation}"}
