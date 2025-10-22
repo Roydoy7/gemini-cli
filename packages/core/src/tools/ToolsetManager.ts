@@ -32,8 +32,8 @@ import { EconomicCalendarTool } from './economic-calendar-tool.js';
 import { FinancialAnalyzer } from './financial-analyzer-tool.js';
 import { EconomicNewsTool } from './economic-news-tool.js';
 import { KnowledgeBaseTool } from './knowledge-base-tool.js';
-import { DocumentIndexerAgent } from '../agents/document-indexer.js';
-import { DocumentRetrieverAgent } from '../agents/document-retriever.js';
+// import { DocumentIndexerAgent } from '../agents/document-indexer.js';
+// import { DocumentRetrieverAgent } from '../agents/document-retriever.js';
 import type { AgentDefinition } from '../agents/types.js';
 
 /**
@@ -127,7 +127,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
 type AnyAgentDefinition = AgentDefinition<any>;
 
 const ROLE_SUBAGENT_MAP: Record<string, AnyAgentDefinition[]> = {
-  office_assistant: [DocumentIndexerAgent, DocumentRetrieverAgent],
+  // office_assistant: [DocumentIndexerAgent, DocumentRetrieverAgent],
 };
 
 export class ToolsetManager {

@@ -6,7 +6,7 @@
 
 import type { Config } from '../config/config.js';
 import type { AgentDefinition } from './types.js';
-import { CodebaseInvestigatorAgent } from './codebase-investigator.js';
+// import { CodebaseInvestigatorAgent } from './codebase-investigator.js';
 import { type z } from 'zod';
 
 /**
@@ -23,7 +23,7 @@ export class AgentRegistry {
    * Discovers and loads agents.
    */
   async initialize(): Promise<void> {
-    this.loadBuiltInAgents();
+    // this.loadBuiltInAgents();
 
     if (this.config.getDebugMode()) {
       console.log(
@@ -32,9 +32,9 @@ export class AgentRegistry {
     }
   }
 
-  private loadBuiltInAgents(): void {
-    this.registerAgent(CodebaseInvestigatorAgent);
-  }
+  // private loadBuiltInAgents(): void {
+  //   this.registerAgent(CodebaseInvestigatorAgent);
+  // }
 
   /**
    * Registers an agent definition. If an agent with the same name exists,

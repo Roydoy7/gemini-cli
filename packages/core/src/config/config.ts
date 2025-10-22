@@ -17,19 +17,19 @@ import {
 } from '../core/contentGenerator.js';
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
-import { LSTool } from '../tools/ls.js';
-import { ReadFileTool } from '../tools/read-file.js';
-import { GrepTool } from '../tools/grep.js';
-import { canUseRipgrep, RipGrepTool } from '../tools/ripGrep.js';
-import { GlobTool } from '../tools/glob.js';
-import { EditTool } from '../tools/edit.js';
-import { SmartEditTool } from '../tools/smart-edit.js';
-import { ShellTool } from '../tools/shell.js';
-import { WriteFileTool } from '../tools/write-file.js';
-import { WebFetchTool } from '../tools/web-fetch.js';
-import { ReadManyFilesTool } from '../tools/read-many-files.js';
+// import { LSTool } from '../tools/ls.js';
+// import { ReadFileTool } from '../tools/read-file.js';
+// import { GrepTool } from '../tools/grep.js';
+// import { canUseRipgrep, RipGrepTool } from '../tools/ripGrep.js';
+// import { GlobTool } from '../tools/glob.js';
+// import { EditTool } from '../tools/edit.js';
+// import { SmartEditTool } from '../tools/smart-edit.js';
+// import { ShellTool } from '../tools/shell.js';
+// import { WriteFileTool } from '../tools/write-file.js';
+// import { WebFetchTool } from '../tools/web-fetch.js';
+// import { ReadManyFilesTool } from '../tools/read-many-files.js';
 import { MemoryTool, setGeminiMdFilename } from '../tools/memoryTool.js';
-import { WebSearchTool } from '../tools/web-search.js';
+// import { WebSearchTool } from '../tools/web-search.js';
 import { GeminiClient } from '../core/client.js';
 import { BaseLlmClient } from '../core/baseLlmClient.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
@@ -50,14 +50,14 @@ import {
 import { shouldAttemptBrowserLaunch } from '../utils/browser.js';
 import type { MCPOAuthConfig } from '../mcp/oauth-provider.js';
 import { ideContextStore } from '../ide/ideContext.js';
-import { WriteTodosTool } from '../tools/write-todos.js';
+// import { WriteTodosTool } from '../tools/write-todos.js';
 import type { FileSystemService } from '../services/fileSystemService.js';
 import { StandardFileSystemService } from '../services/fileSystemService.js';
 import {
   logCliConfiguration,
-  logRipgrepFallback,
+  // logRipgrepFallback,
 } from '../telemetry/loggers.js';
-import { RipgrepFallbackEvent } from '../telemetry/types.js';
+// import { RipgrepFallbackEvent } from '../telemetry/types.js';
 import type { FallbackModelHandler } from '../fallback/types.js';
 import { ModelRouterService } from '../routing/modelRouterService.js';
 import { OutputFormat } from '../output/types.js';
@@ -77,7 +77,7 @@ import type { UserTierId } from '../code_assist/types.js';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import { AgentRegistry } from '../agents/registry.js';
-import { SubagentToolWrapper } from '../agents/subagent-tool-wrapper.js';
+// import { SubagentToolWrapper } from '../agents/subagent-tool-wrapper.js';
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -1107,77 +1107,77 @@ export class Config {
       }
     };
 
-    registerCoreTool(LSTool, this);
-    registerCoreTool(ReadFileTool, this);
+    // registerCoreTool(LSTool, this);
+    // registerCoreTool(ReadFileTool, this);
 
-    if (this.getUseRipgrep()) {
-      let useRipgrep = false;
-      let errorString: undefined | string = undefined;
-      try {
-        useRipgrep = await canUseRipgrep();
-      } catch (error: unknown) {
-        errorString = String(error);
-      }
-      if (useRipgrep) {
-        registerCoreTool(RipGrepTool, this);
-      } else {
-        logRipgrepFallback(this, new RipgrepFallbackEvent(errorString));
-        registerCoreTool(GrepTool, this);
-      }
-    } else {
-      registerCoreTool(GrepTool, this);
-    }
+    // if (this.getUseRipgrep()) {
+    //   let useRipgrep = false;
+    //   let errorString: undefined | string = undefined;
+    //   try {
+    //     useRipgrep = await canUseRipgrep();
+    //   } catch (error: unknown) {
+    //     errorString = String(error);
+    //   }
+    //   if (useRipgrep) {
+    //     registerCoreTool(RipGrepTool, this);
+    //   } else {
+    //     logRipgrepFallback(this, new RipgrepFallbackEvent(errorString));
+    //     registerCoreTool(GrepTool, this);
+    //   }
+    // } else {
+    //   registerCoreTool(GrepTool, this);
+    // }
 
-    registerCoreTool(GlobTool, this);
-    if (this.getUseSmartEdit()) {
-      registerCoreTool(SmartEditTool, this);
-    } else {
-      registerCoreTool(EditTool, this);
-    }
-    registerCoreTool(WriteFileTool, this);
-    registerCoreTool(WebFetchTool, this);
-    registerCoreTool(ReadManyFilesTool, this);
-    registerCoreTool(ShellTool, this);
+    // registerCoreTool(GlobTool, this);
+    // if (this.getUseSmartEdit()) {
+    //   registerCoreTool(SmartEditTool, this);
+    // } else {
+    //   registerCoreTool(EditTool, this);
+    // }
+    // registerCoreTool(WriteFileTool, this);
+    // registerCoreTool(WebFetchTool, this);
+    // registerCoreTool(ReadManyFilesTool, this);
+    // registerCoreTool(ShellTool, this);
     registerCoreTool(MemoryTool);
-    registerCoreTool(WebSearchTool, this);
-    if (this.getUseWriteTodos()) {
-      registerCoreTool(WriteTodosTool, this);
-    }
+    // registerCoreTool(WebSearchTool, this);
+    // if (this.getUseWriteTodos()) {
+    //   registerCoreTool(WriteTodosTool, this);
+    // }
 
-    // Register Subagents as Tools
-    if (this.getEnableSubagents()) {
-      const agentDefinitions = this.agentRegistry.getAllDefinitions();
-      for (const definition of agentDefinitions) {
-        // We must respect the main allowed/exclude lists for agents too.
-        const excludeTools = this.getExcludeTools() || [];
-        const allowedTools = this.getAllowedTools();
+    // // Register Subagents as Tools
+    // if (this.getEnableSubagents()) {
+    //   const agentDefinitions = this.agentRegistry.getAllDefinitions();
+    //   for (const definition of agentDefinitions) {
+    //     // We must respect the main allowed/exclude lists for agents too.
+    //     const excludeTools = this.getExcludeTools() || [];
+    //     const allowedTools = this.getAllowedTools();
 
-        const isExcluded = excludeTools.includes(definition.name);
-        const isAllowed =
-          !allowedTools || allowedTools.includes(definition.name);
+    //     const isExcluded = excludeTools.includes(definition.name);
+    //     const isAllowed =
+    //       !allowedTools || allowedTools.includes(definition.name);
 
-        if (isAllowed && !isExcluded) {
-          try {
-            const messageBusEnabled = this.getEnableMessageBusIntegration();
-            const wrapper = new SubagentToolWrapper(
-              definition,
-              this,
-              messageBusEnabled ? this.getMessageBus() : undefined,
-            );
-            registry.registerTool(wrapper);
-          } catch (error) {
-            console.error(
-              `Failed to wrap agent '${definition.name}' as a tool:`,
-              error,
-            );
-          }
-        } else if (this.getDebugMode()) {
-          console.log(
-            `[Config] Skipping registration of agent '${definition.name}' due to allow/exclude configuration.`,
-          );
-        }
-      }
-    }
+    //     if (isAllowed && !isExcluded) {
+    //       try {
+    //         const messageBusEnabled = this.getEnableMessageBusIntegration();
+    //         const wrapper = new SubagentToolWrapper(
+    //           definition,
+    //           this,
+    //           messageBusEnabled ? this.getMessageBus() : undefined,
+    //         );
+    //         registry.registerTool(wrapper);
+    //       } catch (error) {
+    //         console.error(
+    //           `Failed to wrap agent '${definition.name}' as a tool:`,
+    //           error,
+    //         );
+    //       }
+    //     } else if (this.getDebugMode()) {
+    //       console.log(
+    //         `[Config] Skipping registration of agent '${definition.name}' due to allow/exclude configuration.`,
+    //       );
+    //     }
+    //   }
+    // }
 
     await registry.discoverAllTools();
     return registry;
