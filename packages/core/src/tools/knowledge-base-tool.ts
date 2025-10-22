@@ -46,6 +46,7 @@ export interface KnowledgeBaseParams {
     author?: string;
     date?: string;
     url?: string;
+    language?: string; // Document language (e.g., 'en', 'zh', 'zh-CN', 'zh-TW', 'ja', 'es')
     [key: string]: string | undefined;
   };
 
@@ -101,7 +102,7 @@ export class KnowledgeBaseTool extends BasePythonTool<
   "metadata": {
     "title": "Excel Export with xlwings",
     "category": "data_processing",
-    "language": "python",
+    "language": "en",
     "url": "https://docs.xlwings.org"
   }
 }
@@ -239,12 +240,19 @@ knowledge_base(op="search",
 
 ## search - Find relevant content (simple semantic search)
 - Provide a natural language \`query\` describing what you're looking for
+- **CRITICAL**: Query language should match document language for best results
+  - If documents are in English → use English queries
+  - If documents are in Chinese → use Chinese queries
+  - Check metadata \`language\` field or use \`list_collections\` first
 - Returns top matching chunks with similarity scores
 - Use \`limit\` to control number of results (default: 5)
 
 ## advanced_search - Powerful search with filters
 - Combine semantic search with metadata filtering
-- \`where\`: Filter by metadata (e.g., {"category": "api", "language": "python"})
+- **CRITICAL**: Query language should match document language for best results
+- \`where\`: Filter by metadata (e.g., {"category": "api", "language": "en"})
+  - Use \`{"language": "en"}\` to search only English documents
+  - Use \`{"language": "zh"}\` to search only Chinese documents
 - \`where_document\`: Full-text search within content (e.g., {"$contains": "xlwings"})
 - \`similarity_threshold\`: Only return results above this score (0-1)
 - \`content_mode\`: "chunks" (default), "full" (complete docs), or "metadata_only"
@@ -276,6 +284,11 @@ knowledge_base(op="search",
 
 # BEST PRACTICES
 - **Always specify \`collection\`**: Organize content into meaningful collections (e.g., "code_snippets", "books", "project_docs") instead of using "default"
+- **Always specify \`language\` in metadata**: This is CRITICAL for search accuracy
+  - Example: \`{"language": "en"}\` for English, \`{"language": "zh"}\` for Chinese
+  - Query language MUST match document language for good results
+  - Before searching, check document language with \`list_collections\` or metadata filters
+  - If user asks in Chinese but docs are English, translate query to English first
 - **Use rich metadata**: Include title, author, date, url, category, and other custom fields for better organization and filtering
 - **Metadata is key for deletion**: Add meaningful metadata (especially source_file, url, content_id) to make deletion easier later
 - **Delete by metadata**: Use \`where\` parameter to delete entire documents efficiently instead of tracking individual chunk IDs
@@ -330,7 +343,7 @@ knowledge_base(op="search",
           },
           metadata: {
             description:
-              'Optional metadata for the content (source_file, title, author, date, url, etc.)',
+              'Optional metadata for the content (source_file, title, author, date, url, language, etc.)',
             type: 'object',
             properties: {
               source_file: { type: 'string' },
@@ -338,6 +351,11 @@ knowledge_base(op="search",
               author: { type: 'string' },
               date: { type: 'string' },
               url: { type: 'string' },
+              language: {
+                type: 'string',
+                description:
+                  'Document language code (e.g., "en", "zh", "zh-CN", "zh-TW", "ja", "es", "fr", "de")',
+              },
             },
             additionalProperties: { type: 'string' },
           },
