@@ -16,7 +16,9 @@ export type KnowledgeBaseOperation =
   | 'search'
   | 'get'
   | 'list_collections'
-  | 'advanced_search';
+  | 'advanced_search'
+  | 'delete'
+  | 'delete_collection';
 
 /**
  * Parameters for knowledge base operations
@@ -56,11 +58,14 @@ export interface KnowledgeBaseParams {
   similarity_threshold?: number; // Minimum similarity score (0-1)
 
   /** Document management */
-  document_ids?: string[]; // Specific document IDs to retrieve
+  document_ids?: string[]; // Specific document IDs to retrieve or delete
 
   /** Result formatting */
   include_metadata?: boolean; // Include metadata in results (default: true)
   include_distances?: boolean; // Include similarity distances (default: true)
+
+  /** Delete operations */
+  collection_name?: string; // Collection name to delete (for delete_collection operation)
 }
 
 /**
@@ -241,6 +246,18 @@ knowledge_base(op="search",
 - Lists all available collections with their metadata
 - Useful for organizing different types of content
 
+## delete - Remove specific documents (requires confirmation)
+- Delete documents by their IDs (obtained from search results)
+- Provide \`document_ids\` array with the IDs to delete
+- This is a destructive operation and requires user confirmation
+- Useful for removing outdated or incorrect information
+
+## delete_collection - Remove entire collection (requires confirmation)
+- Delete an entire collection and all its documents
+- Provide \`collection_name\` to specify which collection to delete
+- This is a destructive operation and requires user confirmation
+- Use with caution - all documents in the collection will be permanently removed
+
 # BEST PRACTICES
 - Save successful solutions immediately after they work
 - Use descriptive titles and consistent metadata for better searchability
@@ -260,7 +277,7 @@ knowledge_base(op="search",
         properties: {
           op: {
             description:
-              'Operation to perform: store (save content), search (semantic search), get (retrieve by ID), list_collections (show all collections), advanced_search (combined semantic + metadata + full-text search)',
+              'Operation to perform: store (save content), search (semantic search), get (retrieve by ID), list_collections (show all collections), advanced_search (combined semantic + metadata + full-text search), delete (delete specific documents), delete_collection (delete entire collection)',
             type: 'string',
             enum: [
               'store',
@@ -268,6 +285,8 @@ knowledge_base(op="search",
               'get',
               'list_collections',
               'advanced_search',
+              'delete',
+              'delete_collection',
             ],
           },
           content: {
@@ -331,9 +350,15 @@ knowledge_base(op="search",
             maximum: 1,
           },
           document_ids: {
-            description: 'Specific document IDs to retrieve (get operation)',
+            description:
+              'Specific document IDs to retrieve (get operation) or delete (delete operation)',
             type: 'array',
             items: { type: 'string' },
+          },
+          collection_name: {
+            description:
+              'Collection name to delete (delete_collection operation)',
+            type: 'string',
           },
           include_metadata: {
             description: 'Include metadata in results (default: true)',
@@ -355,13 +380,14 @@ knowledge_base(op="search",
   }
 
   /**
-   * KnowledgeBase operations are safe for non-interactive execution in subagents.
-   * Operations are idempotent and only affect the vector database.
+   * KnowledgeBase operations are safe for non-interactive execution in subagents,
+   * except for delete operations which require user confirmation.
    */
   protected override requiresConfirmation(
-    _params: KnowledgeBaseParams,
+    params: KnowledgeBaseParams,
   ): boolean {
-    return false;
+    // Delete operations require confirmation as they are destructive
+    return params.op === 'delete' || params.op === 'delete_collection';
   }
 
   protected override validateToolParamValues(
@@ -394,6 +420,21 @@ knowledge_base(op="search",
       case 'get':
         if (!document_ids || document_ids.length === 0) {
           return 'document_ids is required and cannot be empty for get operation';
+        }
+        break;
+
+      case 'delete':
+        if (!document_ids || document_ids.length === 0) {
+          return 'document_ids is required and cannot be empty for delete operation';
+        }
+        break;
+
+      case 'delete_collection':
+        if (
+          !params.collection_name ||
+          params.collection_name.trim().length === 0
+        ) {
+          return 'collection_name is required and cannot be empty for delete_collection operation';
         }
         break;
 
@@ -526,6 +567,28 @@ knowledge_base(op="search",
             )
             .join('\n')}`,
           llmContent: JSON.stringify(collections, null, 2),
+        };
+      } else if (params.op === 'delete') {
+        const deletedCount = result.deleted_count || 0;
+        const deletedIds = result.deleted_ids || [];
+        return {
+          returnDisplay: `✅ **Documents deleted successfully!**
+
+🗂️ **Collection:** ${result.collection || params.collection || 'default'}
+🗑️ **Deleted:** ${deletedCount} document(s)
+
+**Deleted IDs:**
+${deletedIds.map((id: string) => `• ${id}`).join('\n')}`,
+          llmContent: `Successfully deleted ${deletedCount} documents from collection '${result.collection || params.collection || 'default'}'. IDs: ${deletedIds.join(', ')}`,
+        };
+      } else if (params.op === 'delete_collection') {
+        return {
+          returnDisplay: `✅ **Collection deleted successfully!**
+
+🗂️ **Deleted Collection:** ${result.deleted_collection || params.collection_name}
+
+⚠️ **Warning:** All documents in this collection have been permanently removed.`,
+          llmContent: `Successfully deleted collection '${result.deleted_collection || params.collection_name}' and all its documents.`,
         };
       }
 
@@ -800,6 +863,62 @@ class SimpleKnowledgeBase:
         except Exception as e:
             return {"error": str(e)}
 
+    def delete_documents(self, document_ids: list) -> Dict[str, Any]:
+        """Delete specific documents by their IDs"""
+        try:
+            if not document_ids:
+                return {
+                    "status": "error",
+                    "error": "No document IDs provided for deletion"
+                }
+
+            # Delete the documents
+            self.collection.delete(ids=document_ids)
+
+            return {
+                "status": "success",
+                "deleted_count": len(document_ids),
+                "deleted_ids": document_ids,
+                "collection": self.collection_name
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+
+    def delete_collection(self, collection_name: str) -> Dict[str, Any]:
+        """Delete an entire collection"""
+        try:
+            if not collection_name:
+                return {
+                    "status": "error",
+                    "error": "No collection name provided for deletion"
+                }
+
+            # Check if collection exists
+            try:
+                self.client.get_collection(name=collection_name)
+            except:
+                return {
+                    "status": "error",
+                    "error": f"Collection '{collection_name}' not found"
+                }
+
+            # Delete the collection
+            self.client.delete_collection(name=collection_name)
+
+            return {
+                "status": "success",
+                "deleted_collection": collection_name,
+                "message": f"Collection '{collection_name}' has been deleted"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+
     def advanced_search(self, query: str, limit: int = 5, where=None, where_document=None,
                        content_mode: str = "chunks", similarity_threshold: float = 0,
                        include_metadata: bool = True, include_distances: bool = True):
@@ -917,6 +1036,14 @@ def main():
                 include_metadata=${include_metadata ? 'True' : 'False'},
                 include_distances=${include_distances ? 'True' : 'False'}
             )
+
+        elif operation == "delete":
+            document_ids = ${JSON.stringify(document_ids)}
+            result = kb.delete_documents(document_ids)
+
+        elif operation == "delete_collection":
+            collection_name = """${params.collection_name || ''}"""
+            result = kb.delete_collection(collection_name)
 
         else:
             result = {"status": "error", "error": f"Unknown operation: {operation}"}
