@@ -473,11 +473,16 @@ print(json.dumps(result, ensure_ascii=False, indent=2))
         const errorDetails = result.error.details || '';
         result.returnDisplay = `❌ **Error:** ${errorMessage}\n\n${errorDetails}`;
         result.llmContent = `Failed to process document: ${errorMessage}`;
-      } else if (params.op === 'convert') {
-        const preview = result.conversion?.preview || '';
-        const truncated = (result.conversion?.markdown_length || 0) > 500;
+      } else {
+        // Clear the error field for successful operations
+        // (Python returns "error": null which needs to be removed)
+        delete result.error;
 
-        result.returnDisplay = `✅ **Document converted successfully!**
+        if (params.op === 'convert') {
+          const preview = result.conversion?.preview || '';
+          const truncated = (result.conversion?.markdown_length || 0) > 500;
+
+          result.returnDisplay = `✅ **Document converted successfully!**
 
 📄 **Input:** ${result.input_file?.path}
 📝 **Output:** ${result.conversion?.output_path}
@@ -488,11 +493,11 @@ print(json.dumps(result, ensure_ascii=False, indent=2))
 ${preview}${truncated ? '\n...(truncated)' : ''}
 \`\`\``;
 
-        result.llmContent =
-          result.conversion?.full_content ||
-          `Document converted successfully. Output saved to ${result.conversion?.output_path}. Content length: ${result.conversion?.markdown_length} characters.`;
-      } else if (params.op === 'convert_path_only') {
-        result.returnDisplay = `✅ **Document converted successfully!**
+          result.llmContent =
+            result.conversion?.full_content ||
+            `Document converted successfully. Output saved to ${result.conversion?.output_path}. Content length: ${result.conversion?.markdown_length} characters.`;
+        } else if (params.op === 'convert_path_only') {
+          result.returnDisplay = `✅ **Document converted successfully!**
 
 📄 **Input:** ${result.input_file?.path}
 📝 **Output:** ${result.conversion?.output_path}
@@ -500,9 +505,9 @@ ${preview}${truncated ? '\n...(truncated)' : ''}
 
 💡 **Path returned for LLM use:** The markdown file has been created and the path is available for further processing.`;
 
-        result.llmContent = `Document converted successfully. Markdown file saved to: ${result.conversion?.output_path}. Length: ${result.conversion?.markdown_length} characters. Use this path to read the content when needed.`;
-      } else if (params.op === 'extract_text') {
-        result.returnDisplay = `✅ **Text extracted successfully!**
+          result.llmContent = `Document converted successfully. Markdown file saved to: ${result.conversion?.output_path}. Length: ${result.conversion?.markdown_length} characters. Use this path to read the content when needed.`;
+        } else if (params.op === 'extract_text') {
+          result.returnDisplay = `✅ **Text extracted successfully!**
 
 📄 **File:** ${result.input_file?.path}
 📊 **Length:** ${result.conversion?.markdown_length} characters
@@ -510,11 +515,11 @@ ${preview}${truncated ? '\n...(truncated)' : ''}
 **Content:**
 ${result.conversion?.full_content || '(no content)'}`;
 
-        result.llmContent =
-          result.conversion?.full_content || 'No text content extracted.';
-      } else if (params.op === 'analyze_structure') {
-        const structure = result.structure || {};
-        result.returnDisplay = `✅ **Document structure analyzed!**
+          result.llmContent =
+            result.conversion?.full_content || 'No text content extracted.';
+        } else if (params.op === 'analyze_structure') {
+          const structure = result.structure || {};
+          result.returnDisplay = `✅ **Document structure analyzed!**
 
 📄 **File:** ${result.input_file?.path}
 📊 **Format:** ${result.input_file?.format?.toUpperCase()}
@@ -536,7 +541,8 @@ ${structure.headings.join('\n')}
     : ''
 }`;
 
-        result.llmContent = `Document structure: ${structure.headings?.length || 0} headings, ${structure.tables_count || 0} tables, ${structure.images_count || 0} images, ${structure.total_paragraphs || 0} paragraphs.`;
+          result.llmContent = `Document structure: ${structure.headings?.length || 0} headings, ${structure.tables_count || 0} tables, ${structure.images_count || 0} images, ${structure.total_paragraphs || 0} paragraphs.`;
+        }
       }
 
       return result;

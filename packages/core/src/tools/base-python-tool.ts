@@ -294,12 +294,26 @@ class BasePythonToolInvocation<
           { packages: requirements },
         );
 
-        // First check which packages are missing
-        const missingPackages: string[] = [];
+        // Check which packages need to be installed
+        // For packages with extras (e.g., 'markitdown[pdf,docx]'), always install to ensure
+        // extras dependencies are present
+        const packagesToInstall: string[] = [];
 
         for (const requirement of requirements) {
+          const hasExtras = requirement.includes('[');
+
+          // For packages with extras, always install them to ensure optional dependencies
+          // are present. This is because pip doesn't provide an easy way to check if
+          // a package was installed with specific extras.
+          if (hasExtras) {
+            packagesToInstall.push(requirement);
+            continue;
+          }
+
+          // For packages without extras, check if already installed
           try {
-            const checkCommand = `"${embeddedPythonPath}" -c "import ${requirement.split('[')[0].replace('-', '_')}; print('installed')"`;
+            const basePackage = requirement.split('[')[0];
+            const checkCommand = `"${embeddedPythonPath}" -m pip show "${basePackage}"`;
             const { result: checkPromise } =
               await ShellExecutionService.execute(
                 checkCommand,
@@ -311,17 +325,17 @@ class BasePythonToolInvocation<
               );
             const checkResult = await checkPromise;
 
-            if (
-              checkResult.exitCode !== 0 ||
-              !checkResult.output.includes('installed')
-            ) {
-              missingPackages.push(requirement);
+            // If pip show fails or package is not found, add to packages to install
+            if (checkResult.exitCode !== 0) {
+              packagesToInstall.push(requirement);
             }
           } catch {
-            // If check fails, assume package is missing
-            missingPackages.push(requirement);
+            // If check fails, assume package needs installation
+            packagesToInstall.push(requirement);
           }
         }
+
+        const missingPackages = packagesToInstall;
 
         // Only install missing packages
         if (missingPackages.length > 0) {
