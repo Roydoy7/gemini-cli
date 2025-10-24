@@ -823,7 +823,7 @@ class SimpleKnowledgeBase:
                 "error": str(e)
             }
 
-    def search_content(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def search_content(self, query: str, limit: int = 5) -> Dict[str, Any]:
         """Search for relevant content"""
         try:
             results = self.collection.query(
@@ -853,10 +853,15 @@ class SimpleKnowledgeBase:
                         "chunk_index": metadata.get("chunk_index", 0)
                     })
 
-            return search_results
+            return {
+                "status": "success",
+                "results": search_results,
+                "total_found": len(search_results),
+                "query": query
+            }
 
         except Exception as e:
-            return [{"error": str(e)}]
+            return {"status": "error", "error": str(e), "results": []}
 
     def get_documents(self, document_ids: list, content_mode: str = "chunks"):
         """Get specific documents by IDs"""

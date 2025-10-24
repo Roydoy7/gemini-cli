@@ -133,14 +133,29 @@ Return the COMPLETE workflow content.`,
 
 **Step 1: Search for candidate workflows**
 
-Use the knowledge_base tool with these parameters:
+**First attempt - Use standard search for robustness:**
+
+Use the knowledge_base tool with \`op: "search"\`:
+\`\`\`json
+{
+  "op": "search",
+  "query": "\${query}",
+  "collection": "workflows",
+  "limit": 20
+}
+\`\`\`
+
+This uses standard vector search without any similarity filtering, ensuring maximum recall. It will return up to 20 workflow candidates.
+
+**If you get TOO MANY results (> 15 workflows):**
+You can optionally use advanced_search with metadata filtering to narrow down:
 \`\`\`json
 {
   "op": "advanced_search",
   "query": "\${query}",
   "collection": "workflows",
-  "limit": 10,
-  "similarity_threshold": 0.3,
+  "limit": 15,
+  "similarity_threshold": 0.0,
   "content_mode": "full",
   "include_metadata": true,
   "include_distances": true
@@ -148,29 +163,14 @@ Use the knowledge_base tool with these parameters:
 }
 \`\`\`
 
-This will return workflows that are semantically related to the query. The similarity_threshold of 0.3 is low to get more candidates for you to evaluate.
+**Important:** Always use \`similarity_threshold: 0.0\` to avoid filtering out potentially relevant workflows. YOU will judge relevance by reading the content, not by relying on similarity scores.
 
 **Step 2: Read each workflow**
 
-You will receive search results like:
-\`\`\`json
-{
-  "results": [
-    {
-      "chunk_id": "...",
-      "content": "# Workflow Title\\n\\n## Step 1: ...\\n\\n\`\`\`python\\n...\\n\`\`\`",
-      "similarity": 0.85,
-      "metadata": {
-        "workflow_name": "...",
-        "workflow_category": "...",
-        "required_packages": ["pandas", "openpyxl"],
-        ...
-      }
-    },
-    ...
-  ]
-}
-\`\`\`
+Both search operations return the same format - a consistent response object:
+- Object format: { "status": "success", "results": [...], "total_found": N, "query": "..." }
+- Access workflows from the "results" array
+- Each workflow has: chunk_id, content, similarity, metadata, source_file, title (for search) or additional fields (for advanced_search)
 
 For EACH workflow result:
 - READ the full content (not just the title)
