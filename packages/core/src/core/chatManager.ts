@@ -788,7 +788,8 @@ export class GeminiChatManager {
             id: msg.tool_call_id, // CRITICAL: Set id field to match functionCall.id
             name: msg.name || '',
             response: {
-              output: msg.content,
+              // Prefix tool response with [Tool Response] to help LLM distinguish from user messages
+              output: `[Tool Response]\n${msg.content}`,
             },
           },
         });
