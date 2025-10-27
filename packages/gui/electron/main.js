@@ -1012,6 +1012,7 @@ ipcMain.handle(
                 id: requestValue.callId,
                 name: requestValue.name,
                 arguments: requestValue.args || {}, // Map 'args' to 'arguments' for frontend
+                description: requestValue.description, // Include description from tool args
               },
               role: 'assistant',
               timestamp: Date.now(),

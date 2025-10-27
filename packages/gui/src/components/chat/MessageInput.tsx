@@ -626,7 +626,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         return; // Autocomplete handled the key
       }
 
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Handle Enter key for sending message
+      // RichTextInput will call preventDefault() when it wants to send
+      // (either Enter in single-line mode, or Shift+Enter in multi-line mode)
+      if (e.key === 'Enter' && e.defaultPrevented) {
+        handleSendMessage();
+        return;
+      }
+
+      // For plain textarea (when not using RichTextInput), handle Enter normally
+      if (e.key === 'Enter' && !e.shiftKey && !useRichTextInput) {
         e.preventDefault();
         handleSendMessage();
       }
@@ -1081,11 +1090,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
             // Update status to show tool is executing only if it's the active session
             if (event.toolCall && targetSessionId === activeSessionId) {
+              const description =
+                event.toolCall.description ||
+                (event.toolCall.arguments as Record<string, unknown>)
+                  ?.description;
               setCurrentOperation({
                 type: 'tool_executing',
                 message: `Executing tool: ${event.toolCall.name}`,
                 toolName: event.toolCall.name,
-                details: 'Processing...',
+                details:
+                  (typeof description === 'string' ? description : null) ||
+                  'Processing...',
               });
             }
 

@@ -450,9 +450,15 @@ class GeminiChatService {
               backgroundSessionState.compressionNotification =
                 chunk.compressionInfo || null;
             } else if (chunk.type === 'tool_call_request') {
+              const description =
+                chunk.toolCall?.description ||
+                (chunk.toolCall?.arguments as Record<string, unknown>)
+                  ?.description;
               backgroundSessionState.currentOperation = {
                 type: 'tool_executing',
-                message: 'Executing tool...',
+                message:
+                  (typeof description === 'string' ? description : null) ||
+                  'Executing tool...',
                 toolName: chunk.toolCall?.name,
               };
             }
