@@ -16,6 +16,7 @@ export type KnowledgeBaseOperation =
   | 'search'
   | 'get'
   | 'list_collections'
+  | 'list_documents'
   | 'advanced_search'
   | 'delete'
   | 'delete_collection';
@@ -265,6 +266,15 @@ knowledge_base(op="search",
 - Lists all available collections with their metadata
 - Useful for organizing different types of content
 
+## list_documents - List all documents in a collection
+- Lists all documents (chunks) in the specified collection
+- Shows document IDs, metadata, and content
+- Parameters:
+  - \`collection\`: Collection name (defaults to "default")
+  - \`content_mode\`: "full" (complete content), "chunks" (preview), "metadata_only" (no content)
+  - \`limit\`: Maximum number of documents to return (default: 100)
+- Useful for browsing collection contents and getting document IDs
+
 ## delete - Remove specific documents (requires confirmation)
 - Delete documents by their IDs or by metadata filter
 - **By IDs**: Provide \`document_ids\` array with specific chunk IDs
@@ -284,11 +294,12 @@ knowledge_base(op="search",
 
 # BEST PRACTICES
 - **Always specify \`collection\`**: Organize content into meaningful collections (e.g., "code_snippets", "books", "project_docs") instead of using "default"
-- **Always specify \`language\` in metadata**: This is CRITICAL for search accuracy
+- **Multilingual Support**: The tool now uses a multilingual embedding model (paraphrase-multilingual-MiniLM-L12-v2) that supports 50+ languages including Chinese, English, Japanese, etc.
+  - **IMPORTANT**: If you have existing collections created before this update, they use the old English-only model. You MUST delete and recreate them to use the new multilingual model.
+  - To upgrade: 1) Use \`delete_collection\` to remove old collection, 2) Store documents again to create new collection with multilingual support
+- **Always specify \`language\` in metadata**: While the new model supports multilingual search, specifying language helps with organization
   - Example: \`{"language": "en"}\` for English, \`{"language": "zh"}\` for Chinese
-  - Query language MUST match document language for good results
-  - Before searching, check document language with \`list_collections\` or metadata filters
-  - If user asks in Chinese but docs are English, translate query to English first
+  - This is useful for filtering and organizing, not required for search anymore
 - **Use rich metadata**: Include title, author, date, url, category, and other custom fields for better organization and filtering
 - **Metadata is key for deletion**: Add meaningful metadata (especially source_file, url, content_id) to make deletion easier later
 - **Delete by metadata**: Use \`where\` parameter to delete entire documents efficiently instead of tracking individual chunk IDs
@@ -303,18 +314,19 @@ knowledge_base(op="search",
 - Chunks are 800 characters with 100 character overlap for context preservation
 - Knowledge base is stored persistently in .gemini/knowledge_base directory
 - Similarity scores range from 0 (unrelated) to 1 (identical)`,
-      ['chromadb'], // Required Python packages
+      ['chromadb', 'sentence-transformers'], // Required Python packages
       {
         properties: {
           op: {
             description:
-              'Operation to perform: store (save content), search (semantic search), get (retrieve by ID), list_collections (show all collections), advanced_search (combined semantic + metadata + full-text search), delete (delete specific documents), delete_collection (delete entire collection)',
+              'Operation to perform: store (save content), search (semantic search), get (retrieve by ID), list_collections (show all collections), list_documents (list all documents in collection), advanced_search (combined semantic + metadata + full-text search), delete (delete specific documents), delete_collection (delete entire collection)',
             type: 'string',
             enum: [
               'store',
               'search',
               'get',
               'list_collections',
+              'list_documents',
               'advanced_search',
               'delete',
               'delete_collection',
@@ -473,6 +485,10 @@ knowledge_base(op="search",
         // No validation needed
         break;
 
+      case 'list_documents':
+        // No validation needed - will list documents in the specified collection
+        break;
+
       default:
         return `Unknown operation: ${op}`;
     }
@@ -523,7 +539,10 @@ knowledge_base(op="search",
           llmContent: `Content successfully stored in knowledge base. ${result.chunks_stored || 0} chunks created from ${result.total_characters || 0} characters.`,
         };
       } else if (params.op === 'search') {
-        const results = Array.isArray(result) ? result : [];
+        const results = (result.results || []) as Array<{
+          similarity?: number;
+          content?: string;
+        }>;
         if (results.length === 0) {
           return {
             returnDisplay: `🔍 **No results found**\n\nNo matching content found for: "${params.query}"`,
@@ -535,7 +554,7 @@ knowledge_base(op="search",
           .slice(0, 3)
           .map(
             (r, i) =>
-              `**Result ${i + 1}** (similarity: ${r.similarity || 0})\n${r.content?.substring(0, 200) || ''}${r.content?.length > 200 ? '...' : ''}`,
+              `**Result ${i + 1}** (similarity: ${r.similarity || 0})\n${r.content?.substring(0, 200) || ''}${(r.content?.length ?? 0) > 200 ? '...' : ''}`,
           )
           .join('\n\n');
 
@@ -690,14 +709,29 @@ class SimpleKnowledgeBase:
             settings=Settings(allow_reset=True)
         )
 
-        # Get or create collection
+        # Get or create collection with multilingual embedding support
         try:
             self.collection = self.client.get_collection(name=collection_name)
         except:
-            self.collection = self.client.create_collection(
-                name=collection_name,
-                metadata={"description": f"Knowledge base collection: {collection_name}"}
-            )
+            # Use multilingual embedding model for better cross-language support
+            # paraphrase-multilingual-MiniLM-L12-v2 supports 50+ languages including Chinese
+            try:
+                from chromadb.utils import embedding_functions
+                multilingual_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name="paraphrase-multilingual-MiniLM-L12-v2"
+                )
+                self.collection = self.client.create_collection(
+                    name=collection_name,
+                    embedding_function=multilingual_ef,
+                    metadata={"description": f"Knowledge base collection: {collection_name}"}
+                )
+            except Exception as e:
+                # Fallback to default embedding if multilingual model fails
+                print(f"Warning: Failed to load multilingual model, using default: {e}")
+                self.collection = self.client.create_collection(
+                    name=collection_name,
+                    metadata={"description": f"Knowledge base collection: {collection_name}"}
+                )
 
     def chunk_text(self, text: str, chunk_size: int = 800, overlap: int = 100) -> List[str]:
         """Split text into overlapping chunks"""
@@ -913,6 +947,47 @@ class SimpleKnowledgeBase:
         except Exception as e:
             return {"error": str(e)}
 
+    def list_documents(self, content_mode: str = "metadata_only", limit: int = 100):
+        """List all documents in the collection"""
+        try:
+            # Build include list based on content_mode
+            include = ["metadatas"]
+            if content_mode in ["chunks", "full"]:
+                include.append("documents")
+
+            # Get all documents (ChromaDB get() without IDs returns all)
+            results = self.collection.get(
+                include=include,
+                limit=limit
+            )
+
+            documents = []
+            if results['ids']:
+                for i, doc_id in enumerate(results['ids']):
+                    doc_info = {
+                        "id": doc_id,
+                        "metadata": results['metadatas'][i] if results['metadatas'] else {}
+                    }
+
+                    # Add content based on mode
+                    if content_mode == "full" and results.get('documents'):
+                        doc_info["content"] = results['documents'][i]
+                    elif content_mode == "chunks" and results.get('documents'):
+                        content = results['documents'][i]
+                        doc_info["content_preview"] = content[:200] + "..." if len(content) > 200 else content
+                        doc_info["content_length"] = len(content)
+
+                    documents.append(doc_info)
+
+            return {
+                "status": "success",
+                "collection": self.collection_name,
+                "document_count": len(documents),
+                "documents": documents
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
     def delete_documents(self, document_ids: list = None, where: dict = None) -> Dict[str, Any]:
         """Delete documents by IDs or metadata filter"""
         try:
@@ -1097,6 +1172,9 @@ def main():
 
         elif operation == "list_collections":
             result = kb.list_collections()
+
+        elif operation == "list_documents":
+            result = kb.list_documents(content_mode="${content_mode}", limit=${limit})
 
         elif operation == "advanced_search":
             query = """${query.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"""
