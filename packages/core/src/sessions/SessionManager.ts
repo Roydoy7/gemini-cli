@@ -466,8 +466,14 @@ export class SessionManager {
    * Generate title from first user message
    */
   generateTitleFromMessage(message: string): string {
+    // Remove system_reminder tags first
+    const messageWithoutReminder = message.replace(
+      /<system_reminder>[\s\S]*?<\/system_reminder>/g,
+      '',
+    );
+
     // Remove line breaks and trim
-    const cleanMessage = message.replace(/\n+/g, ' ').trim();
+    const cleanMessage = messageWithoutReminder.replace(/\n+/g, ' ').trim();
 
     // Truncate to 30 characters
     if (cleanMessage.length <= 30) {

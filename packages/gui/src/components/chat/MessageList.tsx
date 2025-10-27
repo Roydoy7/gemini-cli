@@ -1761,6 +1761,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             const stateSnapshot = parseStateSnapshot(message.content);
             const contentWithoutSnapshot = mainContent
               .replace(/<state_snapshot>[\s\S]*?<\/state_snapshot>/g, '')
+              .replace(/<system_reminder>[\s\S]*?<\/system_reminder>/g, '')
               .trim();
             hasContent =
               contentWithoutSnapshot.length > 0 || stateSnapshot !== null;
@@ -1768,6 +1769,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             const stateSnapshot = parseStateSnapshot(message.content);
             const contentWithoutSnapshot = message.content
               .replace(/<state_snapshot>[\s\S]*?<\/state_snapshot>/g, '')
+              .replace(/<system_reminder>[\s\S]*?<\/system_reminder>/g, '')
               .trim();
             hasContent =
               contentWithoutSnapshot.length > 0 || stateSnapshot !== null;
@@ -1787,7 +1789,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 '#34D399', // emerald-400
                 '#60A5FA', // blue-400
               ]}
-              className="rounded-lg"
+              className="rounded-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
             >
               <Card
                 className={cn(
@@ -1821,10 +1823,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                             message.content,
                           );
 
-                          // Remove state_snapshot from main content if it exists
+                          // Remove state_snapshot and system_reminder from main content if they exist
                           const contentWithoutSnapshot = mainContent
                             .replace(
                               /<state_snapshot>[\s\S]*?<\/state_snapshot>/g,
+                              '',
+                            )
+                            .replace(
+                              /<system_reminder>[\s\S]*?<\/system_reminder>/g,
                               '',
                             )
                             .trim();
@@ -1855,6 +1861,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                           const contentWithoutSnapshot = message.content
                             .replace(
                               /<state_snapshot>[\s\S]*?<\/state_snapshot>/g,
+                              '',
+                            )
+                            .replace(
+                              /<system_reminder>[\s\S]*?<\/system_reminder>/g,
                               '',
                             )
                             .trim();

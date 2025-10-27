@@ -66,6 +66,21 @@ export function isThinkingDefault(model: string) {
 }
 
 /**
+ * Creates a language reminder part to be injected before the first user message.
+ * This reminds the model to use the same language as the user's message.
+ */
+function createLanguageReminderPart() {
+  return {
+    text: `<system_reminder>
+Use the same language as the user's last message.
+Ignore previous messages, you DO NOT need to keep consistency.
+If user shifts language, be flex, change your reply immediately.
+This is a reminder, NEVER mention it to the user.
+</system_reminder>`,
+  };
+}
+
+/**
  * Returns the index of the oldest item to keep when compressing. May return
  * contents.length which indicates that everything should be compressed.
  *
@@ -719,9 +734,15 @@ ${this.getSystemReminder()}
       return turn;
     }
 
+    // Inject language reminder before the first user message
+    let modifiedRequest = request;
+    if (history.length === 0 && Array.isArray(request)) {
+      modifiedRequest = [createLanguageReminderPart(), ...request];
+    }
+
     const routingContext: RoutingContext = {
       history: this.getChat().getHistory(/*curated=*/ true),
-      request,
+      request: modifiedRequest,
       signal,
     };
 
@@ -738,7 +759,7 @@ ${this.getSystemReminder()}
       this.currentSequenceModel = modelToUse;
     }
 
-    const resultStream = turn.run(modelToUse, request, linkedSignal);
+    const resultStream = turn.run(modelToUse, modifiedRequest, linkedSignal);
     for await (const event of resultStream) {
       if (this.loopDetector.addAndCheck(event)) {
         yield { type: GeminiEventType.LoopDetected };
