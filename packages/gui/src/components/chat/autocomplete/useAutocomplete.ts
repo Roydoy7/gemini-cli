@@ -179,7 +179,8 @@ export const useAutocomplete = ({
 
         case 'Backspace':
         case 'Delete':
-          // Let the key pass through, but we'll check for autocomplete after
+          // Don't handle here - let AutocompleteDropdown handle it
+          // (it knows about search input state)
           return false;
 
         default:

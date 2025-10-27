@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import type { AutocompleteProvider, AutocompleteMatch } from './types';
 
 export class AutocompleteSystem {
@@ -40,6 +46,19 @@ export class AutocompleteSystem {
       // Check if this character is a trigger
       const provider = this.providers.get(char);
       if (provider) {
+        // Check if the trigger is at the start of text or preceded by whitespace
+        // This prevents triggering on @ symbols that are part of filenames
+        const isValidTriggerPosition =
+          i === 0 ||
+          text[i - 1] === ' ' ||
+          text[i - 1] === '\n' ||
+          text[i - 1] === '\t';
+
+        if (!isValidTriggerPosition) {
+          // This @ is part of a filename or other text, not a trigger
+          continue;
+        }
+
         // Found a trigger, extract the query
         const query = text.slice(i + 1, cursorPos);
 
@@ -47,7 +66,7 @@ export class AutocompleteSystem {
           provider,
           query,
           startPos: i,
-          endPos: cursorPos
+          endPos: cursorPos,
         };
       }
     }
@@ -61,7 +80,7 @@ export class AutocompleteSystem {
   applyCompletion(
     text: string,
     match: AutocompleteMatch,
-    selectedValue: string
+    selectedValue: string,
   ): { newText: string; newCursorPos: number } {
     const before = text.slice(0, match.startPos);
     const after = text.slice(match.endPos);

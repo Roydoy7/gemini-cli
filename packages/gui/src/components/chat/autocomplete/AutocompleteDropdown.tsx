@@ -204,7 +204,7 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
     }
   }, [visible]);
 
-  // Handle ESC key to close dropdown
+  // Handle ESC and Backspace keys to close dropdown
   useEffect(() => {
     if (!visible) return;
 
@@ -213,6 +213,14 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
         e.preventDefault();
         e.stopPropagation();
         onClose();
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        // Close on Backspace/Delete when search input is empty
+        if (searchText === '') {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+        // If searchText has content, let the key work normally to delete characters
       }
     };
 
@@ -220,7 +228,7 @@ export const AutocompleteDropdown: React.FC<AutocompleteDropdownProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [visible, onClose]);
+  }, [visible, onClose, searchText]);
 
   // Handle keyboard navigation for quick jump to first letter
   useEffect(() => {
