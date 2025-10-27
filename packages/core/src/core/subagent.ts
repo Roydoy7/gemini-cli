@@ -557,12 +557,21 @@ export class SubAgentScope {
         );
       }
       const callId = functionCall.id ?? `${functionCall.name}-${Date.now()}`;
+      const args = (functionCall.args ?? {}) as Record<string, unknown>;
+
+      // Extract description from args if available
+      const description =
+        typeof args['description'] === 'string'
+          ? args['description']
+          : undefined;
+
       const requestInfo: ToolCallRequestInfo = {
         callId,
         name: functionCall.name as string,
-        args: (functionCall.args ?? {}) as Record<string, unknown>,
+        args,
         isClientInitiated: true,
         prompt_id: promptId,
+        description,
       };
 
       let toolResponse;

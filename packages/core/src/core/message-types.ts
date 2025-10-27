@@ -14,6 +14,12 @@ export interface UniversalMessage {
   tool_call_id?: string;
   name?: string;
   timestamp?: Date;
+  /**
+   * CRITICAL: Preserve the complete original Gemini Parts array
+   * This ensures ALL fields are preserved (text, thoughtSignature, functionCall, fileData, etc.)
+   * When converting back to Gemini format, use this field to restore the exact original structure
+   */
+  parts?: unknown[]; // Using unknown[] to avoid circular dependency with @google/genai types
 }
 
 /**

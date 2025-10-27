@@ -185,6 +185,7 @@ export class GeminiChatManager {
                 args: event.value.args,
                 isClientInitiated: event.value.isClientInitiated,
                 prompt_id: event.value.prompt_id,
+                description: event.value.description,
               },
             };
             continue; // Don't yield the original event
@@ -650,7 +651,7 @@ export class GeminiChatManager {
       // Map Gemini role to UniversalMessage role
       const role = content.role === 'model' ? 'assistant' : 'user';
 
-      // Extract text content
+      // Extract text content for display
       let textContent = '';
       const toolCalls: Array<{
         id: string;
@@ -715,19 +716,24 @@ export class GeminiChatManager {
       // Create UniversalMessage
       if (toolCallId && toolName) {
         // This is a tool response
-        messages.push({
+        const toolMessage: UniversalMessage = {
           role: 'tool',
           content: textContent,
           tool_call_id: toolCallId,
           name: toolName,
           timestamp: new Date(),
-        });
+          // CRITICAL: Preserve complete parts array to maintain ALL fields
+          parts: content.parts as unknown[],
+        };
+        messages.push(toolMessage);
       } else {
         // Regular message (user or assistant)
         const message: UniversalMessage = {
           role,
           content: textContent,
           timestamp: new Date(),
+          // CRITICAL: Preserve complete parts array to maintain ALL fields
+          parts: content.parts as unknown[],
         };
 
         if (toolCalls.length > 0) {
@@ -760,43 +766,14 @@ export class GeminiChatManager {
       } else if (msg.role === 'tool') {
         role = 'user'; // Tool responses are sent as 'user' role in Gemini
       }
-      const parts: Part[] = [];
 
-      // Regular content
-      if (msg.content && msg.role !== 'tool') {
-        parts.push({ text: msg.content });
-      }
-
-      // Tool calls (from assistant)
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        for (const toolCall of msg.toolCalls) {
-          parts.push({
-            functionCall: {
-              name: toolCall.name,
-              args: toolCall.arguments,
-              // Use the tool call ID directly
-              id: toolCall.id,
-            },
-          });
-        }
-      }
-
-      // Tool responses (from tool role)
-      if (msg.role === 'tool' && msg.tool_call_id) {
-        parts.push({
-          functionResponse: {
-            id: msg.tool_call_id, // CRITICAL: Set id field to match functionCall.id
-            name: msg.name || '',
-            response: {
-              // Prefix tool response with [Tool Response] to help LLM distinguish from user messages
-              output: `[Tool Response]\n${msg.content}`,
-            },
-          },
+      // CRITICAL: Use the original parts array directly
+      // This preserves ALL fields including thoughtSignature, fileData, etc.
+      if (msg.parts && msg.parts.length > 0) {
+        contents.push({
+          role,
+          parts: msg.parts as Part[],
         });
-      }
-
-      if (parts.length > 0) {
-        contents.push({ role, parts });
       }
     }
 

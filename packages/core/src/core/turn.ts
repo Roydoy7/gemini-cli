@@ -96,6 +96,7 @@ export interface ToolCallRequestInfo {
   args: Record<string, unknown>;
   isClientInitiated: boolean;
   prompt_id: string;
+  description?: string; // Optional description extracted from args or tool metadata
 }
 
 export interface ToolCallResponseInfo {
@@ -364,12 +365,17 @@ export class Turn {
     const name = fnCall.name || 'undefined_tool_name';
     const args = (fnCall.args || {}) as Record<string, unknown>;
 
+    // Extract description from args if available
+    const description =
+      typeof args['description'] === 'string' ? args['description'] : undefined;
+
     const toolCallRequest: ToolCallRequestInfo = {
       callId,
       name,
       args,
       isClientInitiated: false,
       prompt_id: this.prompt_id,
+      description,
     };
 
     this.pendingToolCalls.push(toolCallRequest);
