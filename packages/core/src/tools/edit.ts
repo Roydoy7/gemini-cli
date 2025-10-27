@@ -77,6 +77,14 @@ export interface EditToolParams {
   new_string: string;
 
   /**
+   * Clear description of what this edit accomplishes and why.
+   * This helps the user understand the purpose of the file modification.
+   * Should be concise (1-2 sentences) but informative.
+   * Required by schema for LLM calls.
+   */
+  description?: string;
+
+  /**
    * Number of replacements expected. Defaults to 1 if not specified.
    * Use when you want to replace multiple occurrences.
    */
@@ -498,6 +506,11 @@ Expectation for required parameters:
               'The exact literal text to replace `old_string` with, preferably unescaped. Provide the EXACT text. Ensure the resulting code is correct and idiomatic.',
             type: 'string',
           },
+          description: {
+            type: 'string',
+            description:
+              'REQUIRED: Clear description of what this edit accomplishes and why. This helps the user understand the purpose of the file modification. Should be concise (1-2 sentences) but informative enough for the user to make an informed decision.',
+          },
           expected_replacements: {
             type: 'number',
             description:
@@ -505,7 +518,7 @@ Expectation for required parameters:
             minimum: 1,
           },
         },
-        required: ['file_path', 'old_string', 'new_string'],
+        required: ['file_path', 'old_string', 'new_string', 'description'],
         type: 'object',
       },
     );

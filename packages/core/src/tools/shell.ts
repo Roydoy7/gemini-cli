@@ -89,7 +89,7 @@ function parseAllowedSubcommands(
 
 export interface ShellToolParams {
   command: string;
-  description?: string;
+  description?: string; // Brief description of what this command does (required by schema for LLM)
   directory?: string;
 }
 
@@ -478,7 +478,7 @@ export class ShellTool extends BaseDeclarativeTool<
               '(OPTIONAL) The absolute path of the directory to run the command in. If not provided, the project root directory is used. Must be a directory within the workspace and must already exist.',
           },
         },
-        required: ['command'],
+        required: ['command', 'description'],
       },
       false, // output is not markdown
       true, // output can be updated

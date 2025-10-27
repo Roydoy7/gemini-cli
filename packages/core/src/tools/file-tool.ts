@@ -38,6 +38,8 @@ interface FileOpsParams {
     | 'writeFile'
     | 'appendFile'
     | 'readFile';
+  /** Clear description of what this file operation accomplishes and why (required by schema for LLM) */
+  description?: string;
   /** Source file/directory path */
   source?: string;
   /** Target file/directory path (for rename/move/copy) */
@@ -1107,7 +1109,7 @@ export class FileTool extends BaseDeclarativeTool<
       Kind.Other,
       {
         type: 'object',
-        required: ['op'],
+        required: ['op', 'description'],
         properties: {
           op: {
             type: 'string',
@@ -1126,6 +1128,11 @@ export class FileTool extends BaseDeclarativeTool<
             ],
             description:
               'Operation: renameFile (single file), moveFile (single file to different location), copyFile (single file), deleteFile (single file), mkdir (create directory), rmdir (remove directory), batchFile (perform operation on multiple files), batchDir (perform operation on multiple directories - REQUIRED for moving/copying multiple directories), writeFile (write content to file), appendFile (append content to file), readFile (read file content)',
+          },
+          description: {
+            type: 'string',
+            description:
+              'REQUIRED: Clear description of what this file operation accomplishes and why. This helps the user understand the purpose of the file manipulation. Should be concise (1-2 sentences) but informative.',
           },
           source: {
             type: 'string',

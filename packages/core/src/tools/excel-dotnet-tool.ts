@@ -5,7 +5,12 @@
  */
 
 import { BaseDotNetTool } from './base-dotnet-tool.js';
-import type { ToolResult, ToolCallConfirmationDetails, ToolExecuteConfirmationDetails, ToolConfirmationOutcome } from './tools.js';
+import type {
+  ToolResult,
+  ToolCallConfirmationDetails,
+  ToolExecuteConfirmationDetails,
+  ToolConfirmationOutcome,
+} from './tools.js';
 import type { Config } from '../config/config.js';
 import { ApprovalMode } from '../config/config.js';
 
@@ -13,7 +18,30 @@ interface ExcelParams {
   /** Excel file path */
   file: string;
   /** Operation type */
-  op: 'read' | 'readContent' | 'write' | 'create' | 'listSheets' | 'copySheet' | 'style' | 'validate' | 'rows' | 'cols' | 'merge' | 'addSheet' | 'editSheet' | 'deleteSheet' | 'comment' | 'csvRead' | 'csvExport' | 'csvImport' | 'undo' | 'get_used_range' | 'get_last_row';
+  op:
+    | 'read'
+    | 'readContent'
+    | 'write'
+    | 'create'
+    | 'listSheets'
+    | 'copySheet'
+    | 'style'
+    | 'validate'
+    | 'rows'
+    | 'cols'
+    | 'merge'
+    | 'addSheet'
+    | 'editSheet'
+    | 'deleteSheet'
+    | 'comment'
+    | 'csvRead'
+    | 'csvExport'
+    | 'csvImport'
+    | 'undo'
+    | 'get_used_range'
+    | 'get_last_row';
+  /** Clear description of what this Excel operation accomplishes and why (required by schema for LLM) */
+  description?: string;
   /** Sheet name */
   sheet?: string;
   /** Cell range (A1, A1:C5) */
@@ -109,7 +137,14 @@ interface CellStyle {
 
 interface DataValidation {
   /** Validation type */
-  type: 'list' | 'whole' | 'decimal' | 'date' | 'time' | 'textLength' | 'custom';
+  type:
+    | 'list'
+    | 'whole'
+    | 'decimal'
+    | 'date'
+    | 'time'
+    | 'textLength'
+    | 'custom';
   /** Allow blank values */
   allowBlank?: boolean;
   /** Formula or list values */
@@ -119,7 +154,6 @@ interface DataValidation {
   /** Prompt message */
   prompt?: string;
 }
-
 
 interface ExcelResult extends ToolResult {
   success: boolean;
@@ -170,30 +204,65 @@ export class ExcelTool extends BaseDotNetTool<ExcelParams, ExcelResult> {
       'excel', // .NET module name
       {
         type: 'object',
-        required: ['file', 'op'],
+        required: ['file', 'op', 'description'],
         properties: {
-          file: { type: 'string', description: 'File path: Excel file for most operations (including csvExport), CSV file ONLY for csvRead. Supports .xlsx, .xlsm, .xls formats' },
-          op: { 
-            type: 'string', 
-            enum: ['read', 'readContent', 'write', 'create', 'listSheets', 'copySheet', 'style', 'validate', 'rows', 'cols', 'merge', 'addSheet', 'editSheet', 'deleteSheet', 'comment', 'csvRead', 'csvExport', 'csvImport', 'undo', 'get_used_range', 'get_last_row'],
-            description: 'Operation type'
+          file: {
+            type: 'string',
+            description:
+              'File path: Excel file for most operations (including csvExport), CSV file ONLY for csvRead. Supports .xlsx, .xlsm, .xls formats',
+          },
+          op: {
+            type: 'string',
+            enum: [
+              'read',
+              'readContent',
+              'write',
+              'create',
+              'listSheets',
+              'copySheet',
+              'style',
+              'validate',
+              'rows',
+              'cols',
+              'merge',
+              'addSheet',
+              'editSheet',
+              'deleteSheet',
+              'comment',
+              'csvRead',
+              'csvExport',
+              'csvImport',
+              'undo',
+              'get_used_range',
+              'get_last_row',
+            ],
+            description: 'Operation type',
+          },
+          description: {
+            type: 'string',
+            description:
+              'REQUIRED: Clear description of what this Excel operation accomplishes and why. This helps the user understand the purpose of the data manipulation. Should be concise (1-2 sentences) but informative.',
           },
           sheet: { type: 'string', description: 'Sheet name' },
           range: { type: 'string', description: 'Cell range (A1 or A1:C5)' },
-          data: { 
-            type: 'array', 
-            items: { 
+          data: {
+            type: 'array',
+            items: {
               type: 'array',
-              items: { type: 'string' }
+              items: { type: 'string' },
             },
-            description: 'Data rows (strings starting with = are formulas)'
+            description: 'Data rows (strings starting with = are formulas)',
           },
           style: { type: 'object', description: 'Cell styling options' },
           validation: { type: 'object', description: 'Data validation rules' },
           format: { type: 'string', description: 'Conditional format type' },
           condition: { type: 'string', description: 'Format condition' },
           color: { type: 'string', description: 'Format color' },
-          action: { type: 'string', enum: ['insert', 'delete', 'resize'], description: 'Row/col action' },
+          action: {
+            type: 'string',
+            enum: ['insert', 'delete', 'resize'],
+            description: 'Row/col action',
+          },
           position: { type: 'number', description: 'Row/col position' },
           count: { type: 'number', description: 'Count for operations' },
           size: { type: 'number', description: 'Row height/col width' },
@@ -201,29 +270,84 @@ export class ExcelTool extends BaseDotNetTool<ExcelParams, ExcelResult> {
           tabColor: { type: 'string', description: 'Tab color (hex: #FF0000)' },
           comment: { type: 'string', description: 'Comment content' },
           author: { type: 'string', description: 'Comment author' },
-          sourceFile: { type: 'string', description: 'Source file path: Excel file for copySheet, CSV file for csvImport' },
-          targetFile: { type: 'string', description: 'Target Excel file path for copySheet' },
-          sourceSheet: { type: 'string', description: 'Source sheet name for copySheet' },
-          targetSheet: { type: 'string', description: 'Target sheet name for copySheet' },
-          delimiter: { type: 'string', description: 'CSV delimiter (default: ,)' },
-          encoding: { type: 'string', description: 'CSV file encoding (default: utf8)' },
-          headers: { type: 'boolean', description: 'Include headers in CSV output (default: true)' },
-          quote: { type: 'string', description: 'CSV quote character (default: ")' },
-          worksheet: { type: 'string', description: 'Worksheet name for readContent operation (if not specified, reads all worksheets)' },
-          outputFormat: { type: 'string', enum: ['markdown', 'text', 'json'], description: 'Output format for readContent operation (default: markdown)' },
-          maxRows: { type: 'number', description: 'Maximum rows to return for read operations (default: 100 for preview, increase for more data)' },
-          startRow: { type: 'number', description: 'Starting row for batch reading (1-based, for pagination through large datasets)' },
-          summaryMode: { type: 'boolean', description: 'Return data summary instead of full data for large datasets (default: false)' }
-        }
+          sourceFile: {
+            type: 'string',
+            description:
+              'Source file path: Excel file for copySheet, CSV file for csvImport',
+          },
+          targetFile: {
+            type: 'string',
+            description: 'Target Excel file path for copySheet',
+          },
+          sourceSheet: {
+            type: 'string',
+            description: 'Source sheet name for copySheet',
+          },
+          targetSheet: {
+            type: 'string',
+            description: 'Target sheet name for copySheet',
+          },
+          delimiter: {
+            type: 'string',
+            description: 'CSV delimiter (default: ,)',
+          },
+          encoding: {
+            type: 'string',
+            description: 'CSV file encoding (default: utf8)',
+          },
+          headers: {
+            type: 'boolean',
+            description: 'Include headers in CSV output (default: true)',
+          },
+          quote: {
+            type: 'string',
+            description: 'CSV quote character (default: ")',
+          },
+          worksheet: {
+            type: 'string',
+            description:
+              'Worksheet name for readContent operation (if not specified, reads all worksheets)',
+          },
+          outputFormat: {
+            type: 'string',
+            enum: ['markdown', 'text', 'json'],
+            description:
+              'Output format for readContent operation (default: markdown)',
+          },
+          maxRows: {
+            type: 'number',
+            description:
+              'Maximum rows to return for read operations (default: 100 for preview, increase for more data)',
+          },
+          startRow: {
+            type: 'number',
+            description:
+              'Starting row for batch reading (1-based, for pagination through large datasets)',
+          },
+          summaryMode: {
+            type: 'boolean',
+            description:
+              'Return data summary instead of full data for large datasets (default: false)',
+          },
+        },
       },
-      true,  // isOutputMarkdown
-      false, // canUpdateOutput 
-      config // config parameter
+      true, // isOutputMarkdown
+      false, // canUpdateOutput
+      config, // config parameter
     );
   }
 
   protected isModifyOperation(params: ExcelParams): boolean {
-    const modifyOps = ['write', 'create', 'style', 'merge', 'addSheet', 'deleteSheet', 'editSheet', 'csvImport'];
+    const modifyOps = [
+      'write',
+      'create',
+      'style',
+      'merge',
+      'addSheet',
+      'deleteSheet',
+      'editSheet',
+      'csvImport',
+    ];
     return modifyOps.includes(params.op);
   }
 
@@ -255,11 +379,18 @@ export class ExcelTool extends BaseDotNetTool<ExcelParams, ExcelResult> {
   }
 
   private isDestructiveExcelOperation(params: ExcelParams): boolean {
-    const destructiveOps = ['write', 'create', 'style', 'merge', 'addSheet', 'deleteSheet', 'editSheet', 'csvImport'];
+    const destructiveOps = [
+      'write',
+      'create',
+      'style',
+      'merge',
+      'addSheet',
+      'deleteSheet',
+      'editSheet',
+      'csvImport',
+    ];
     return destructiveOps.includes(params.op);
   }
-
 }
-
 
 // export const excelTool = new ExcelTool(); // Removed: Tools now require config parameter
