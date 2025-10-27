@@ -182,7 +182,7 @@ export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({
 
   // Multiple executions - show grouped with summary
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
       {/* Group header with summary */}
       <div
         ref={headerRef}
@@ -247,7 +247,7 @@ export const ToolExecutionGroup: React.FC<ToolExecutionGroupProps> = ({
 
         {/* Expanded group content */}
         {isExpanded && (
-          <div className="border-t border-border/30 bg-background/50 p-3 space-y-2">
+          <div className="border-t border-border/30 bg-background/50 p-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
             {executions.map((execution, index) => (
               <ToolExecutionCard
                 key={index}
@@ -395,7 +395,7 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
       active={isExecuting}
       speed="medium"
       colors={shimmerColors}
-      className="rounded-lg"
+      className="rounded-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div
         ref={cardRef}
@@ -414,39 +414,56 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
         {/* Tool execution header */}
         <button
           onClick={handleToggle}
-          className="w-full px-3 py-2.5 flex items-center justify-between bg-green-50 hover:bg-green-100 dark:bg-background/30 dark:hover:bg-muted/50 transition-colors"
+          className="w-full px-3 py-2.5 flex flex-col gap-1 bg-green-50 hover:bg-green-100 dark:bg-background/30 dark:hover:bg-muted/50 transition-colors"
         >
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            {isExpanded ? (
-              <ChevronDown size={14} />
-            ) : (
-              <ChevronRight size={14} />
-            )}
-            {getStatusIcon()}
-            <span className="font-medium text-sm truncate">
-              {toolCall.name}
-            </span>
-            {operation != null && (
-              <span className="font-mono text-xs text-muted-foreground truncate">
-                {typeof operation === 'string'
-                  ? operation
-                  : JSON.stringify(operation)}
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {isExpanded ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
+              {getStatusIcon()}
+              <span className="font-medium text-sm truncate">
+                {toolCall.name}
               </span>
-            )}
+              {operation != null && (
+                <span className="font-mono text-xs text-muted-foreground truncate">
+                  {typeof operation === 'string'
+                    ? operation
+                    : JSON.stringify(operation)}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs font-medium">{getStatusText()}</span>
+              {timestamp && !isNested && (
+                <time
+                  dateTime={timestamp.toISOString()}
+                  className="text-xs text-muted-foreground"
+                  title={format(timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                >
+                  {format(timestamp, 'HH:mm')}
+                </time>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xs font-medium">{getStatusText()}</span>
-            {timestamp && !isNested && (
-              <time
-                dateTime={timestamp.toISOString()}
-                className="text-xs text-muted-foreground"
-                title={format(timestamp, 'yyyy-MM-dd HH:mm:ss')}
-              >
-                {format(timestamp, 'HH:mm')}
-              </time>
-            )}
-          </div>
+          {/* Description preview when collapsed */}
+          {(() => {
+            const description =
+              toolCall.description ||
+              (toolCall.arguments as Record<string, unknown>)?.description;
+            if (!isExpanded && typeof description === 'string') {
+              return (
+                <div className="text-xs text-muted-foreground text-left pl-8 truncate w-full">
+                  {description}
+                </div>
+              );
+            }
+            return null;
+          })()}
         </button>
 
         {/* Progress bar - shown when executing with progress info */}
@@ -470,7 +487,7 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
 
         {/* Expanded content */}
         {isExpanded && (
-          <div className="border-t border-border/30 bg-green-50 dark:bg-background/30">
+          <div className="border-t border-border/30 bg-green-50 dark:bg-background/30 animate-in fade-in slide-in-from-top-2 duration-200">
             {/* Tool call parameters */}
             {hasParams && (
               <div className="px-3 py-2 space-y-2">
