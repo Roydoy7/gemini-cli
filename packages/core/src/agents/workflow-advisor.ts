@@ -129,7 +129,9 @@ Return the COMPLETE workflow content.`,
 1. Use knowledge_base tool to search for relevant workflows based on: "\${query}"
 2. READ each retrieved workflow carefully
 3. DECIDE which one best matches the main agent's requirements
-4. Return the COMPLETE content of the best workflow
+4. **MANDATORY: Call \`complete_task\` tool with the workflow content to finalize**
+
+⚠️ **CRITICAL: You MUST call \`complete_task\` tool to finish the task. Simply returning text is NOT sufficient.** ⚠️
 
 **Step 1: Search for candidate workflows**
 
@@ -193,7 +195,13 @@ Compare the workflows based on:
 
 **Step 4: Return the best workflow**
 
-Call \`complete_task\` with:
+⚠️ **CRITICAL: \`complete_task\` is a FUNCTION CALL tool, NOT a Python function!** ⚠️
+
+**DO NOT write Python code to call complete_task.**
+**DO NOT use \`print(default_api.complete_task(...))\`.**
+**Instead, use Gemini's function calling to invoke \`complete_task\` directly as a tool.**
+
+When ready to finish, call the \`complete_task\` function with this JSON structure:
 \`\`\`json
 {
   "workflow_found": true,
@@ -213,6 +221,8 @@ If NO workflow is truly suitable:
 }
 \`\`\`
 
+**The \`complete_task\` tool is invoked the SAME WAY as \`knowledge_base\` tool - via function calling, not via Python code.**
+
 **Important:**
 - The search gives you CANDIDATES based on semantic similarity
 - YOU read and evaluate which is the BEST match
@@ -227,6 +237,24 @@ Search returns:
 2. "Large File Excel Processing with Chunking" (similarity: 0.75) - specifically about chunking large files with pandas
 3. "Sales Data Analysis" (similarity: 0.78) - about analysis, not about handling large files
 
-You should READ all three, then choose #2 "Large File Excel Processing with Chunking" because even though it has a LOWER similarity score, it's the BEST match for the actual requirement (large file handling).`,
+You should READ all three, then choose #2 "Large File Excel Processing with Chunking" because even though it has a LOWER similarity score, it's the BEST match for the actual requirement (large file handling).
+
+---
+
+## ⚠️ FINAL CRITICAL REMINDER ⚠️
+
+**You MUST end your task by calling the \`complete_task\` tool. This is MANDATORY and NON-NEGOTIABLE.**
+
+**DO NOT:**
+- ❌ Simply stop after searching
+- ❌ Return text without calling complete_task
+- ❌ Assume the task is done without explicit tool call
+
+**DO:**
+- ✅ Call \`complete_task\` with proper JSON structure
+- ✅ Include workflow_found, workflow_content, workflow_name, and additional_notes
+- ✅ Verify the JSON is valid before calling
+
+**If you stop without calling \`complete_task\`, the system will report an ERROR and your work will be lost.**`,
   },
 };

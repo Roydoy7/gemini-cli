@@ -189,11 +189,43 @@ export class AgentExecutor<TOutput extends z.ZodTypeAny> {
 
         const promptId = `${this.agentId}#${turnCounter++}`;
 
-        const { functionCalls } = await promptIdContext.run(
-          promptId,
-          async () =>
-            this.callModel(chat, currentMessage, tools, signal, promptId),
+        // Debug: Log message being sent to model
+        console.log(
+          `[AgentExecutor DEBUG] Agent '${this.definition.name}' turn ${turnCounter - 1}: Sending message to model`,
         );
+        console.log('[AgentExecutor DEBUG] Message role:', currentMessage.role);
+        console.log(
+          '[AgentExecutor DEBUG] Message parts:',
+          currentMessage.parts?.length,
+          'parts',
+        );
+        if (currentMessage.parts && currentMessage.parts.length > 0) {
+          console.log(
+            '[AgentExecutor DEBUG] Part types:',
+            currentMessage.parts.map((p) => {
+              if (p.text) return `text(${p.text.substring(0, 50)}...)`;
+              if (p.functionCall) return `functionCall(${p.functionCall.name})`;
+              if (p.functionResponse)
+                return `functionResponse(${p.functionResponse.name})`;
+              return 'unknown';
+            }),
+          );
+        }
+
+        const { functionCalls, textResponse, finishReason } =
+          await promptIdContext.run(promptId, async () =>
+            this.callModel(chat, currentMessage, tools, signal, promptId),
+          );
+
+        console.log(
+          `[AgentExecutor DEBUG] Agent '${this.definition.name}' turn ${turnCounter - 1}: received ${functionCalls.length} tool calls`,
+        );
+        if (functionCalls.length > 0) {
+          console.log(
+            '[AgentExecutor DEBUG] Tool names:',
+            functionCalls.map((fc) => fc.name),
+          );
+        }
 
         if (signal.aborted) {
           terminateReason = AgentTerminateMode.ABORTED;
@@ -202,6 +234,17 @@ export class AgentExecutor<TOutput extends z.ZodTypeAny> {
 
         // If the model stops calling tools without calling complete_task, it's an error.
         if (functionCalls.length === 0) {
+          // Debug: Log the model's response to understand why it stopped
+          console.error(
+            `[AgentExecutor DEBUG] Agent '${this.definition.name}' stopped without complete_task`,
+          );
+          console.error('[AgentExecutor DEBUG] Turn number:', turnCounter - 1);
+          console.error(
+            '[AgentExecutor DEBUG] Last response text:',
+            textResponse,
+          );
+          console.error('[AgentExecutor DEBUG] Finish reason:', finishReason);
+
           terminateReason = AgentTerminateMode.ERROR;
           finalResult = `Agent stopped calling tools but did not call '${TASK_COMPLETE_TOOL_NAME}' to finalize the session.`;
           this.emitActivity('ERROR', {
@@ -263,7 +306,11 @@ export class AgentExecutor<TOutput extends z.ZodTypeAny> {
     tools: FunctionDeclaration[],
     signal: AbortSignal,
     promptId: string,
-  ): Promise<{ functionCalls: FunctionCall[]; textResponse: string }> {
+  ): Promise<{
+    functionCalls: FunctionCall[];
+    textResponse: string;
+    finishReason?: string;
+  }> {
     const messageParams = {
       message: message.parts || [],
       config: {
@@ -280,6 +327,7 @@ export class AgentExecutor<TOutput extends z.ZodTypeAny> {
 
     const functionCalls: FunctionCall[] = [];
     let textResponse = '';
+    let finishReason: string | undefined;
 
     for await (const resp of responseStream) {
       if (signal.aborted) break;
@@ -287,6 +335,15 @@ export class AgentExecutor<TOutput extends z.ZodTypeAny> {
       if (resp.type === StreamEventType.CHUNK) {
         const chunk = resp.value;
         const parts = chunk.candidates?.[0]?.content?.parts;
+
+        // Capture finish reason
+        const currentFinishReason = chunk.candidates?.[0]?.finishReason;
+        if (currentFinishReason) {
+          finishReason = currentFinishReason;
+          console.log(
+            `[AgentExecutor DEBUG] Captured finishReason: ${finishReason}`,
+          );
+        }
 
         // Extract and emit any subject "thought" content from the model.
         const { subject } = parseThought(
@@ -314,7 +371,7 @@ export class AgentExecutor<TOutput extends z.ZodTypeAny> {
       }
     }
 
-    return { functionCalls, textResponse };
+    return { functionCalls, textResponse, finishReason };
   }
 
   /** Initializes a `GeminiChat` instance for the agent run. */
@@ -404,6 +461,11 @@ export class AgentExecutor<TOutput extends z.ZodTypeAny> {
       });
 
       if (functionCall.name === TASK_COMPLETE_TOOL_NAME) {
+        console.log(
+          `[AgentExecutor DEBUG] Agent '${this.definition.name}' called complete_task`,
+        );
+        console.log('[AgentExecutor DEBUG] Arguments:', args);
+
         if (taskCompleted) {
           // We already have a completion from this turn. Ignore subsequent ones.
           const error =
