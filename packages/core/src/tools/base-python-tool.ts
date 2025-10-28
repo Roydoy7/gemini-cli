@@ -314,10 +314,19 @@ class BasePythonToolInvocation<
           try {
             const basePackage = requirement.split('[')[0];
             const checkCommand = `"${embeddedPythonPath}" -m pip show "${basePackage}"`;
+
+            // Get workspace context for validation
+            const workspaceContext = this.config.getWorkspaceContext();
+            const workspaceDirectories = workspaceContext.getDirectories();
+            const checkWorkingDir =
+              workspaceDirectories.length > 0
+                ? workspaceDirectories[0]
+                : this.config.getTargetDir();
+
             const { result: checkPromise } =
               await ShellExecutionService.execute(
                 checkCommand,
-                this.config.getTargetDir(),
+                checkWorkingDir,
                 () => {},
                 signal,
                 false,
@@ -354,12 +363,19 @@ class BasePythonToolInvocation<
 
           try {
             const installCommand = `"${embeddedPythonPath}" -m pip install ${missingPackages.join(' ')} --quiet`;
-            const workingDir = this.config.getTargetDir();
+
+            // Get workspace context for validation
+            const workspaceContext = this.config.getWorkspaceContext();
+            const workspaceDirectories = workspaceContext.getDirectories();
+            const installWorkingDir =
+              workspaceDirectories.length > 0
+                ? workspaceDirectories[0]
+                : this.config.getTargetDir();
 
             const { result: installPromise } =
               await ShellExecutionService.execute(
                 installCommand,
-                workingDir,
+                installWorkingDir,
                 () => {},
                 signal,
                 false,
@@ -517,8 +533,34 @@ else:
         ? `chcp 65001 > nul && set PYTHONIOENCODING=utf-8 && set PYTHONLEGACYWINDOWSSTDIO=1 && "${embeddedPythonPath}" "${scriptPath}"`
         : `PYTHONIOENCODING=utf-8 "${embeddedPythonPath}" "${scriptPath}"`;
 
-      // Set working directory
-      const workingDir = this.config.getTargetDir();
+      // Set working directory - validate it's within workspace
+      const workspaceContext = this.config.getWorkspaceContext();
+      const workspaceDirectories = workspaceContext.getDirectories();
+
+      // Use first workspace directory or targetDir as working directory
+      const workingDir =
+        workspaceDirectories.length > 0
+          ? workspaceDirectories[0]
+          : this.config.getTargetDir();
+
+      // Security Check: Ensure working directory is within workspace boundaries
+      if (!workspaceContext.isPathWithinWorkspace(workingDir)) {
+        const errorMessage =
+          workspaceDirectories.length > 0
+            ? `Error: Python execution directory "${workingDir}" must be within workspace directories:\n${workspaceDirectories.map((d) => `  - ${d}`).join('\n')}\n\nPlease add the target directory to your workspace first.`
+            : `Error: No workspace directories configured. Cannot execute Python tools outside workspace.\n\nDirectory attempted: ${workingDir}`;
+
+        emitProgress(
+          ToolExecutionStage.FAILED,
+          undefined,
+          'Working directory not in workspace',
+        );
+
+        return {
+          llmContent: errorMessage,
+          returnDisplay: `❌ Directory not in workspace: ${workingDir}`,
+        } as TResult;
+      }
 
       emitProgress(ToolExecutionStage.EXECUTING, 70, 'Running Python script');
 

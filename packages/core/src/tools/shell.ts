@@ -206,34 +206,58 @@ export class ShellToolInvocation extends BaseToolInvocation<
           })();
 
       // Determine working directory
+      const workspaceContext = this.config.getWorkspaceContext();
+      const workspaceDirectories = workspaceContext.getDirectories();
+
       let cwd: string;
       if (this.params.directory) {
-        // Use specified directory relative to target dir
-        cwd = path.resolve(this.config.getTargetDir(), this.params.directory);
-      } else {
-        // For commands with absolute paths, use the first available workspace directory
-        // to avoid workspace validation issues
-        const hasAbsolutePath = /[A-Z]:\\|^\//.test(strippedCommand);
-        if (hasAbsolutePath) {
-          const workspaceDirectories = this.config
-            .getWorkspaceContext()
-            .getDirectories();
-          cwd =
-            workspaceDirectories.length > 0
-              ? workspaceDirectories[0]
-              : this.config.getTargetDir();
+        // User specified a directory - try to resolve it relative to each workspace
+        const specifiedDir = this.params.directory;
+        let resolvedCwd: string | null = null;
+
+        // If absolute path, use it directly
+        if (path.isAbsolute(specifiedDir)) {
+          resolvedCwd = specifiedDir;
         } else {
-          cwd = this.config.getTargetDir();
+          // Try to resolve relative to each workspace directory
+          for (const wsDir of workspaceDirectories) {
+            const candidate = path.resolve(wsDir, specifiedDir);
+            if (
+              fs.existsSync(candidate) &&
+              fs.statSync(candidate).isDirectory()
+            ) {
+              resolvedCwd = candidate;
+              break;
+            }
+          }
+
+          // If not found in any workspace, resolve relative to first workspace
+          if (!resolvedCwd && workspaceDirectories.length > 0) {
+            resolvedCwd = path.resolve(workspaceDirectories[0], specifiedDir);
+          }
         }
+
+        cwd =
+          resolvedCwd || path.resolve(this.config.getTargetDir(), specifiedDir);
+      } else {
+        // No directory specified - use first workspace directory or targetDir
+        cwd =
+          workspaceDirectories.length > 0
+            ? workspaceDirectories[0]
+            : this.config.getTargetDir();
       }
 
       // Security Check: Ensure the resolved directory is within workspace boundaries
-      const workspaceContext = this.config.getWorkspaceContext();
       if (!workspaceContext.isPathWithinWorkspace(cwd)) {
         const directories = workspaceContext.getDirectories();
+        const errorMessage =
+          directories.length > 0
+            ? `Error: Directory "${cwd}" must be within workspace directories:\n${directories.map((d) => `  - ${d}`).join('\n')}\n\nPlease add the target directory to your workspace first.`
+            : `Error: No workspace directories configured. Cannot execute commands outside workspace.\n\nDirectory attempted: ${cwd}`;
+
         return {
-          llmContent: `Error: Directory must be within workspace directories: ${directories.join(', ')}`,
-          returnDisplay: 'Invalid directory path',
+          llmContent: errorMessage,
+          returnDisplay: `❌ Directory not in workspace: ${cwd}`,
           error: {
             message: `Directory not in workspace: ${cwd}`,
             type: ToolErrorType.INVALID_TOOL_PARAMS,

@@ -154,8 +154,40 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
           `Checking ${this.params.requirements.length} dependencies`,
           { packages: this.params.requirements },
         );
-        const workingDir =
-          this.params.workingDirectory || this.config.getTargetDir();
+
+        // Get workspace context for validation
+        const workspaceContext = this.config.getWorkspaceContext();
+        const workspaceDirectories = workspaceContext.getDirectories();
+
+        // Determine working directory
+        let workingDir: string;
+        if (this.params.workingDirectory) {
+          workingDir = this.params.workingDirectory;
+        } else {
+          workingDir =
+            workspaceDirectories.length > 0
+              ? workspaceDirectories[0]
+              : this.config.getTargetDir();
+        }
+
+        // Validate working directory is within workspace
+        if (!workspaceContext.isPathWithinWorkspace(workingDir)) {
+          const errorMessage =
+            workspaceDirectories.length > 0
+              ? `Error: Python working directory "${workingDir}" must be within workspace directories:\n${workspaceDirectories.map((d) => `  - ${d}`).join('\n')}\n\nPlease add the target directory to your workspace first.`
+              : `Error: No workspace directories configured. Cannot execute Python tools outside workspace.\n\nDirectory attempted: ${workingDir}`;
+
+          emitProgress(
+            ToolExecutionStage.FAILED,
+            undefined,
+            'Working directory not in workspace',
+          );
+
+          return {
+            llmContent: errorMessage,
+            returnDisplay: `❌ Directory not in workspace: ${workingDir}`,
+          };
+        }
 
         // Get site-packages directory path
         const pythonDir = path.dirname(embeddedPythonPath);
@@ -406,9 +438,39 @@ sys.exit(_exit_code)`;
         ? `chcp 65001 > nul && set PYTHONIOENCODING=utf-8 && set PYTHONLEGACYWINDOWSSTDIO=1 && "${embeddedPythonPath}" "${scriptPath}"`
         : `PYTHONIOENCODING=utf-8 "${embeddedPythonPath}" "${scriptPath}"`;
 
-      // Set working directory
-      const workingDir =
-        this.params.workingDirectory || this.config.getTargetDir();
+      // Set working directory - validate it's within workspace
+      const workspaceContext = this.config.getWorkspaceContext();
+      const workspaceDirectories = workspaceContext.getDirectories();
+
+      // Determine working directory
+      let workingDir: string;
+      if (this.params.workingDirectory) {
+        workingDir = this.params.workingDirectory;
+      } else {
+        workingDir =
+          workspaceDirectories.length > 0
+            ? workspaceDirectories[0]
+            : this.config.getTargetDir();
+      }
+
+      // Validate working directory is within workspace
+      if (!workspaceContext.isPathWithinWorkspace(workingDir)) {
+        const errorMessage =
+          workspaceDirectories.length > 0
+            ? `Error: Python execution directory "${workingDir}" must be within workspace directories:\n${workspaceDirectories.map((d) => `  - ${d}`).join('\n')}\n\nPlease add the target directory to your workspace first.`
+            : `Error: No workspace directories configured. Cannot execute Python tools outside workspace.\n\nDirectory attempted: ${workingDir}`;
+
+        emitProgress(
+          ToolExecutionStage.FAILED,
+          undefined,
+          'Working directory not in workspace',
+        );
+
+        return {
+          llmContent: errorMessage,
+          returnDisplay: `❌ Directory not in workspace: ${workingDir}`,
+        };
+      }
 
       // Get timeout setting (default 300 seconds)
       const timeoutMs = (this.params.timeout || 300) * 1000;
