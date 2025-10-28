@@ -219,7 +219,11 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
           }
 
           try {
-            const installCommand = `"${embeddedPythonPath}" -m pip install ${packagesToInstall.join(' ')} --quiet`;
+            // On Windows with PowerShell, use & operator for quoted paths
+            const isWindows = process.platform === 'win32';
+            const installCommand = isWindows
+              ? `& "${embeddedPythonPath}" -m pip install ${packagesToInstall.join(' ')} --quiet`
+              : `"${embeddedPythonPath}" -m pip install ${packagesToInstall.join(' ')} --quiet`;
 
             const { result: installPromise } =
               await ShellExecutionService.execute(
@@ -435,7 +439,7 @@ sys.exit(_exit_code)`;
       // Prepare execution command with UTF-8 environment settings
       const isWindows = process.platform === 'win32';
       const command = isWindows
-        ? `chcp 65001 > nul && set PYTHONIOENCODING=utf-8 && set PYTHONLEGACYWINDOWSSTDIO=1 && "${embeddedPythonPath}" "${scriptPath}"`
+        ? `$env:PYTHONIOENCODING='utf-8'; $env:PYTHONLEGACYWINDOWSSTDIO='1'; & "${embeddedPythonPath}" "${scriptPath}"`
         : `PYTHONIOENCODING=utf-8 "${embeddedPythonPath}" "${scriptPath}"`;
 
       // Set working directory - validate it's within workspace
