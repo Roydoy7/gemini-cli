@@ -90,11 +90,18 @@ interface ActivePty {
 const getFullBufferText = (terminal: pkg.Terminal): string => {
   const buffer = terminal.buffer.active;
   const lines: string[] = [];
-  for (let i = 0; i < buffer.length; i++) {
+
+  // Read from the beginning of the buffer (including scrollback)
+  // baseY is the absolute position of the first line in the buffer
+  const startLine = 0;
+  const endLine = buffer.baseY + buffer.length;
+
+  for (let i = startLine; i < endLine; i++) {
     const line = buffer.getLine(i);
     const lineContent = line ? line.translateToString() : '';
     lines.push(lineContent);
   }
+
   return lines.join('\n').trimEnd();
 };
 
@@ -159,11 +166,30 @@ export class ShellExecutionService {
     try {
       const isWindows = os.platform() === 'win32';
 
-      const child = cpSpawn(commandToExecute, [], {
+      // Use PowerShell on Windows for better Unicode support
+      let command: string;
+      let args: string[];
+      let shell: string | boolean;
+
+      if (isWindows) {
+        command = 'powershell.exe';
+        args = [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${commandToExecute}`,
+        ];
+        shell = false; // Use direct spawn without shell wrapper
+      } else {
+        command = 'bash';
+        args = ['-c', commandToExecute];
+        shell = false;
+      }
+
+      const child = cpSpawn(command, args, {
         cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
-        windowsVerbatimArguments: true,
-        shell: isWindows ? true : 'bash',
+        shell,
         detached: !isWindows,
         env: {
           ...process.env,
@@ -189,7 +215,11 @@ export class ShellExecutionService {
 
         const handleOutput = (data: Buffer, stream: 'stdout' | 'stderr') => {
           if (!stdoutDecoder || !stderrDecoder) {
-            const encoding = getCachedEncodingForBuffer(data);
+            // On Windows with PowerShell, always use UTF-8 since we set [Console]::OutputEncoding
+            // On other platforms, detect encoding from buffer
+            const encoding = isWindows
+              ? 'utf-8'
+              : getCachedEncodingForBuffer(data);
             try {
               stdoutDecoder = new TextDecoder(encoding);
               stderrDecoder = new TextDecoder(encoding);
@@ -345,9 +375,20 @@ export class ShellExecutionService {
       const cols = shellExecutionConfig.terminalWidth ?? 80;
       const rows = shellExecutionConfig.terminalHeight ?? 30;
       const isWindows = os.platform() === 'win32';
-      const shell = isWindows ? 'cmd.exe' : 'bash';
+
+      // Use PowerShell on Windows for better Unicode support
+      // PowerShell handles CJK characters correctly, unlike cmd.exe
+      const shell = isWindows ? 'powershell.exe' : 'bash';
+
+      // For PowerShell, set output encoding to UTF-8 and use -Command
+      // For bash, use -c flag
       const args = isWindows
-        ? `/c ${commandToExecute}`
+        ? [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${commandToExecute}`,
+          ]
         : ['-c', commandToExecute];
 
       const ptyProcess = ptyInfo.module.spawn(shell, args, {
@@ -369,6 +410,7 @@ export class ShellExecutionService {
           allowProposedApi: true,
           cols,
           rows,
+          scrollback: 50000, // Increase scrollback buffer to prevent output truncation
         });
         headlessTerminal.scrollToTop();
 
@@ -481,7 +523,11 @@ export class ShellExecutionService {
             () =>
               new Promise<void>((resolve) => {
                 if (!decoder) {
-                  const encoding = getCachedEncodingForBuffer(data);
+                  // On Windows with PowerShell, always use UTF-8 since we set [Console]::OutputEncoding
+                  // On other platforms, detect encoding from buffer
+                  const encoding = isWindows
+                    ? 'utf-8'
+                    : getCachedEncodingForBuffer(data);
                   try {
                     decoder = new TextDecoder(encoding);
                   } catch {
@@ -538,10 +584,11 @@ export class ShellExecutionService {
             processingChain.then(() => {
               render(true);
               const finalBuffer = Buffer.concat(outputChunks);
+              const fullText = getFullBufferText(headlessTerminal);
 
               resolve({
                 rawOutput: finalBuffer,
-                output: getFullBufferText(headlessTerminal),
+                output: fullText,
                 exitCode,
                 signal: signal ?? null,
                 error,
