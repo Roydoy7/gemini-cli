@@ -110,6 +110,18 @@ ipcMain.handle('dialog-show-open-dialog', async (_, options) => {
   }
 });
 
+// Read file as base64
+ipcMain.handle('fs-read-file-as-base64', async (_, filePath) => {
+  try {
+    const fs = require('fs').promises;
+    const buffer = await fs.readFile(filePath);
+    return buffer.toString('base64');
+  } catch (error) {
+    console.error('Failed to read file as base64:', error);
+    throw error;
+  }
+});
+
 // Helper function to ensure GeminiChatManager is initialized
 const ensureInitialized = async (
   configParams = {},
@@ -875,7 +887,12 @@ ipcMain.handle(
       // It only needs the current user request, not full history
       // History is managed internally by GeminiClient's GeminiChat
       const lastMessage = messages[messages.length - 1];
-      const request = [{ text: lastMessage.content }];
+
+      // Use parts if available (for images and other media), otherwise use text content
+      const request =
+        lastMessage.parts && lastMessage.parts.length > 0
+          ? lastMessage.parts
+          : [{ text: lastMessage.content }];
 
       // Create an AbortController for the signal
       const abortController = new AbortController();

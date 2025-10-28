@@ -27,6 +27,18 @@ export interface ModelProviderConfig {
   lastUsed?: Date;
 }
 
+/**
+ * Image attachment for user messages
+ */
+export interface ImageAttachment {
+  id: string; // Unique ID for this attachment
+  name: string; // Original filename
+  mimeType: string; // MIME type (e.g., 'image/png')
+  base64Data: string; // Base64 encoded image data
+  size: number; // File size in bytes
+  previewUrl?: string; // Data URL for preview (e.g., data:image/png;base64,...)
+}
+
 export interface UniversalMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -40,6 +52,10 @@ export interface UniversalMessage {
    * When converting back to Gemini format, use this field to restore the exact original structure
    */
   parts?: unknown[]; // Using unknown[] to avoid circular dependency with @google/genai types
+  /**
+   * Image attachments for this message (user messages only)
+   */
+  images?: ImageAttachment[];
 }
 
 export interface UniversalResponse {
@@ -228,6 +244,7 @@ export interface ChatMessage {
   toolResponseData?: ToolResponseData; // Structured tool response data
   tool_call_id?: string; // For tool response messages - links to the tool call
   name?: string; // For tool response messages - the tool name
+  images?: ImageAttachment[]; // Image attachments for user messages
 }
 
 // Tool execution stages aligned with core package

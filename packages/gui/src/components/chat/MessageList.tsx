@@ -33,6 +33,7 @@ import {
   Trash2,
   Copy,
   Check,
+  X,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -484,6 +485,10 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [showScrollButton, setShowScrollButton] = useState(false);
+    const [previewImage, setPreviewImage] = useState<{
+      url: string;
+      name: string;
+    } | null>(null);
 
     // Process messages to group tool executions
     const processedMessages = useMemo(
@@ -538,6 +543,11 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
         console.error('Failed to save template:', error);
       }
     };
+
+    // Handle image click
+    const handleImageClick = useCallback((url: string, name: string) => {
+      setPreviewImage({ url, name });
+    }, []);
 
     const scrollToBottom = useCallback((smooth = true) => {
       if (containerRef.current) {
@@ -715,6 +725,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                           }}
                           onSaveAsTemplate={saveAsTemplate}
                           onDelete={onDeleteMessage}
+                          onImageClick={handleImageClick}
                         />
                       )}
 
@@ -739,6 +750,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                       message={processedMsg.originalMessage}
                       onSaveAsTemplate={saveAsTemplate}
                       onDelete={onDeleteMessage}
+                      onImageClick={handleImageClick}
                     />
                   )}
                 </div>
@@ -812,6 +824,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
                   }}
                   isStreaming
                   onSaveAsTemplate={saveAsTemplate}
+                  onImageClick={handleImageClick}
                 />
               </div>
             )}
@@ -839,6 +852,37 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
           >
             <ArrowDown size={20} />
           </button>
+        )}
+
+        {/* Image preview modal */}
+        {previewImage && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+            onClick={() => setPreviewImage(null)}
+          >
+            <div className="relative max-w-[90vw] max-h-[90vh] p-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute -top-2 -right-2 h-8 w-8 rounded-full bg-background/80 hover:bg-background"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewImage(null);
+                }}
+              >
+                <X size={16} />
+              </Button>
+              <img
+                src={previewImage.url}
+                alt={previewImage.name}
+                className="max-w-full max-h-[85vh] object-contain rounded-lg"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="mt-2 text-center text-sm text-white/80">
+                {previewImage.name}
+              </div>
+            </div>
+          </div>
         )}
       </>
     );
@@ -1619,6 +1663,7 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   onSaveAsTemplate?: (message: ChatMessage) => void;
   onDelete?: (messageId: string) => void;
+  onImageClick?: (url: string, name: string) => void;
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
@@ -1626,6 +1671,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   isStreaming,
   onSaveAsTemplate,
   onDelete,
+  onImageClick,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -1885,6 +1931,36 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                                   className="px-3 py-0"
                                 />
                               )}
+
+                              {/* Show image attachments for user messages */}
+                              {message.role === 'user' &&
+                                message.images &&
+                                message.images.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 px-3 pb-2">
+                                    {message.images.map((img) => (
+                                      <div
+                                        key={img.id}
+                                        className="relative rounded-lg overflow-hidden border border-border cursor-pointer hover:opacity-80 transition-opacity"
+                                        style={{
+                                          maxWidth: '200px',
+                                          maxHeight: '200px',
+                                        }}
+                                        onClick={() =>
+                                          onImageClick?.(
+                                            img.previewUrl || '',
+                                            img.name,
+                                          )
+                                        }
+                                      >
+                                        <img
+                                          src={img.previewUrl}
+                                          alt={img.name}
+                                          className="w-full h-full object-contain"
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                             </>
                           );
                         }

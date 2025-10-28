@@ -21,6 +21,12 @@ const electronAPI = {
       ipcRenderer.invoke('dialog-show-open-dialog', options),
   },
 
+  // File system API
+  fs: {
+    readFileAsBase64: (filePath) =>
+      ipcRenderer.invoke('fs-read-file-as-base64', filePath),
+  },
+
   // Event listeners
   onWorkspaceDirectoriesChanged: (callback) => {
     ipcRenderer.on('workspace-directories-changed', callback);

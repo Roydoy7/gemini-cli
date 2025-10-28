@@ -32,6 +32,7 @@ import {
   Folder,
   BookTemplate,
   Save,
+  FileImage,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
@@ -60,10 +61,25 @@ interface RichTextInputProps {
   onWorkspaceClick?: () => void;
   onTemplateClick?: () => void;
   onSaveTemplateClick?: () => void;
+  onImageClick?: () => void;
   // External button children (for rendering menus)
   excelButton?: React.ReactNode;
   workspaceButton?: React.ReactNode;
   templateButton?: React.ReactNode;
+  imageButton?: React.ReactNode;
+  // Image attachments display
+  imageAttachments?: Array<{
+    id: string;
+    name: string;
+    previewUrl: string;
+  }>;
+  onRemoveImage?: (id: string) => void;
+  // Drag and drop
+  onDragEnter?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  isDragging?: boolean;
   // Default mode
   defaultMultiline?: boolean;
   // Allow full height expansion
@@ -91,9 +107,18 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
       onWorkspaceClick,
       onTemplateClick,
       onSaveTemplateClick,
+      onImageClick,
       excelButton,
       workspaceButton,
       templateButton,
+      imageButton,
+      imageAttachments,
+      onRemoveImage,
+      onDragEnter,
+      onDragLeave,
+      onDragOver,
+      onDrop,
+      isDragging,
       defaultMultiline = false,
       fullHeight = false,
     },
@@ -311,6 +336,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
     ) => {
       // In single-line mode, Enter sends the message
       if (!isMultilineMode && e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault(); // Prevent default new line
         // Let parent handle send
         onKeyDown?.(e);
         return;
@@ -340,7 +366,16 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
 
     return (
       <div
-        className={cn('flex flex-col gap-2', fullHeight && 'h-full', className)}
+        className={cn(
+          'flex flex-col gap-2',
+          fullHeight && 'h-full',
+          className,
+          isDragging && 'ring-2 ring-primary bg-primary/5',
+        )}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
       >
         {/* Quoted message display */}
         {quotedMessage && (
@@ -524,6 +559,21 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
                   </Button>
                 ))}
 
+              {/* Image upload button */}
+              {(imageButton || onImageClick) &&
+                (imageButton || (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={onImageClick}
+                    disabled={disabled}
+                    title="Upload Images"
+                  >
+                    <FileImage size={16} />
+                  </Button>
+                ))}
+
               {/* Save template button */}
               {onSaveTemplateClick && (
                 <Button
@@ -664,6 +714,52 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>(
             </Button>
           </div>
         </div>
+
+        {/* Image attachments preview */}
+        {imageAttachments && imageAttachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1">
+            {imageAttachments.map((img) => (
+              <div
+                key={img.id}
+                className="relative group rounded-lg overflow-hidden border border-border bg-muted/30"
+                style={{ width: '80px', height: '80px' }}
+              >
+                <img
+                  src={img.previewUrl}
+                  alt={img.name}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  {onRemoveImage && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-white hover:text-red-400"
+                      onClick={() => onRemoveImage(img.id)}
+                    >
+                      <X size={16} />
+                    </Button>
+                  )}
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs px-1 py-0.5 truncate">
+                  {img.name}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Drag and drop indicator */}
+        {isDragging && (
+          <div className="absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-sm rounded-lg border-2 border-dashed border-primary pointer-events-none">
+            <div className="text-center">
+              <FileImage size={48} className="mx-auto mb-2 text-primary" />
+              <div className="text-sm font-medium text-primary">
+                Drop images here
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mode indicator and help text */}
         {isMultilineMode && (

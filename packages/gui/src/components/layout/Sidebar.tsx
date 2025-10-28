@@ -26,6 +26,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
 import { geminiChatService } from '@/services/geminiChatService';
 import { cn } from '@/utils/cn';
+import { extractImagesFromParts } from '@/utils/messageUtils';
 import type { ChatSession } from '@/types';
 
 export const Sidebar: React.FC = () => {
@@ -314,6 +315,7 @@ export const Sidebar: React.FC = () => {
         toolCalls: msg.toolCalls,
         tool_call_id: msg.tool_call_id,
         name: msg.name,
+        images: extractImagesFromParts(msg.parts), // Extract images from parts
       }));
 
       // Log thinking content summary

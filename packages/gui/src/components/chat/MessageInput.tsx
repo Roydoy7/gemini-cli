@@ -120,6 +120,19 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [newTemplateName, setNewTemplateName] = useState('');
     const [showAuthRequiredDialog, setShowAuthRequiredDialog] = useState(false);
     const excelMenuRef = useRef<HTMLDivElement>(null);
+
+    // Image attachments state
+    const [imageAttachments, setImageAttachments] = useState<
+      Array<{
+        id: string;
+        name: string;
+        mimeType: string;
+        base64Data: string;
+        size: number;
+        previewUrl: string;
+      }>
+    >([]);
+    const [isDragging, setIsDragging] = useState(false);
     const workspaceMenuRef = useRef<HTMLDivElement>(null);
     const templateMenuRef = useRef<HTMLDivElement>(null);
 
@@ -797,8 +810,192 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         });
       });
 
+    // Image handling functions
+    const handleImageSelect = async () => {
+      const electronAPI = window.electronAPI;
+      if (!electronAPI?.dialog) return;
+
+      try {
+        const result = await electronAPI.dialog.showOpenDialog({
+          properties: ['openFile', 'multiSelections'],
+          title: 'Select Images',
+          filters: [
+            {
+              name: 'Images',
+              extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
+            },
+          ],
+        });
+
+        if (!result.canceled && result.filePaths.length > 0) {
+          await addImageFiles(result.filePaths);
+        }
+      } catch (error) {
+        console.error('Failed to select images:', error);
+      }
+    };
+
+    const addImageFiles = async (filePaths: string[]) => {
+      const electronAPI = window.electronAPI;
+      if (!electronAPI?.fs) return;
+
+      const newImages: Array<{
+        id: string;
+        name: string;
+        mimeType: string;
+        base64Data: string;
+        size: number;
+        previewUrl: string;
+      }> = [];
+
+      for (const filePath of filePaths) {
+        try {
+          // Read file as base64
+          const base64Data = await electronAPI.fs.readFileAsBase64(filePath);
+
+          // Get file info
+          const fileName = filePath.split(/[/\\]/).pop() || 'image';
+          const ext = fileName.split('.').pop()?.toLowerCase() || 'png';
+
+          // Determine MIME type
+          const mimeTypeMap: Record<string, string> = {
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            gif: 'image/gif',
+            webp: 'image/webp',
+            bmp: 'image/bmp',
+            svg: 'image/svg+xml',
+          };
+          const mimeType = mimeTypeMap[ext] || 'image/png';
+
+          // Calculate size (base64 size approximation)
+          const size = Math.ceil((base64Data.length * 3) / 4);
+
+          // Create preview URL
+          const previewUrl = `data:${mimeType};base64,${base64Data}`;
+
+          newImages.push({
+            id: `${Date.now()}-${Math.random()}`,
+            name: fileName,
+            mimeType,
+            base64Data,
+            size,
+            previewUrl,
+          });
+        } catch (error) {
+          console.error(`Failed to read image file ${filePath}:`, error);
+        }
+      }
+
+      if (newImages.length > 0) {
+        setImageAttachments((prev) => [...prev, ...newImages]);
+      }
+    };
+
+    const removeImage = (id: string) => {
+      setImageAttachments((prev) => prev.filter((img) => img.id !== id));
+    };
+
+    // Drag and drop handlers
+    const handleDragEnter = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+
+      const files = Array.from(e.dataTransfer.files);
+      const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+
+      if (imageFiles.length > 0) {
+        // Try to get file paths first (Electron-specific)
+        const filePaths = imageFiles
+          .map((file) => (file as File & { path?: string }).path)
+          .filter((p): p is string => !!p);
+
+        if (filePaths.length > 0) {
+          // Use file paths if available (more efficient)
+          await addImageFiles(filePaths);
+        } else {
+          // Fallback: Read files directly using FileReader
+          await addImageFilesFromFileObjects(imageFiles);
+        }
+      }
+    };
+
+    const addImageFilesFromFileObjects = async (files: File[]) => {
+      const newImages: Array<{
+        id: string;
+        name: string;
+        mimeType: string;
+        base64Data: string;
+        size: number;
+        previewUrl: string;
+      }> = [];
+
+      for (const file of files) {
+        try {
+          // Read file as base64 using FileReader
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              // Remove data URL prefix (e.g., "data:image/png;base64,")
+              const base64 = result.split(',')[1];
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          const mimeType = file.type || 'image/png';
+          const size = file.size;
+
+          // Create preview URL
+          const previewUrl = `data:${mimeType};base64,${base64Data}`;
+
+          newImages.push({
+            id: `${Date.now()}-${Math.random()}`,
+            name: file.name,
+            mimeType,
+            base64Data,
+            size,
+            previewUrl,
+          });
+        } catch (error) {
+          console.error(`Failed to read file ${file.name}:`, error);
+        }
+      }
+
+      if (newImages.length > 0) {
+        setImageAttachments((prev) => [...prev, ...newImages]);
+      }
+    };
+
     const handleSendMessage = async () => {
-      if (!message.trim() || !activeSessionId || isStreaming || isThinking)
+      // Allow sending if either message has text or there are image attachments
+      if (
+        (!message.trim() && imageAttachments.length === 0) ||
+        !activeSessionId ||
+        isStreaming ||
+        isThinking
+      )
         return;
 
       // Check authentication before sending message
@@ -882,6 +1079,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         role: 'user',
         content: message.trim(),
         timestamp: new Date(),
+        images: imageAttachments.length > 0 ? imageAttachments : undefined,
       };
 
       // Add user message to session
@@ -895,8 +1093,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         updatedAt: new Date(),
       });
 
-      // Clear input
+      // Clear input and image attachments
       setMessage('');
+      setImageAttachments([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -935,10 +1134,30 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         }
 
         // Send ONLY the new user message (GeminiChatManager manages history internally)
+        // Build parts array if there are image attachments
+        const parts: unknown[] = [];
+
+        // Add text part if present
+        if (message.trim()) {
+          parts.push({ text: userMessage.content });
+        }
+
+        // Add image parts
+        for (const img of imageAttachments) {
+          parts.push({
+            inlineData: {
+              data: img.base64Data,
+              mimeType: img.mimeType,
+            },
+          });
+        }
+
         const newUserMessage: UniversalMessage = {
           role: 'user',
           content: userMessage.content,
           timestamp: userMessage.timestamp,
+          parts: parts.length > 0 ? parts : undefined,
+          images: imageAttachments.length > 0 ? imageAttachments : undefined,
         };
         const { stream, cancel } = await geminiChatService.sendMessage([
           newUserMessage,
@@ -1690,6 +1909,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     onWorkspaceClick={handleWorkspaceButtonClick}
                     onTemplateClick={handleTemplateButtonClick}
                     onSaveTemplateClick={handleSaveTemplateClick}
+                    onImageClick={handleImageSelect}
+                    imageAttachments={imageAttachments}
+                    onRemoveImage={removeImage}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    isDragging={isDragging}
                     excelButton={
                       <div className="relative" ref={excelMenuRef}>
                         <Button

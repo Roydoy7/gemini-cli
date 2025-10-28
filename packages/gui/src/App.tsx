@@ -12,6 +12,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
 import { geminiChatService } from '@/services/geminiChatService';
 import type { ChatSession, ModelProviderType } from '@/types';
+import { extractImagesFromParts } from '@/utils/messageUtils';
 
 export const App: React.FC = () => {
   const { currentProvider, currentModel, currentRole, theme, isHydrated } =
@@ -549,6 +550,7 @@ export const App: React.FC = () => {
                 toolCalls: msg.toolCalls,
                 tool_call_id: msg.tool_call_id, // Required for tool response messages
                 name: msg.name, // Required for tool response messages
+                images: extractImagesFromParts(msg.parts), // Extract images from parts
               }));
 
               updateSession(mostRecentSessionId, { messages: chatMessages });
