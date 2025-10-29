@@ -94,6 +94,34 @@ export async function checkNextSpeaker(
     };
   }
 
+  // Check if last message only contains thinking without actual content
+  // This happens when LLM completes thinking but doesn't output content or tool calls
+  if (
+    lastComprehensiveMessage &&
+    lastComprehensiveMessage.role === 'model' &&
+    lastComprehensiveMessage.parts &&
+    lastComprehensiveMessage.parts.length > 0
+  ) {
+    const hasOnlyThinking = lastComprehensiveMessage.parts.every(
+      (part) =>
+        ('text' in part && part.text?.startsWith('<think>')) ||
+        ('thought' in part && part.thought),
+    );
+    const hasActualContent = lastComprehensiveMessage.parts.some(
+      (part) =>
+        ('text' in part && part.text && !part.text.startsWith('<think>')) ||
+        ('functionCall' in part && part.functionCall),
+    );
+
+    if (hasOnlyThinking && !hasActualContent) {
+      return {
+        reasoning:
+          'The last message only contains thinking without actual content or tool calls, model should continue to provide the actual response.',
+        next_speaker: 'model',
+      };
+    }
+  }
+
   // Things checked out. Let's proceed to potentially making an LLM request.
 
   const lastMessage = curatedHistory[curatedHistory.length - 1];

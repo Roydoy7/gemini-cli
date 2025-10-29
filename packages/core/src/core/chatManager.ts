@@ -816,28 +816,15 @@ export class GeminiChatManager {
    */
   private async loadSessionIntoClient(sessionId: string): Promise<void> {
     // Get or create client for this session
+    // NOTE: getOrCreate already calls onRestoreSession (restoreSessionIntoClient)
+    // which loads the session history into the client, so we don't need to do it again
     const client = await this.clientPool.getOrCreate(sessionId);
 
-    // Get history from SessionManager (UniversalMessage[])
-    const universalHistory = this.sessionManager.getDisplayMessages(sessionId);
-
-    // Convert to Gemini format (Content[])
-    const geminiHistory = this.convertUniversalToGemini(universalHistory);
-
-    // Load into GeminiClient
-    if (geminiHistory.length > 0) {
-      // Restart chat with existing history
-      await client.startChat(geminiHistory);
-      console.log(
-        `[GeminiChatManager] Loaded ${geminiHistory.length} messages into GeminiClient for session ${sessionId}`,
-      );
-    } else {
-      // Fresh chat
-      await client.resetChat();
-      console.log(
-        `[GeminiChatManager] Started fresh chat for session ${sessionId}`,
-      );
-    }
+    // Log the client's history for debugging
+    const history = client.getHistory();
+    console.log(
+      `[GeminiChatManager] Client for session ${sessionId} has ${history.length} messages in history`,
+    );
   }
 
   /**
