@@ -51,14 +51,14 @@ import {
 } from './models.js';
 import { shouldAttemptBrowserLaunch } from '../utils/browser.js';
 import type { MCPOAuthConfig } from '../mcp/oauth-provider.js';
+import { setGlobalProxy } from '../utils/fetch.js';
 import { ideContextStore } from '../ide/ideContext.js';
 // import { WriteTodosTool } from '../tools/write-todos.js';
 import type { FileSystemService } from '../services/fileSystemService.js';
 import { StandardFileSystemService } from '../services/fileSystemService.js';
-import {
-  // logCliConfiguration,
-  // logRipgrepFallback,
-} from '../telemetry/loggers.js';
+import {} from // logCliConfiguration,
+// logRipgrepFallback,
+'../telemetry/loggers.js';
 // import { RipgrepFallbackEvent } from '../telemetry/types.js';
 import type { FallbackModelHandler } from '../fallback/types.js';
 import { ModelRouterService } from '../routing/modelRouterService.js';

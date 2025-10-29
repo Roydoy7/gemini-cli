@@ -51,7 +51,7 @@ export async function crawl(options: CrawlOptions): Promise<string[]> {
       .withRelativePaths()
       .withDirs()
       .withPathSeparator('/') // Always use unix style paths
-      .exclude((_, dirPath) => {
+      .exclude((_dirName: string, dirPath: string) => {
         const relativePath = path.posix.relative(posixCrawlDirectory, dirPath);
         return dirFilter(`${relativePath}/`);
       });

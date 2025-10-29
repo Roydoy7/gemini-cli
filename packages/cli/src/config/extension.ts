@@ -6,6 +6,7 @@
 
 import type {
   MCPServerConfig,
+  GeminiCLIExtension,
   ExtensionInstallMetadata,
 } from '@google/gemini-cli-core';
 import {
@@ -25,8 +26,30 @@ import {
 } from '@google/gemini-cli-core';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { INSTALL_METADATA_FILENAME } from './extensions/variables.js';
+import * as os from 'node:os';
+import { SettingScope, loadSettings } from '../config/settings.js';
+import { getErrorMessage } from '../utils/errors.js';
+import {
+  recursivelyHydrateStrings,
+  INSTALL_METADATA_FILENAME,
+} from './extensions/variables.js';
 import type { ExtensionSetting } from './extensions/extensionSettings.js';
+import { isWorkspaceTrusted } from './trustedFolders.js';
+import { resolveEnvVarsInObject } from '../utils/envVarResolver.js';
+import { randomUUID, createHash } from 'node:crypto';
+import {
+  cloneFromGit,
+  downloadFromGitHubRelease,
+  tryParseGithubUrl,
+} from './extensions/github.js';
+import type { LoadExtensionContext } from './extensions/variableSchema.js';
+import { ExtensionEnablementManager } from './extensions/extensionEnablement.js';
+import chalk from 'chalk';
+import type { ConfirmationRequest } from '../ui/types.js';
+import { escapeAnsiCtrlCodes } from '../ui/utils/textUtils.js';
+
+export const EXTENSIONS_DIRECTORY_NAME = path.join(GEMINI_DIR, 'extensions');
+export const EXTENSIONS_CONFIG_FILENAME = 'gemini-extension.json';
 
 /**
  * Extension definition as written to disk in gemini-extension.json files.
@@ -256,6 +279,28 @@ export function loadExtension(
       )
       .filter((contextFilePath) => fs.existsSync(contextFilePath));
 
+    // IDs are created by hashing details of the installation source in order to
+    // deduplicate extensions with conflicting names and also obfuscate any
+    // potentially sensitive information such as private git urls, system paths,
+    // or project names.
+    const hash = createHash('sha256');
+    const githubUrlParts =
+      installMetadata &&
+      (installMetadata.type === 'git' ||
+        installMetadata.type === 'github-release')
+        ? tryParseGithubUrl(installMetadata.source)
+        : null;
+    if (githubUrlParts) {
+      // For github repos, we use the https URI to the repo as the ID.
+      hash.update(
+        `https://github.com/${githubUrlParts.owner}/${githubUrlParts.repo}`,
+      );
+    } else {
+      hash.update(installMetadata?.source ?? config.name);
+    }
+
+    const id = hash.digest('hex');
+
     return {
       name: config.name,
       version: config.version,
@@ -265,6 +310,7 @@ export function loadExtension(
       mcpServers: config.mcpServers,
       excludeTools: config.excludeTools,
       isActive: true, // Barring any other signals extensions should be considered Active.
+      id,
     };
   } catch (e) {
     console.error(
@@ -468,9 +514,14 @@ export async function installExtension(
     ) {
       tempDir = await ExtensionStorage.createTmpDir();
       try {
+        const githubRepoInfo = tryParseGithubUrl(installMetadata.source);
+        if (!githubRepoInfo) {
+          throw new Error(`Invalid GitHub URL: ${installMetadata.source}`);
+        }
         const result = await downloadFromGitHubRelease(
           installMetadata,
           tempDir,
+          githubRepoInfo,
         );
         installMetadata.type = result.type;
         installMetadata.releaseTag = result.tagName;
@@ -535,18 +586,31 @@ export async function installExtension(
       }
     }
 
+    // Reload as GeminiCLIExtension to get the generated id
+    const installedExtension = loadExtension({
+      extensionDir: new ExtensionStorage(
+        newExtensionConfig!.name,
+      ).getExtensionDir(),
+      workspaceDir: cwd,
+    });
+
+    if (!installedExtension) {
+      throw new Error('Failed to load installed extension');
+    }
+
     logExtensionInstallEvent(
       telemetryConfig,
       new ExtensionInstallEvent(
-        newExtensionConfig!.name,
-        newExtensionConfig!.version,
+        installedExtension.name,
+        installedExtension.id,
+        installedExtension.version,
         installMetadata.source,
         'success',
       ),
     );
 
-    enableExtension(newExtensionConfig!.name, SettingScope.User);
-    return newExtensionConfig!.name;
+    enableExtension(installedExtension.name, SettingScope.User);
+    return installedExtension.name;
   } catch (error) {
     // Attempt to load config from the source path even if installation fails
     // to get the name and version for logging.
@@ -560,10 +624,17 @@ export async function installExtension(
         // Ignore error, this is just for logging.
       }
     }
+
+    // Generate id for error logging
+    const errorHash = createHash('sha256');
+    errorHash.update(installMetadata.source ?? newExtensionConfig?.name ?? '');
+    const errorId = errorHash.digest('hex');
+
     logExtensionInstallEvent(
       telemetryConfig,
       new ExtensionInstallEvent(
         newExtensionConfig?.name ?? '',
+        errorId,
         newExtensionConfig?.version ?? '',
         installMetadata.source,
         'error',
@@ -684,21 +755,18 @@ export async function uninstallExtension(
 ): Promise<void> {
   const telemetryConfig = getTelemetryConfig(cwd);
   const installedExtensions = loadUserExtensions();
-  const extensionName = installedExtensions.find(
+  const extension = installedExtensions.find(
     (installed) =>
       installed.name.toLowerCase() === extensionIdentifier.toLowerCase() ||
       installed.installMetadata?.source.toLowerCase() ===
         extensionIdentifier.toLowerCase(),
-  )?.name;
-  if (!extensionName) {
+  );
+  if (!extension) {
     throw new Error(`Extension not found.`);
   }
-  const manager = new ExtensionEnablementManager(
-    ExtensionStorage.getUserExtensionsDir(),
-    [extensionName],
-  );
-  manager.remove(extensionName);
-  const storage = new ExtensionStorage(extensionName);
+  const manager = new ExtensionEnablementManager([extension.name]);
+  manager.remove(extension.name);
+  const storage = new ExtensionStorage(extension.name);
 
   await fs.promises.rm(storage.getExtensionDir(), {
     recursive: true,
@@ -706,7 +774,7 @@ export async function uninstallExtension(
   });
   logExtensionUninstall(
     telemetryConfig,
-    new ExtensionUninstallEvent(extensionName, 'success'),
+    new ExtensionUninstallEvent(extension.name, extension.id, 'success'),
   );
 }
 
@@ -714,9 +782,7 @@ export function toOutputString(
   extension: GeminiCLIExtension,
   workspaceDir: string,
 ): string {
-  const manager = new ExtensionEnablementManager(
-    ExtensionStorage.getUserExtensionsDir(),
-  );
+  const manager = new ExtensionEnablementManager();
   const userEnabled = manager.isEnabled(extension.name, os.homedir());
   const workspaceEnabled = manager.isEnabled(extension.name, workspaceDir);
 
@@ -769,13 +835,13 @@ export function disableExtension(
     throw new Error(`Extension with name ${name} does not exist.`);
   }
 
-  const manager = new ExtensionEnablementManager(
-    ExtensionStorage.getUserExtensionsDir(),
-    [name],
-  );
+  const manager = new ExtensionEnablementManager([name]);
   const scopePath = scope === SettingScope.Workspace ? cwd : os.homedir();
   manager.disable(name, true, scopePath);
-  logExtensionDisable(config, new ExtensionDisableEvent(name, scope));
+  logExtensionDisable(
+    config,
+    new ExtensionDisableEvent(name, extension.id, scope),
+  );
 }
 
 export function enableExtension(
@@ -790,11 +856,12 @@ export function enableExtension(
   if (!extension) {
     throw new Error(`Extension with name ${name} does not exist.`);
   }
-  const manager = new ExtensionEnablementManager(
-    ExtensionStorage.getUserExtensionsDir(),
-  );
+  const manager = new ExtensionEnablementManager();
   const scopePath = scope === SettingScope.Workspace ? cwd : os.homedir();
   manager.enable(name, true, scopePath);
   const config = getTelemetryConfig(cwd);
-  logExtensionEnable(config, new ExtensionEnableEvent(name, scope));
+  logExtensionEnable(
+    config,
+    new ExtensionEnableEvent(name, extension.id, scope),
+  );
 }

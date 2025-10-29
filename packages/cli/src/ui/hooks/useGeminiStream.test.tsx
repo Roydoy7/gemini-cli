@@ -373,6 +373,7 @@ describe('useGeminiStream', () => {
         responseSubmittedToGemini: false,
         response: {
           callId: 'call1',
+          name: 'tool1',
           responseParts: [{ text: 'tool 1 response' }],
           error: undefined,
           errorType: undefined, // FIX: Added missing property
@@ -622,6 +623,7 @@ describe('useGeminiStream', () => {
       status: 'cancelled',
       response: {
         callId: 'cancel-1',
+        name: 'toolA',
         responseParts: [
           { functionResponse: { name: 'toolA', id: 'cancel-1' } },
         ],
@@ -651,6 +653,7 @@ describe('useGeminiStream', () => {
       status: 'cancelled',
       response: {
         callId: 'cancel-2',
+        name: 'toolB',
         responseParts: [
           { functionResponse: { name: 'toolB', id: 'cancel-2' } },
         ],
@@ -761,6 +764,7 @@ describe('useGeminiStream', () => {
         status: 'success',
         response: {
           callId: 'call1',
+          name: 'ReadFile',
           responseParts: toolCallResponseParts,
           error: undefined,
           errorType: undefined, // FIX: Added missing property
@@ -1345,6 +1349,7 @@ describe('useGeminiStream', () => {
         responseSubmittedToGemini: false,
         response: {
           callId: 'save-mem-call-1',
+          name: 'save_memory',
           responseParts: [{ text: 'Memory saved' }],
           resultDisplay: 'Success: Memory saved',
           error: undefined,

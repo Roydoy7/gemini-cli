@@ -1121,6 +1121,19 @@ export class CoreToolScheduler {
             // Introduce a generic callbacks object for the execute method to handle
             // things like `onPid` and `onLiveOutput`. This will make the scheduler
             // agnostic to the invocation type.
+            // Create progress callback with callId automatically injected
+            const progressCallback = this.onToolProgressUpdate
+              ? (event: ToolProgressEvent) => {
+                  if (this.onToolProgressUpdate) {
+                    // Override the callId with the correct one from the tool call request
+                    this.onToolProgressUpdate({
+                      ...event,
+                      callId,
+                    });
+                  }
+                }
+              : undefined;
+
             let promise: Promise<ToolResult>;
             if (invocation instanceof ShellToolInvocation) {
               const setPidCallback = (pid: number) => {
@@ -1135,7 +1148,7 @@ export class CoreToolScheduler {
                 signal,
                 liveOutputCallback,
                 shellExecutionConfig,
-                undefined, // progressCallback (4th param)
+                progressCallback, // progressCallback (4th param)
                 setPidCallback, // setPidCallback (5th param)
               );
             } else {
@@ -1143,6 +1156,7 @@ export class CoreToolScheduler {
                 signal,
                 liveOutputCallback,
                 shellExecutionConfig,
+                progressCallback,
               );
             }
 

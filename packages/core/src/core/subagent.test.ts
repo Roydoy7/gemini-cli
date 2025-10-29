@@ -36,6 +36,7 @@ import type {
   GenerateContentResponse,
 } from '@google/genai';
 import { ToolErrorType } from '../tools/tool-error.js';
+import type { AnyDeclarativeTool, AnyToolInvocation } from '../tools/tools.js';
 
 vi.mock('./geminiChat.js');
 vi.mock('./contentGenerator.js');
@@ -581,12 +582,24 @@ describe('subagent.ts', () => {
 
         // Mock the tool execution result
         vi.mocked(executeToolCall).mockResolvedValue({
-          callId: 'call_1',
-          name: 'ListFiles',
-          responseParts: [{ text: 'file1.txt\nfile2.ts' }],
-          resultDisplay: 'Listed 2 files',
-          error: undefined,
-          errorType: undefined, // Or ToolErrorType.NONE if available and appropriate
+          status: 'success',
+          request: {
+            callId: 'call_1',
+            name: 'ListFiles',
+            args: {},
+            isClientInitiated: false,
+            prompt_id: 'test-prompt',
+          },
+          response: {
+            callId: 'call_1',
+            name: 'ListFiles',
+            responseParts: [{ text: 'file1.txt\nfile2.ts' }],
+            resultDisplay: 'Listed 2 files',
+            error: undefined,
+            errorType: undefined,
+          },
+          tool: {} as AnyDeclarativeTool,
+          invocation: {} as AnyToolInvocation,
         });
 
         const scope = await SubAgentScope.create(
@@ -637,12 +650,23 @@ describe('subagent.ts', () => {
 
         // Mock the tool execution failure.
         vi.mocked(executeToolCall).mockResolvedValue({
-          callId: 'call_fail',
-          name: 'FailingTool',
-          responseParts: [{ text: 'ERROR: Tool failed catastrophically' }], // This should be sent to the model
-          resultDisplay: 'Tool failed catastrophically',
-          error: new Error('Failure'),
-          errorType: ToolErrorType.INVALID_TOOL_PARAMS,
+          status: 'error',
+          request: {
+            callId: 'call_fail',
+            name: 'FailingTool',
+            args: {},
+            isClientInitiated: false,
+            prompt_id: 'test-prompt',
+          },
+          response: {
+            callId: 'call_fail',
+            name: 'FailingTool',
+            responseParts: [{ text: 'ERROR: Tool failed catastrophically' }], // This should be sent to the model
+            resultDisplay: 'Tool failed catastrophically',
+            error: new Error('Failure'),
+            errorType: ToolErrorType.INVALID_TOOL_PARAMS,
+          },
+          tool: {} as AnyDeclarativeTool,
         });
 
         const scope = await SubAgentScope.create(
