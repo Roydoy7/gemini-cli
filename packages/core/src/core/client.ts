@@ -13,6 +13,7 @@ import type {
 } from '@google/genai';
 import {
   getDirectoryContextString,
+  // getInitialChatHistory,
   getEnvironmentContext,
 } from '../utils/environmentContext.js';
 import type { ServerGeminiStreamEvent, ChatCompressionInfo } from './turn.js';
@@ -38,21 +39,29 @@ import {
   getEffectiveModel,
 } from '../config/models.js';
 import { LoopDetectionService } from '../services/loopDetectionService.js';
+import {
+  ChatCompressionService,
+  COMPRESSION_TOKEN_THRESHOLD,
+  COMPRESSION_PRESERVE_THRESHOLD,
+} from '../services/chatCompressionService.js';
 import { ideContextStore } from '../ide/ideContext.js';
 import {
-  logChatCompression,
+  logContentRetryFailure,
   logNextSpeakerCheck,
   logMalformedJsonResponse,
+  logChatCompression,
 } from '../telemetry/loggers.js';
 import {
-  makeChatCompressionEvent,
+  ContentRetryFailureEvent,
   NextSpeakerCheckEvent,
   MalformedJsonResponseEvent,
+  makeChatCompressionEvent,
 } from '../telemetry/types.js';
 import type { IdeContext, File } from '../ide/types.js';
 import { handleFallback } from '../fallback/handler.js';
 import type { RoutingContext } from '../routing/routingStrategy.js';
 import { uiTelemetryService } from '../telemetry/uiTelemetry.js';
+import { debugLogger } from '../utils/debugLogger.js';
 
 export function isThinkingSupported(model: string) {
   return model.startsWith('gemini-2.5') || model === DEFAULT_GEMINI_MODEL_AUTO;
@@ -155,18 +164,6 @@ export function findCompressSplitPoint(
 
 const MAX_TURNS = 100;
 
-/**
- * Threshold for compression token count as a fraction of the model's token limit.
- * If the chat history exceeds this threshold, it will be compressed.
- */
-const COMPRESSION_TOKEN_THRESHOLD = 0.7;
-
-/**
- * The fraction of the latest chat history to keep. A value of 0.3
- * means that only the last 30% of the chat history will be kept after compression.
- */
-const COMPRESSION_PRESERVE_THRESHOLD = 0.3;
-
 export class GeminiClient {
   private chat?: GeminiChat;
   private readonly generateContentConfig: GenerateContentConfig = {
@@ -176,6 +173,7 @@ export class GeminiClient {
   private sessionTurnCount = 0;
 
   private readonly loopDetector: LoopDetectionService;
+  private readonly compressionService: ChatCompressionService;
   private lastPromptId: string;
   private currentSequenceModel: string | null = null;
   private lastSentIdeContext: IdeContext | undefined;
@@ -191,6 +189,7 @@ export class GeminiClient {
 
   constructor(private readonly config: Config) {
     this.loopDetector = new LoopDetectionService(config);
+    this.compressionService = new ChatCompressionService();
     this.lastPromptId = this.config.getSessionId();
 
     // Initialize role management
@@ -527,7 +526,7 @@ ${envContextString}
       ];
 
       if (this.config.getDebugMode()) {
-        console.log(contextParts.join('\n'));
+        debugLogger.log(contextParts.join('\n'));
       }
       return {
         contextParts,
@@ -637,7 +636,7 @@ ${envContextString}
       ];
 
       if (this.config.getDebugMode()) {
-        console.log(contextParts.join('\n'));
+        debugLogger.log(contextParts.join('\n'));
       }
       return {
         contextParts,
@@ -664,6 +663,7 @@ ${envContextString}
     signal: AbortSignal,
     prompt_id: string,
     turns: number = MAX_TURNS,
+    isInvalidStreamRetry: boolean = false,
   ): AsyncGenerator<ServerGeminiStreamEvent, Turn> {
     if (this.lastPromptId !== prompt_id) {
       this.loopDetector.reset(prompt_id);
@@ -785,6 +785,31 @@ ${envContextString}
         return turn;
       }
       yield event;
+      if (event.type === GeminiEventType.InvalidStream) {
+        if (this.config.getContinueOnFailedApiCall()) {
+          if (isInvalidStreamRetry) {
+            // We already retried once, so stop here.
+            logContentRetryFailure(
+              this.config,
+              new ContentRetryFailureEvent(
+                4, // 2 initial + 2 after injections
+                'FAILED_AFTER_PROMPT_INJECTION',
+                modelToUse,
+              ),
+            );
+            return turn;
+          }
+          const nextRequest = [{ text: 'System: Please continue.' }];
+          yield* this.sendMessageStream(
+            nextRequest,
+            signal,
+            prompt_id,
+            boundedTurns - 1,
+            true, // Set isInvalidStreamRetry to true
+          );
+          return turn;
+        }
+      }
       if (event.type === GeminiEventType.Error) {
         return turn;
       }
@@ -822,6 +847,7 @@ ${envContextString}
           signal,
           prompt_id,
           boundedTurns - 1,
+          // isInvalidStreamRetry is false here, as this is a next speaker check
         );
       }
     }
@@ -1129,12 +1155,22 @@ ${envContextString}
       ...historyToKeep,
     ];
 
-    const chat = await this.startChat(newHistory);
-    this.forceFullIdeContext = true;
-
     // Estimate new token count using the same method
     const newTokenCount = estimateTokens(newHistory);
 
+    // Determine compression status
+    let compressionStatus: CompressionStatus;
+    if (newTokenCount >= originalTokenCount) {
+      compressionStatus =
+        CompressionStatus.COMPRESSION_FAILED_INFLATED_TOKEN_COUNT;
+      this.hasFailedCompressionAttempt = !force && true;
+    } else {
+      compressionStatus = CompressionStatus.COMPRESSED;
+      this.chat = await this.startChat(newHistory);
+      this.forceFullIdeContext = true;
+    }
+
+    // Log compression event with token counts
     logChatCompression(
       this.config,
       makeChatCompressionEvent({
@@ -1143,28 +1179,10 @@ ${envContextString}
       }),
     );
 
-    if (newTokenCount > originalTokenCount) {
-      this.hasFailedCompressionAttempt = !force && true;
-      return {
-        originalTokenCount,
-        newTokenCount,
-        compressionStatus:
-          CompressionStatus.COMPRESSION_FAILED_INFLATED_TOKEN_COUNT,
-      };
-    } else {
-      this.chat = chat; // Chat compression successful, set new state.
-      uiTelemetryService.setLastPromptTokenCount(newTokenCount);
-    }
-
     return {
       originalTokenCount,
       newTokenCount,
-      compressionStatus: CompressionStatus.COMPRESSED,
+      compressionStatus,
     };
   }
 }
-
-export const TEST_ONLY = {
-  COMPRESSION_PRESERVE_THRESHOLD,
-  COMPRESSION_TOKEN_THRESHOLD,
-};

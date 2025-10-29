@@ -6,8 +6,49 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import type { GeminiCLIExtension } from '../config/config.js';
 import { getEmbeddedPythonPath } from './pythonPath.js';
+
+export interface ExtensionLoader {
+  getExtensions(): GeminiCLIExtension[];
+
+  extensionEvents(): EventEmitter<ExtensionEvents>;
+}
+
+export interface ExtensionEvents {
+  extensionEnabled: ExtensionEnableEvent[];
+  extensionDisabled: ExtensionDisableEvent[];
+  extensionLoaded: ExtensionLoadEvent[];
+  extensionUnloaded: ExtensionUnloadEvent[];
+  extensionInstalled: ExtensionInstallEvent[];
+  extensionUninstalled: ExtensionUninstallEvent[];
+  extensionUpdated: ExtensionUpdateEvent[];
+}
+
+interface BaseExtensionEvent {
+  extension: GeminiCLIExtension;
+}
+export type ExtensionDisableEvent = BaseExtensionEvent;
+export type ExtensionEnableEvent = BaseExtensionEvent;
+export type ExtensionInstallEvent = BaseExtensionEvent;
+export type ExtensionLoadEvent = BaseExtensionEvent;
+export type ExtensionUnloadEvent = BaseExtensionEvent;
+export type ExtensionUninstallEvent = BaseExtensionEvent;
+export type ExtensionUpdateEvent = BaseExtensionEvent;
+
+export class SimpleExtensionLoader implements ExtensionLoader {
+  private _eventEmitter = new EventEmitter<ExtensionEvents>();
+  constructor(private readonly extensions: GeminiCLIExtension[]) {}
+
+  extensionEvents(): EventEmitter<ExtensionEvents> {
+    return this._eventEmitter;
+  }
+
+  getExtensions(): GeminiCLIExtension[] {
+    return this.extensions;
+  }
+}
 
 /**
  * Simple variable substitution for extension configs.
@@ -149,6 +190,7 @@ export function loadBuiltinExtensions(
         // Create basic extension object
         // MCP servers now have variables substituted
         const extension: GeminiCLIExtension = {
+          id: config.name, // Use extension name as ID for built-in extensions
           name: config.name,
           version: config.version,
           isActive: true,

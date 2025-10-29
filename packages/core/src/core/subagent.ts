@@ -596,14 +596,14 @@ export class SubAgentScope {
         );
       }
 
-      if (toolResponse.error) {
+      if (toolResponse.response?.error) {
         console.error(
-          `Error executing tool ${functionCall.name}: ${toolResponse.resultDisplay || toolResponse.error.message}`,
+          `Error executing tool ${functionCall.name}: ${toolResponse.response.resultDisplay || toolResponse.response.error.message}`,
         );
       }
 
-      if (toolResponse.responseParts) {
-        toolResponseParts.push(...toolResponse.responseParts);
+      if (toolResponse.response?.responseParts) {
+        toolResponseParts.push(...toolResponse.response.responseParts);
       }
     }
     // If all tool calls failed, inform the model so it can re-evaluate.

@@ -6,7 +6,6 @@
 
 import type {
   MCPServerConfig,
-  GeminiCLIExtension,
   ExtensionInstallMetadata,
 } from '@google/gemini-cli-core';
 import {
@@ -26,27 +25,8 @@ import {
 } from '@google/gemini-cli-core';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
-import { SettingScope, loadSettings } from '../config/settings.js';
-import { getErrorMessage } from '../utils/errors.js';
-import { recursivelyHydrateStrings } from './extensions/variables.js';
-import { isWorkspaceTrusted } from './trustedFolders.js';
-import { resolveEnvVarsInObject } from '../utils/envVarResolver.js';
-import { randomUUID } from 'node:crypto';
-import {
-  cloneFromGit,
-  downloadFromGitHubRelease,
-} from './extensions/github.js';
-import type { LoadExtensionContext } from './extensions/variableSchema.js';
-import { ExtensionEnablementManager } from './extensions/extensionEnablement.js';
-import chalk from 'chalk';
-import type { ConfirmationRequest } from '../ui/types.js';
-import { escapeAnsiCtrlCodes } from '../ui/utils/textUtils.js';
-
-export const EXTENSIONS_DIRECTORY_NAME = path.join(GEMINI_DIR, 'extensions');
-
-export const EXTENSIONS_CONFIG_FILENAME = 'gemini-extension.json';
-export const INSTALL_METADATA_FILENAME = '.gemini-extension-install.json';
+import { INSTALL_METADATA_FILENAME } from './extensions/variables.js';
+import type { ExtensionSetting } from './extensions/extensionSettings.js';
 
 /**
  * Extension definition as written to disk in gemini-extension.json files.
@@ -55,12 +35,13 @@ export const INSTALL_METADATA_FILENAME = '.gemini-extension-install.json';
  * outside of the loading process that data needs to be stored on the
  * GeminiCLIExtension class defined in Core.
  */
-interface ExtensionConfig {
+export interface ExtensionConfig {
   name: string;
   version: string;
   mcpServers?: Record<string, MCPServerConfig>;
   contextFileName?: string | string[];
   excludeTools?: string[];
+  settings?: ExtensionSetting[];
 }
 
 export interface ExtensionUpdateInfo {

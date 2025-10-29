@@ -5,36 +5,49 @@
  */
 
 import { renderHook, act } from '@testing-library/react';
-import { waitFor } from '@testing-library/dom';
+import { /* waitFor */ } from '@testing-library/dom';
 import { useShellHistory } from './useShellHistory.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import { GEMINI_DIR } from '@google/gemini-cli-core';
 
-vi.mock('fs/promises', () => ({
+vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
   writeFile: vi.fn(),
   mkdir: vi.fn(),
 }));
-vi.mock('os');
-vi.mock('crypto');
-vi.mock('fs', async (importOriginal) => {
-  const actualFs = await importOriginal<typeof import('fs')>();
+const mockHomedir = vi.hoisted(() => vi.fn(() => '/tmp/mock-home'));
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return {
+    ...actual,
+    homedir: mockHomedir,
+  };
+});
+vi.mock('node:crypto');
+vi.mock('node:fs', async (importOriginal) => {
+  const actualFs = await importOriginal<typeof import('node:fs')>();
   return {
     ...actualFs,
     mkdirSync: vi.fn(),
   };
 });
-vi.mock('@google/gemini-cli-core', () => {
+vi.mock('@google/gemini-cli-core', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@google/gemini-cli-core')>();
+  const path = await import('node:path');
   class Storage {
+    static getGlobalSettingsPath(): string {
+      return '/test/home/.gemini/settings.json';
+    }
     getProjectTempDir(): string {
-      return path.join('/test/home/', '.gemini', 'tmp', 'mocked_hash');
+      return path.join('/test/home/', actual.GEMINI_DIR, 'tmp', 'mocked_hash');
     }
     getHistoryFilePath(): string {
       return path.join(
         '/test/home/',
-        '.gemini',
+        actual.GEMINI_DIR,
         'tmp',
         'mocked_hash',
         'shell_history',
@@ -42,6 +55,7 @@ vi.mock('@google/gemini-cli-core', () => {
     }
   }
   return {
+    ...actual,
     isNodeError: (err: unknown): err is NodeJS.ErrnoException =>
       typeof err === 'object' && err !== null && 'code' in err,
     Storage,
@@ -54,7 +68,7 @@ const MOCKED_PROJECT_HASH = 'mocked_hash';
 
 const MOCKED_HISTORY_DIR = path.join(
   MOCKED_HOME_DIR,
-  '.gemini',
+  GEMINI_DIR,
   'tmp',
   MOCKED_PROJECT_HASH,
 );
@@ -62,7 +76,6 @@ const MOCKED_HISTORY_FILE = path.join(MOCKED_HISTORY_DIR, 'shell_history');
 
 describe('useShellHistory', () => {
   const mockedFs = vi.mocked(fs);
-  const mockedOs = vi.mocked(os);
   const mockedCrypto = vi.mocked(crypto);
 
   beforeEach(() => {
@@ -71,7 +84,7 @@ describe('useShellHistory', () => {
     mockedFs.readFile.mockResolvedValue('');
     mockedFs.writeFile.mockResolvedValue(undefined);
     mockedFs.mkdir.mockResolvedValue(undefined);
-    mockedOs.homedir.mockReturnValue(MOCKED_HOME_DIR);
+    mockHomedir.mockReturnValue(MOCKED_HOME_DIR);
 
     const hashMock = {
       update: vi.fn().mockReturnThis(),
@@ -84,7 +97,7 @@ describe('useShellHistory', () => {
     mockedFs.readFile.mockResolvedValue('cmd1\ncmd2');
     const { result } = renderHook(() => useShellHistory(MOCKED_PROJECT_ROOT));
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(mockedFs.readFile).toHaveBeenCalledWith(
         MOCKED_HISTORY_FILE,
         'utf-8',
@@ -107,7 +120,7 @@ describe('useShellHistory', () => {
 
     const { result } = renderHook(() => useShellHistory(MOCKED_PROJECT_ROOT));
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(mockedFs.readFile).toHaveBeenCalled();
     });
 
@@ -122,13 +135,15 @@ describe('useShellHistory', () => {
   it('should add a command and write to the history file', async () => {
     const { result } = renderHook(() => useShellHistory(MOCKED_PROJECT_ROOT));
 
-    await waitFor(() => expect(mockedFs.readFile).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      expect(mockedFs.readFile).toHaveBeenCalled();
+    });
 
     act(() => {
       result.current.addCommandToHistory('new_command');
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(mockedFs.mkdir).toHaveBeenCalledWith(MOCKED_HISTORY_DIR, {
         recursive: true,
       });
@@ -150,7 +165,9 @@ describe('useShellHistory', () => {
     const { result } = renderHook(() => useShellHistory(MOCKED_PROJECT_ROOT));
 
     // Wait for history to be loaded: ['cmd3', 'cmd2', 'cmd1']
-    await waitFor(() => expect(mockedFs.readFile).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      expect(mockedFs.readFile).toHaveBeenCalled();
+    });
 
     let command: string | null = null;
 
@@ -194,7 +211,10 @@ describe('useShellHistory', () => {
 
   it('should not add empty or whitespace-only commands to history', async () => {
     const { result } = renderHook(() => useShellHistory(MOCKED_PROJECT_ROOT));
-    await waitFor(() => expect(mockedFs.readFile).toHaveBeenCalled());
+
+    await vi.waitFor(() => {
+      expect(mockedFs.readFile).toHaveBeenCalled();
+    });
 
     act(() => {
       result.current.addCommandToHistory('   ');
@@ -208,14 +228,18 @@ describe('useShellHistory', () => {
     mockedFs.readFile.mockResolvedValue(oldCommands.join('\n'));
 
     const { result } = renderHook(() => useShellHistory(MOCKED_PROJECT_ROOT));
-    await waitFor(() => expect(mockedFs.readFile).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      expect(mockedFs.readFile).toHaveBeenCalled();
+    });
 
     act(() => {
       result.current.addCommandToHistory('new_cmd');
     });
 
     // Wait for the async write to happen and then inspect the arguments.
-    await waitFor(() => expect(mockedFs.writeFile).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      expect(mockedFs.writeFile).toHaveBeenCalled();
+    });
 
     // The hook stores history newest-first.
     // Initial state: ['old_cmd_119', ..., 'old_cmd_0']
@@ -234,15 +258,20 @@ describe('useShellHistory', () => {
     const { result } = renderHook(() => useShellHistory(MOCKED_PROJECT_ROOT));
 
     // Initial state: ['cmd3', 'cmd2', 'cmd1']
-    await waitFor(() => expect(mockedFs.readFile).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      expect(mockedFs.readFile).toHaveBeenCalled();
+    });
 
     act(() => {
       result.current.addCommandToHistory('cmd1');
     });
 
     // After re-adding 'cmd1': ['cmd1', 'cmd3', 'cmd2']
-    // Written to file (reversed): ['cmd2', 'cmd3', 'cmd1']
-    await waitFor(() => expect(mockedFs.writeFile).toHaveBeenCalled());
+    expect(mockedFs.readFile).toHaveBeenCalled();
+
+    await vi.waitFor(() => {
+      expect(mockedFs.writeFile).toHaveBeenCalled();
+    });
 
     const writtenContent = mockedFs.writeFile.mock.calls[0][1] as string;
     const writtenLines = writtenContent.split('\n');

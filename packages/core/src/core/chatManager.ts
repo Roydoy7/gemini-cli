@@ -489,14 +489,14 @@ export class GeminiChatManager {
                 signal,
               );
 
-              if (toolResponse.responseParts) {
-                toolResponseParts.push(...toolResponse.responseParts);
+              if (toolResponse.response.responseParts) {
+                toolResponseParts.push(...toolResponse.response.responseParts);
               }
 
-              const responseContent = toolResponse.resultDisplay
-                ? typeof toolResponse.resultDisplay === 'string'
-                  ? toolResponse.resultDisplay
-                  : JSON.stringify(toolResponse.resultDisplay)
+              const responseContent = toolResponse.response.resultDisplay
+                ? typeof toolResponse.response.resultDisplay === 'string'
+                  ? toolResponse.response.resultDisplay
+                  : JSON.stringify(toolResponse.response.resultDisplay)
                 : 'Tool executed successfully';
 
               executedToolResponses.push({
@@ -512,10 +512,10 @@ export class GeminiChatManager {
                 value: {
                   callId: requestInfo.callId,
                   name: requestInfo.name,
-                  responseParts: toolResponse.responseParts || [],
-                  resultDisplay: toolResponse.resultDisplay,
-                  error: toolResponse.error,
-                  errorType: toolResponse.errorType,
+                  responseParts: toolResponse.response.responseParts || [],
+                  resultDisplay: toolResponse.response.resultDisplay,
+                  error: toolResponse.response.error,
+                  errorType: toolResponse.response.errorType,
                   sessionId, // CRITICAL: Include sessionId for routing to correct session
                 },
               };

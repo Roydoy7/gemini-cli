@@ -295,13 +295,14 @@ class SubagentInvocation extends BaseToolInvocation<
                   signal,
                 );
 
-                if (toolResponse.error) {
+                if (toolResponse.response.error) {
                   toolResults.push(
-                    `Tool ${toolCall.name} failed: ${toolResponse.error.message}`,
+                    `Tool ${toolCall.name} failed: ${toolResponse.response.error.message}`,
                   );
                 } else {
                   const result =
-                    toolResponse.resultDisplay || 'Tool executed successfully';
+                    toolResponse.response.resultDisplay ||
+                    'Tool executed successfully';
                   const resultStr =
                     typeof result === 'string'
                       ? result
