@@ -4,3 +4,6 @@
 [submodule "packages/extensions/windows-mcp"]
 	path = packages/extensions/windows-mcp
 	url = https://github.com/Roydoy7/Windows-MCP.git
+[submodule "packages/extensions/mcp-server-box"]
+	path = packages/extensions/mcp-server-box
+	url = https://github.com/Roydoy7/mcp-server-box.git
