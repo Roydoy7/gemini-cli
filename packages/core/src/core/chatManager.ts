@@ -27,6 +27,7 @@ import type {
   ToolCallConfirmationDetails,
   ToolConfirmationOutcome,
 } from '../tools/tools.js';
+import { ToolErrorType } from '../tools/tool-error.js';
 
 /**
  * GeminiChatManager - Unified chat management system
@@ -341,6 +342,7 @@ export class GeminiChatManager {
                             errorType: undefined,
                             structuredData: response.structuredData,
                             sessionId, // CRITICAL: Include sessionId for routing to correct session
+                            toolSuccess: true, // Success case
                           },
                         });
                       } else if (
@@ -357,6 +359,7 @@ export class GeminiChatManager {
                           .responseParts || [
                           {
                             functionResponse: {
+                              id: toolCall.request.callId, // CRITICAL: Include ID to match functionCall
                               name: toolCall.request.name,
                               response: {
                                 error: errorMsg,
@@ -375,10 +378,14 @@ export class GeminiChatManager {
                             name: toolCall.request.name,
                             responseParts: errorResponseParts,
                             resultDisplay: toolResponseContent,
-                            error: toolCall.response.error,
-                            errorType: toolCall.response.errorType,
+                            error:
+                              toolCall.response.error || new Error(errorMsg),
+                            errorType:
+                              toolCall.response.errorType ||
+                              ToolErrorType.EXECUTION_FAILED,
                             structuredData: toolCall.response.structuredData,
                             sessionId, // CRITICAL: Include sessionId for routing to correct session
+                            toolSuccess: false, // Failed case
                           },
                         });
                       } else if (
@@ -395,6 +402,7 @@ export class GeminiChatManager {
                           .responseParts || [
                           {
                             functionResponse: {
+                              id: toolCall.request.callId, // CRITICAL: Include ID to match functionCall
                               name: toolCall.request.name,
                               response: {
                                 error: cancelMsg,
@@ -413,10 +421,14 @@ export class GeminiChatManager {
                             name: toolCall.request.name,
                             responseParts: cancelResponseParts,
                             resultDisplay: toolResponseContent,
-                            error: toolCall.response.error,
-                            errorType: toolCall.response.errorType,
+                            error:
+                              toolCall.response.error || new Error(cancelMsg),
+                            errorType:
+                              toolCall.response.errorType ||
+                              ToolErrorType.USER_CANCELLED,
                             structuredData: toolCall.response.structuredData,
                             sessionId, // CRITICAL: Include sessionId for routing to correct session
+                            toolSuccess: false, // Cancelled case
                           },
                         });
                       } else {
@@ -517,6 +529,7 @@ export class GeminiChatManager {
                   error: toolResponse.response.error,
                   errorType: toolResponse.response.errorType,
                   sessionId, // CRITICAL: Include sessionId for routing to correct session
+                  toolSuccess: !toolResponse.response.error, // Success if no error
                 },
               };
             }
@@ -695,6 +708,40 @@ export class GeminiChatManager {
           // This ID matches the functionCall.id from the corresponding tool call
           if (part.functionResponse.id) {
             toolCallId = part.functionResponse.id;
+
+            // CRITICAL: Update the corresponding toolCall with status information
+            // Find the toolCall in previously created messages and update it
+            const hasError =
+              response && typeof response === 'object' && 'error' in response;
+
+            // Search backwards through messages to find the assistant message with this toolCall
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const msg = messages[i];
+              if (msg.role === 'assistant' && msg.toolCalls) {
+                const toolCallIndex = msg.toolCalls.findIndex(
+                  (tc) => tc.id === toolCallId,
+                );
+                if (toolCallIndex !== -1) {
+                  // Update the toolCall with status information
+                  msg.toolCalls[toolCallIndex] = {
+                    ...msg.toolCalls[toolCallIndex],
+                    status: hasError ? 'failed' : 'completed',
+                    success: !hasError,
+                    result: hasError
+                      ? `Tool execution failed: ${String(response['error'])}`
+                      : response &&
+                          typeof response === 'object' &&
+                          'output' in response
+                        ? String(response['output'])
+                        : 'Tool executed successfully',
+                  };
+                  console.log(
+                    `[GeminiChatManager] Updated toolCall ${toolCallId} status: ${hasError ? 'failed' : 'completed'}`,
+                  );
+                  break;
+                }
+              }
+            }
           } else {
             // Fallback: generate new ID if not found (shouldn't happen in normal flow)
             console.warn(

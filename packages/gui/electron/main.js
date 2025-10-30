@@ -834,7 +834,9 @@ ipcMain.handle(
             description: confirmationDetails.description,
           }),
           ...(confirmationDetails.type === 'mcp' && {
+            serverName: confirmationDetails.serverName,
             toolName: confirmationDetails.toolName,
+            toolDisplayName: confirmationDetails.toolDisplayName,
             parameters: confirmationDetails.parameters,
           }),
           ...(confirmationDetails.type === 'info' && {

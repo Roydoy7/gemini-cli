@@ -323,6 +323,15 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
 
   const getStatusIcon = () => {
     if (!toolResponse) {
+      // Check if tool was cancelled or is in a terminal failed state
+      if (toolCall.stage === 'cancelled') {
+        return (
+          <XCircle size={14} className="text-gray-600 dark:text-gray-400" />
+        );
+      }
+      if (toolCall.stage === 'failed') {
+        return <XCircle size={14} className="text-red-600 dark:text-red-400" />;
+      }
       return <Clock size={14} className="text-blue-600 dark:text-blue-400" />;
     }
     if (toolResponse.success === false) {
@@ -343,7 +352,8 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
         }
         return stageText;
       }
-      return 'Executing...';
+      // If no stage is set and no response, assume it was interrupted
+      return 'Interrupted';
     }
     if (toolResponse.success === false) return 'Failed';
     return 'Success';
@@ -378,7 +388,12 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
   const hasParams = keyParams.length > 0;
 
   // Determine if shimmer should be active (tool is executing)
-  const isExecuting = !toolResponse;
+  // Don't show shimmer if tool was cancelled, failed, or interrupted
+  const isExecuting =
+    !toolResponse &&
+    toolCall.stage !== 'cancelled' &&
+    toolCall.stage !== 'failed' &&
+    toolCall.stage !== 'completed';
 
   // Shimmer colors for tool execution (blue/cyan theme)
   const shimmerColors = [
@@ -404,11 +419,17 @@ const ToolExecutionCard: React.FC<ToolExecutionCardProps> = ({
           'border-0',
           !isExecuting && 'border',
           isNested ? 'border-border/30' : 'border-border/50',
-          toolResponse?.success === false
+          // Failed tools (with response or stage)
+          toolResponse?.success === false || toolCall.stage === 'failed'
             ? 'border-red-300 dark:border-red-800/50 bg-red-50/30 dark:bg-red-950/10'
-            : toolResponse
-              ? 'border-green-300 dark:border-green-800/50'
-              : 'border-blue-300 dark:border-blue-800/50',
+            : // Cancelled tools
+              toolCall.stage === 'cancelled'
+              ? 'border-gray-300 dark:border-gray-800/50 bg-gray-50/30 dark:bg-gray-950/10'
+              : // Completed/successful tools
+                toolResponse
+                ? 'border-green-300 dark:border-green-800/50'
+                : // Executing tools
+                  'border-blue-300 dark:border-blue-800/50',
         )}
       >
         {/* Tool execution header */}

@@ -254,9 +254,22 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(
       }
 
       // Update approval mode state when user clicks "Always allow" (after calling original handler)
-      if (outcome === ToolConfirmationOutcome.ProceedAlways) {
-        // Determine the new approval mode based on the tool type
-        const newMode = toolConfirmation?.type === 'edit' ? 'autoEdit' : 'yolo';
+      if (
+        outcome === ToolConfirmationOutcome.ProceedAlways ||
+        outcome === ToolConfirmationOutcome.ProceedAlwaysTool ||
+        outcome === ToolConfirmationOutcome.ProceedAlwaysServer
+      ) {
+        // Determine the new approval mode based on the tool type and outcome
+        let newMode: 'default' | 'autoEdit' | 'yolo';
+
+        if (outcome === ToolConfirmationOutcome.ProceedAlways) {
+          // Global always allow
+          newMode = toolConfirmation?.type === 'edit' ? 'autoEdit' : 'yolo';
+        } else {
+          // MCP tool/server specific allow - also set to yolo for now
+          // This will show the status bar indicating tools are auto-approved
+          newMode = 'yolo';
+        }
 
         try {
           // Update both frontend state and backend configuration

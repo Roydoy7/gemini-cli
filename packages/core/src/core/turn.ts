@@ -116,6 +116,7 @@ export interface ToolCallResponseInfo {
   outputFile?: string | undefined;
   contentLength?: number;
   sessionId?: string; // Session ID for routing tool response to correct session
+  toolSuccess?: boolean; // Indicates whether the tool call succeeded or failed
 }
 
 export interface ServerToolCallConfirmationDetails {

@@ -901,7 +901,7 @@ const ThinkingSection: React.FC<{
   if (thinkingSections.length === 0) return null;
 
   return (
-    <div className="mb-3 mt-2">
+    <div className="mb-3">
       <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-700/30 rounded-lg overflow-hidden">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
@@ -1063,7 +1063,7 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCall; timestamp?: Date }> = ({
 
   return (
     <div className="mb-3 last:mb-0">
-      <div className="bg-green-50 dark:bg-muted/20 rounded-lg border border-blue-300 dark:border-blue-700/30 overflow-hidden">
+      <div className="bg-green-50 dark:bg-muted/20 rounded-lg border border-blue-300 dark:border-blue-500/50 overflow-hidden">
         {/* Tool call header with tool name and operation */}
         <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-muted/30 border-b border-border/30">
           <div className="flex items-center gap-3">
@@ -1735,7 +1735,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
           {/* Display text content if present */}
           {contentWithoutSnapshot && (
-            <Card className="bg-card border border-blue-300 dark:border-blue-700/30">
+            <Card className="bg-card border border-blue-300 dark:border-blue-500/50">
               <CardContent className="px-4 py-0">
                 {stateSnapshot && (
                   <StateSnapshotDisplay stateSnapshot={stateSnapshot} />
@@ -1843,11 +1843,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                   'border-0',
                   !isStreaming && 'border',
                   !isStreaming && isUser
-                    ? 'border-blue-300 dark:border-blue-700/30'
+                    ? 'border-blue-300 dark:border-blue-500/50'
                     : !isStreaming && message.role === 'system'
-                      ? 'border-yellow-300 dark:border-yellow-700/30'
+                      ? 'border-yellow-300 dark:border-yellow-500/50'
                       : !isStreaming
-                        ? 'border-blue-300 dark:border-blue-700/30'
+                        ? 'border-blue-300 dark:border-blue-500/50'
                         : '',
                 )}
               >

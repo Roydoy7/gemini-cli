@@ -346,7 +346,8 @@ export const App: React.FC = () => {
       );
 
       // Clear streaming message to avoid duplication when retry starts fresh stream
-      const { setCurrentOperation, setStreamingMessage } = useChatStore.getState();
+      const { setCurrentOperation, setStreamingMessage } =
+        useChatStore.getState();
       setStreamingMessage('');
 
       // Show retry notification to user via currentOperation
