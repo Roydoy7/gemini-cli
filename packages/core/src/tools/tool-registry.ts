@@ -243,8 +243,10 @@ export class ToolRegistry {
 
     await this.discoverAndRegisterToolsFromCommand();
 
-    // discover tools using MCP servers, if configured
-    await this.mcpClientManager.discoverAllMcpTools(this.config);
+    // discover tools using MCP servers in background to avoid blocking initialization
+    // MCP tools will be registered dynamically as they become available
+    await this.mcpClientManager.discoverAllMcpTools(this.config, true);
+    console.log('[ToolRegistry] MCP tool discovery started in background');
   }
 
   /**

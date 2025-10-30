@@ -35,8 +35,12 @@ export class McpClientManager {
    * Initiates the tool discovery process for all configured MCP servers.
    * It connects to each server, discovers its available tools, and registers
    * them with the `ToolRegistry`.
+   *
+   * @param cliConfig - The configuration object
+   * @param background - If true, runs discovery in the background without blocking
+   * @returns Promise that resolves immediately if background=true, or when discovery completes if background=false
    */
-  async discoverAllMcpTools(cliConfig: Config): Promise<void> {
+  async discoverAllMcpTools(cliConfig: Config, background: boolean = false): Promise<void> {
     if (!cliConfig.isTrustedFolder()) {
       return;
     }
@@ -80,6 +84,18 @@ export class McpClientManager {
           );
         }
       });
+
+    // Run discovery in background if requested
+    if (background) {
+      Promise.all(discoveryPromises).then(() => {
+        this.discoveryState = MCPDiscoveryState.COMPLETED;
+        console.log('[McpClientManager] Background MCP tool discovery completed');
+      }).catch((error) => {
+        console.error('[McpClientManager] Background MCP tool discovery failed:', error);
+        this.discoveryState = MCPDiscoveryState.COMPLETED;
+      });
+      return; // Return immediately without waiting
+    }
 
     await Promise.all(discoveryPromises);
     this.discoveryState = MCPDiscoveryState.COMPLETED;
