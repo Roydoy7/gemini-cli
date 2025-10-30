@@ -45,9 +45,12 @@ export class ExcelTool {
   /**
    * Execute Python code and parse JSON result
    */
-  private async executePythonCode(pythonCode: string): Promise<ExcelToolResult> {
+  private async executePythonCode(pythonCode: string, description: string = 'Execute Excel query'): Promise<ExcelToolResult> {
     try {
-      const invocation = this.pythonTool.build({ code: pythonCode });
+      const invocation = this.pythonTool.build({
+        code: pythonCode,
+        description: description
+      });
       const result = await invocation.execute(new AbortController().signal);
 
       if (result.returnDisplay && typeof result.returnDisplay === 'string') {
@@ -128,7 +131,7 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, 'List all Excel application instances and their workbooks');
   }
 
   /**
@@ -173,7 +176,7 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, 'List all open Excel workbooks');
   }
 
   /**
@@ -235,7 +238,7 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, `List worksheets in workbook: ${workbookName}`);
   }
 
   /**
@@ -300,6 +303,6 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, `Get current selection in workbook: ${workbookName}`);
   }
 }
