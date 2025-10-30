@@ -34,7 +34,7 @@ import { EconomicNewsTool } from './economic-news-tool.js';
 import { KnowledgeBaseTool } from './knowledge-base-tool.js';
 // import { DocumentIndexerAgent } from '../agents/document-indexer.js';
 // import { DocumentRetrieverAgent } from '../agents/document-retriever.js';
-import { WorkflowAdvisorAgent } from '../agents/workflow-advisor.js';
+// import { WorkflowAdvisorAgent } from '../agents/workflow-advisor.js';
 import type { AgentDefinition } from '../agents/types.js';
 
 /**
@@ -128,7 +128,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
 type AnyAgentDefinition = AgentDefinition<any>;
 
 const ROLE_SUBAGENT_MAP: Record<string, AnyAgentDefinition[]> = {
-  office_assistant: [WorkflowAdvisorAgent],
+  // office_assistant: [WorkflowAdvisorAgent],
 };
 
 export class ToolsetManager {
