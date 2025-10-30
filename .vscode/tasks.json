@@ -91,6 +91,19 @@
       }
     },
     {
+      "type": "shell",
+      "command": "npm run build --workspace=@google/gemini-cli-core --workspace=@google/gemini-cli-gui",
+      "group": "build",
+      "problemMatcher": [],
+      "label": "Build GUI Packages Only",
+      "detail": "Build only core and gui packages (skip CLI and git-commit generation)",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
       "type": "npm",
       "script": "build:electron",
       "path": "packages/gui",
@@ -98,6 +111,19 @@
       "problemMatcher": [],
       "label": "npm: build:electron - packages/gui",
       "detail": "Build Electron app for production debugging"
+    },
+    {
+      "type": "shell",
+      "command": "npm run build --workspace=@google/gemini-cli-core && npm run build:electron --workspace=@google/gemini-cli-gui",
+      "group": "build",
+      "problemMatcher": [],
+      "label": "Build GUI for Production",
+      "detail": "Build core and GUI packages for production (skip CLI)",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ]
 }
