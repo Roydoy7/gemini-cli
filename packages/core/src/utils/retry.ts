@@ -195,6 +195,12 @@ export async function retryWithBackoff<T>(
         console.warn(
           `Attempt ${attempt} failed: ${classifiedError.message}. Retrying after ${classifiedError.retryDelayMs}ms...`,
         );
+
+        // Notify external listeners about retry attempt for quota errors
+        if (onRetryAttempt) {
+          onRetryAttempt(attempt, maxAttempts, classifiedError, classifiedError.retryDelayMs);
+        }
+
         await delay(classifiedError.retryDelayMs, signal);
         continue;
       }
