@@ -36,6 +36,7 @@ import { KnowledgeBaseTool } from './knowledge-base-tool.js';
 // import { DocumentRetrieverAgent } from '../agents/document-retriever.js';
 // import { WorkflowAdvisorAgent } from '../agents/workflow-advisor.js';
 import type { AgentDefinition } from '../agents/types.js';
+import { WaitTool } from './wait-tool.js';
 
 /**
  * Type for tool constructor/class (not instance).
@@ -61,6 +62,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     MarkItDownTool,
     KnowledgeBaseTool,
     GeminiSearchTool,
+    WaitTool,
   ],
   office_assistant: [
     LSTool,
@@ -78,6 +80,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     MemoryTool,
     PythonEmbeddedTool,
     GeminiSearchTool,
+    WaitTool,
   ],
   translator: [
     ReadFileTool,
