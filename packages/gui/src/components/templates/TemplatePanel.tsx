@@ -174,6 +174,12 @@ export const TemplatePanel = forwardRef<
               template.id &&
               (template.name || template.content || template.template),
           )
+          .sort((a, b) => {
+            // Sort by lastModified date, newest first
+            const dateA = new Date(a.lastModified).getTime();
+            const dateB = new Date(b.lastModified).getTime();
+            return dateB - dateA;
+          })
           .map((template) => (
             <div
               key={template.id}
