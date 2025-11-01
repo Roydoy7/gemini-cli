@@ -21,7 +21,7 @@ function cleanDistDeps() {
     const targetDir = path.join(__dirname, '..', 'node_modules', '@google');
 
     if (fs.existsSync(targetDir)) {
-      log('Removing temporary @google dependencies...');
+      log('Removing temporary @google dependencies (including core and extensions)...');
       fs.rmSync(targetDir, { recursive: true, force: true });
       log('✅ Temporary dependencies removed');
     } else {

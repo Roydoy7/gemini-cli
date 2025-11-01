@@ -89,6 +89,14 @@ async function prepareBuild() {
       throw err;
     }
 
+    // Install and prepare extensions
+    try {
+      await prepareExtensions();
+    } catch (err) {
+      error(`Failed to prepare extensions: ${err.message}`);
+      // Don't fail the build if extensions fail - they are optional
+    }
+
     log('✅ Build preparation completed successfully');
   } catch (err) {
     error(`Build preparation failed: ${err.message}`);
@@ -116,6 +124,112 @@ function copyDirectory(src, dest, excludeDirs = [], isRoot = true) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
+}
+
+/**
+ * Prepare extensions: detect, install dependencies, and copy to node_modules
+ */
+async function prepareExtensions() {
+  log('Checking for extensions...');
+
+  const extensionsDir = path.join(__dirname, '../../extensions');
+
+  // Check if extensions directory exists
+  if (!fs.existsSync(extensionsDir)) {
+    log('No extensions directory found, skipping extensions preparation');
+    return;
+  }
+
+  const targetExtensionsDir = path.join(__dirname, '..', 'node_modules', '@google', 'extensions');
+
+  // Get all extension directories
+  const extensionDirs = fs.readdirSync(extensionsDir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name);
+
+  if (extensionDirs.length === 0) {
+    log('No extensions found in extensions directory');
+    return;
+  }
+
+  log(`Found ${extensionDirs.length} extension(s): ${extensionDirs.join(', ')}`);
+
+  // Create target extensions directory
+  if (!fs.existsSync(targetExtensionsDir)) {
+    fs.mkdirSync(targetExtensionsDir, { recursive: true });
+  }
+
+  // Process each extension
+  for (const extensionName of extensionDirs) {
+    try {
+      await prepareExtension(extensionName, extensionsDir, targetExtensionsDir);
+    } catch (err) {
+      error(`Failed to prepare extension "${extensionName}": ${err.message}`);
+      // Continue with other extensions even if one fails
+    }
+  }
+
+  log('✅ Extensions preparation completed');
+}
+
+/**
+ * Prepare a single extension: run install script and copy files
+ */
+async function prepareExtension(extensionName, extensionsDir, targetExtensionsDir) {
+  const extensionPath = path.join(extensionsDir, extensionName);
+  const extensionJsonPath = path.join(extensionPath, 'gemini-extension.json');
+
+  // Check if it has a gemini-extension.json file
+  if (!fs.existsSync(extensionJsonPath)) {
+    log(`⚠️  Skipping "${extensionName}" - no gemini-extension.json found`);
+    return;
+  }
+
+  log(`📦 Preparing extension: ${extensionName}`);
+
+  // Run install-deps.js if it exists
+  const installScript = path.join(extensionPath, 'install-deps.js');
+  if (fs.existsSync(installScript)) {
+    log(`  Running install script for ${extensionName}...`);
+    try {
+      execSync('node install-deps.js', {
+        cwd: extensionPath,
+        stdio: 'inherit'
+      });
+      log(`  ✅ Dependencies installed for ${extensionName}`);
+    } catch (err) {
+      error(`  ⚠️  Install script failed for ${extensionName}, continuing anyway...`);
+    }
+  } else {
+    log(`  No install script found for ${extensionName}`);
+  }
+
+  // Copy extension to target directory
+  const targetExtensionPath = path.join(targetExtensionsDir, extensionName);
+  log(`  Copying ${extensionName} to node_modules...`);
+
+  // Remove existing if present
+  if (fs.existsSync(targetExtensionPath)) {
+    fs.rmSync(targetExtensionPath, { recursive: true, force: true });
+  }
+
+  // Copy extension directory (exclude certain directories)
+  copyDirectory(extensionPath, targetExtensionPath, [
+    'node_modules',
+    '.git',
+    '.github',
+    'test',
+    'tests',
+    '__pycache__',
+    '.venv',
+    'venv',
+    'dist',
+    'build',
+    '.pytest_cache',
+    '.mypy_cache'
+  ]);
+
+  log(`  ✅ Extension ${extensionName} copied successfully`);
 }
 
 // Run if called directly
