@@ -109,9 +109,12 @@ export const TemplatePanel = forwardRef<
 
       await geminiChatService.addCustomTemplate(newTemplate);
     } else if (editorMode === 'edit' && templateToEdit) {
+      // Update both template and content fields to ensure consistency
+      const contentToSave = templateData.template?.trim() || templateData.content?.trim() || '';
       await geminiChatService.updateCustomTemplate(templateToEdit.id, {
         name: templateData.name?.trim() || '',
-        template: templateData.template?.trim() || '',
+        template: contentToSave,
+        content: contentToSave,
         description: templateData.description?.trim() || undefined,
       });
     }

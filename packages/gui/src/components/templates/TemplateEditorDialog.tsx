@@ -61,11 +61,13 @@ export const TemplateEditorDialog: React.FC<TemplateEditorDialogProps> = ({
 
     setSaving(true);
     try {
+      // Save content to both template and content fields for consistency
+      const contentToSave = content.trim();
       const templateData: Partial<PresetTemplate> = {
         ...(template && { id: template.id }),
         name: name.trim(),
-        template: content.trim(),
-        content: content.trim(),
+        template: contentToSave,
+        content: contentToSave,
         description: description.trim() || undefined,
       };
 
