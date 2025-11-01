@@ -34,8 +34,9 @@ import { EconomicNewsTool } from './economic-news-tool.js';
 import { KnowledgeBaseTool } from './knowledge-base-tool.js';
 // import { DocumentIndexerAgent } from '../agents/document-indexer.js';
 // import { DocumentRetrieverAgent } from '../agents/document-retriever.js';
-import { WorkflowAdvisorAgent } from '../agents/workflow-advisor.js';
+// import { WorkflowAdvisorAgent } from '../agents/workflow-advisor.js';
 import type { AgentDefinition } from '../agents/types.js';
+import { WaitTool } from './wait-tool.js';
 
 /**
  * Type for tool constructor/class (not instance).
@@ -61,6 +62,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     MarkItDownTool,
     KnowledgeBaseTool,
     GeminiSearchTool,
+    WaitTool,
   ],
   office_assistant: [
     LSTool,
@@ -78,6 +80,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     MemoryTool,
     PythonEmbeddedTool,
     GeminiSearchTool,
+    WaitTool,
   ],
   translator: [
     ReadFileTool,
@@ -128,7 +131,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
 type AnyAgentDefinition = AgentDefinition<any>;
 
 const ROLE_SUBAGENT_MAP: Record<string, AnyAgentDefinition[]> = {
-  office_assistant: [WorkflowAdvisorAgent],
+  // office_assistant: [WorkflowAdvisorAgent],
 };
 
 export class ToolsetManager {

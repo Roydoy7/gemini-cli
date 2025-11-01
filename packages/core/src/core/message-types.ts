@@ -29,6 +29,15 @@ export interface MessageToolCall {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
+  result?: string;
+  status?: 'executing' | 'completed' | 'failed' | 'cancelled';
+  success?: boolean;
+  description?: string; // User-friendly description of what this tool call does
+  // Progress tracking fields
+  stage?: ToolExecutionStage;
+  progress?: number; // 0-100 percentage
+  statusMessage?: string; // Human-readable status message
+  progressDetails?: Record<string, unknown>; // Additional progress context
 }
 
 /**

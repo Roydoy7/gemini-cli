@@ -45,25 +45,41 @@ export class ExcelTool {
   /**
    * Execute Python code and parse JSON result
    */
-  private async executePythonCode(pythonCode: string): Promise<ExcelToolResult> {
+  private async executePythonCode(pythonCode: string, description: string = 'Execute Excel query'): Promise<ExcelToolResult> {
     try {
-      const invocation = this.pythonTool.build({ code: pythonCode });
+      const invocation = this.pythonTool.build({
+        code: pythonCode,
+        description: description
+      });
       const result = await invocation.execute(new AbortController().signal);
 
       if (result.returnDisplay && typeof result.returnDisplay === 'string') {
-        // Extract JSON from the last line that looks like JSON
+        // Extract JSON from output - it could be anywhere in the output
+        // Look for lines that start with { and end with }
         const lines = result.returnDisplay.trim().split('\n');
-        const lastLine = lines[lines.length - 1];
 
-        if (lastLine.startsWith('{') && lastLine.endsWith('}')) {
-          const parsed = JSON.parse(lastLine) as ExcelToolResult;
-          return parsed;
-        } else {
-          return {
-            success: false,
-            error: 'No valid JSON output from Python tool'
-          };
+        // Try to find and parse JSON from any line
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i].trim();
+          if (line.startsWith('{') && line.endsWith('}')) {
+            try {
+              const parsed = JSON.parse(line) as ExcelToolResult;
+              // Verify it's a valid ExcelToolResult by checking for success field
+              if ('success' in parsed) {
+                return parsed;
+              }
+            } catch (parseError) {
+              // If JSON parsing fails, continue to next line
+              continue;
+            }
+          }
         }
+
+        // If no valid JSON found, return error
+        return {
+          success: false,
+          error: 'No valid JSON output from Python tool'
+        };
       } else {
         return {
           success: false,
@@ -128,7 +144,7 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, 'List all Excel application instances and their workbooks');
   }
 
   /**
@@ -173,7 +189,7 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, 'List all open Excel workbooks');
   }
 
   /**
@@ -235,7 +251,7 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, `List worksheets in workbook: ${workbookName}`);
   }
 
   /**
@@ -300,6 +316,6 @@ except Exception as e:
     print(json.dumps(result), flush=True)
 `;
 
-    return this.executePythonCode(pythonCode);
+    return this.executePythonCode(pythonCode, `Get current selection in workbook: ${workbookName}`);
   }
 }

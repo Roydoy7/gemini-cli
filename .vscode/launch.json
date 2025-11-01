@@ -116,7 +116,7 @@
         "!**/node_modules/**"
       ],
       "outputCapture": "std",
-      "preLaunchTask": "Build All Packages"
+      "preLaunchTask": "Build GUI Packages Only"
     },
     {
       "name": "Debug Electron GUI (Production Build)",
@@ -132,7 +132,7 @@
         "<node_internals>/**",
         "**/node_modules/**"
       ],
-      "preLaunchTask": "npm: build:electron - packages/gui"
+      "preLaunchTask": "Build GUI for Production"
     }
   ],
   "inputs": [

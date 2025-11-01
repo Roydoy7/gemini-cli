@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { OAuth2Client } from 'google-auth-library';
+import type { AuthClient } from 'google-auth-library';
 import { clearCachedCredentialFile } from '../code_assist/oauth2.js';
 import type { Config } from '../config/config.js';
 import { Storage } from '../config/storage.js';
@@ -49,7 +49,7 @@ interface CachedCredentials extends AuthCredentials {
  */
 export class AuthManager {
   private static instance: AuthManager;
-  private oauthClients: Map<string, OAuth2Client> = new Map();
+  private oauthClients: Map<string, AuthClient> = new Map();
   private authStatuses: Map<string, AuthStatus> = new Map();
   private authPreferences: Map<string, 'oauth' | 'api_key'> = new Map();
   private credentialsCache: Map<string, CachedCredentials> = new Map();
@@ -636,7 +636,7 @@ export class AuthManager {
   }
 
   // Private helper methods for Gemini OAuth
-  private async getGeminiOAuthClient(): Promise<OAuth2Client> {
+  private async getGeminiOAuthClient(): Promise<AuthClient> {
     if (!this.config) {
       // Create minimal config for OAuth
       const { Config } = await import('../config/config.js');

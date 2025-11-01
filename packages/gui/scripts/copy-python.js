@@ -121,6 +121,29 @@ async function copyPython(context) {
     } else {
       log('⚠️ pdf-parse test data not found, skipping...');
     }
+
+    // Copy extensions if they exist
+    const extensionsSourceDir = path.join(resourcesDir, 'node_modules', '@google', 'extensions');
+    if (fs.existsSync(extensionsSourceDir)) {
+      log('Copying extensions to final package...');
+
+      const extensionDirs = fs.readdirSync(extensionsSourceDir, { withFileTypes: true })
+        .filter(entry => entry.isDirectory())
+        .map(entry => entry.name);
+
+      if (extensionDirs.length > 0) {
+        log(`Found ${extensionDirs.length} extension(s) to copy: ${extensionDirs.join(', ')}`);
+
+        for (const extensionName of extensionDirs) {
+          const extensionSize = getFolderSize(path.join(extensionsSourceDir, extensionName));
+          log(`  ✅ Extension ${extensionName} (${(extensionSize / 1024 / 1024).toFixed(2)} MB)`);
+        }
+      } else {
+        log('No extensions found in node_modules/@google/extensions');
+      }
+    } else {
+      log('No extensions directory found, skipping...');
+    }
   } catch (err) {
     error(`Failed to copy resources: ${err.message}`);
     throw err;

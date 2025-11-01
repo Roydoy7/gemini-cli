@@ -309,13 +309,13 @@ export const Sidebar: React.FC = () => {
       // Convert backend messages to frontend format and update store
       const chatMessages = messages.map((msg, index) => ({
         id: `${sessionId}-${index}`,
-        role: msg.role as 'user' | 'assistant' | 'system' | 'tool', // Cast to allowed types
+        role: msg.role as 'user' | 'assistant' | 'system' | 'tool',
         content: msg.content,
-        timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(), // Convert to Date object
+        timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
         toolCalls: msg.toolCalls,
         tool_call_id: msg.tool_call_id,
         name: msg.name,
-        images: extractImagesFromParts(msg.parts), // Extract images from parts
+        images: extractImagesFromParts(msg.parts),
       }));
 
       // Log thinking content summary

@@ -109,9 +109,12 @@ export const TemplatePanel = forwardRef<
 
       await geminiChatService.addCustomTemplate(newTemplate);
     } else if (editorMode === 'edit' && templateToEdit) {
+      // Update both template and content fields to ensure consistency
+      const contentToSave = templateData.template?.trim() || templateData.content?.trim() || '';
       await geminiChatService.updateCustomTemplate(templateToEdit.id, {
         name: templateData.name?.trim() || '',
-        template: templateData.template?.trim() || '',
+        template: contentToSave,
+        content: contentToSave,
         description: templateData.description?.trim() || undefined,
       });
     }
@@ -174,6 +177,12 @@ export const TemplatePanel = forwardRef<
               template.id &&
               (template.name || template.content || template.template),
           )
+          .sort((a, b) => {
+            // Sort by lastModified date, newest first
+            const dateA = new Date(a.lastModified).getTime();
+            const dateB = new Date(b.lastModified).getTime();
+            return dateB - dateA;
+          })
           .map((template) => (
             <div
               key={template.id}

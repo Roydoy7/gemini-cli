@@ -51,12 +51,15 @@ packages/gui/release/
 packages/gui/node_modules/@google/
 packages/gui/build-test.log
 packages/gui/final-build.log
+packages/cli/download-ripgrep*/
 
 # GHA credentials
 gha-creds-*.json
 
 # Log files
 patch_output.log
+
+.genkit
 
 # .NET build outputs
 packages/core/dotnet-processor/bin/

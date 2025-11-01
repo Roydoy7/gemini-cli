@@ -1388,6 +1388,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   updatedAt: new Date(),
                 });
               }
+              // Note: We don't save to backend here because GeminiClient automatically
+              // saves the complete history when streaming completes. Backend already
+              // has the toolCall in conversationHistory from the Gemini API response.
             }
           } else if (event.type === 'tool_call_response') {
             console.log('[MessageInput] Received tool_call_response event');
@@ -1490,8 +1493,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
               // Update the specific tool call's status and result
               if (message.toolCalls) {
+                const toolCall = message.toolCalls[matchedToolCallIndex];
                 message.toolCalls[matchedToolCallIndex] = {
-                  ...message.toolCalls[matchedToolCallIndex],
+                  ...toolCall,
                   status: event.toolSuccess ? 'completed' : 'failed',
                   success: event.toolSuccess,
                   result: event.content || `Tool ${event.toolName} completed`,
@@ -1503,15 +1507,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 });
               }
 
-              // Update the session
+              // Update the session in frontend store
               updateSession(targetSessionId, {
                 messages: updatedMessages,
                 updatedAt: new Date(),
               });
-
-              console.log(
-                '[MessageInput] Session updated with new tool call status',
-              );
             } else {
               console.warn(
                 '[MessageInput] Could not find matching tool call for response:',

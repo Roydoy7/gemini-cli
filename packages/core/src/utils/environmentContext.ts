@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Part } from '@google/genai';
+import type { Part, Content } from '@google/genai';
 import type { Config } from '../config/config.js';
 import os from 'node:os';
 // import { getFolderStructure } from './getFolderStructure.js';
@@ -80,53 +80,54 @@ export async function getEnvironmentContext(config: Config): Promise<Part[]> {
     osVersion = `Linux ${osRelease}`;
   }
 
+  // Generate encoding warnings based on system language
+  let encodingWarning = '';
+  if (systemLanguage === 'ja') {
+    encodingWarning = '\nWARNING: Japanese OS detected - be careful of Shift_JIS encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
+  } else if (systemLanguage === 'zh') {
+    encodingWarning = '\nWARNING: Chinese OS detected - be careful of GBK/GB2312 encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
+  } else if (systemLanguage === 'ko') {
+    encodingWarning = '\nWARNING: Korean OS detected - be careful of EUC-KR encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
+  } else if (platform === 'win32') {
+    encodingWarning = '\nNOTE: Windows OS detected - default encoding may vary by locale. Use UTF-8 encoding explicitly when reading/writing files.';
+  }
+
   const context = `
 We are setting up the context for our chat.
-Today's date is ${today} (formatted according to the user's locale).
-System locale: ${systemLocale} (language: ${systemLanguage}, timezone: ${timeZone})
-Operating system: ${osVersion} (${osArch})
+Today's date is ${today}.
+System locale: ${systemLocale} (os language: ${systemLanguage}, timezone: ${timeZone})
+Operating system: ${osVersion} (${osArch})${encodingWarning}
+IMPORTANT: DO NOT let the os language or locale affect your response language - always respond in the same language as the user's message.
 ${directoryContext}
 IMPORTANT: REFUSE to operate outside of <workspace> tags above, if the user asks you to do so, warn them that you can only operate within <workspace>.
 Operate under subfolders of <workspace> is allowed.
         `.trim();
 
   const initialParts: Part[] = [{ text: context }];
-  const toolRegistry = config.getToolRegistry();
-
-  // Add full file context if the flag is set
-  if (config.getFullContext()) {
-    try {
-      const readManyFilesTool = toolRegistry.getTool('read_many_files');
-      if (readManyFilesTool) {
-        const invocation = readManyFilesTool.build({
-          paths: ['**/*'], // Read everything recursively
-          useDefaultExcludes: true, // Use default excludes
-        });
-
-        // Read all files in the target directory
-        const result = await invocation.execute(AbortSignal.timeout(30000));
-        if (result.llmContent) {
-          initialParts.push({
-            text: `\n--- Full File Context ---\n${result.llmContent}`,
-          });
-        } else {
-          console.warn(
-            'Full context requested, but read_many_files returned no content.',
-          );
-        }
-      } else {
-        console.warn(
-          'Full context requested, but read_many_files tool not found.',
-        );
-      }
-    } catch (error) {
-      // Not using reportError here as it's a startup/config phase, not a chat/generation phase error.
-      console.error('Error reading full file context:', error);
-      initialParts.push({
-        text: '\n--- Error reading full file context ---',
-      });
-    }
-  }
 
   return initialParts;
+}
+
+export async function getInitialChatHistory(
+  config: Config,
+  extraHistory?: Content[],
+): Promise<Content[]> {
+  const envParts = await getEnvironmentContext(config);
+  const envContextString = envParts.map((part) => part.text || '').join('\n\n');
+
+  const allSetupText = `
+${envContextString}
+
+Reminder: Do not return an empty response when a tool call is required.
+
+My setup is complete. I will provide my first command in the next turn.
+    `.trim();
+
+  return [
+    {
+      role: 'user',
+      parts: [{ text: allSetupText }],
+    },
+    ...(extraHistory ?? []),
+  ];
 }

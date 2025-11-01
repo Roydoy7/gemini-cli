@@ -42,7 +42,11 @@ export const AppLayout: React.FC = () => {
         <ChatArea ref={messageInputRef} onTemplateRefresh={handleTemplateRefresh} />
       </div>
       {isRightSidebarOpen && (
-        <RightSidebar ref={rightSidebarRef} onTemplateUse={handleTemplateUse} />
+        <RightSidebar
+          ref={rightSidebarRef}
+          onTemplateUse={handleTemplateUse}
+          onClose={() => setIsRightSidebarOpen(false)}
+        />
       )}
     </div>
   );

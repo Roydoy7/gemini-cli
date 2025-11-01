@@ -26,7 +26,8 @@ if (!process.cwd().includes('packages')) {
   process.exit(1);
 }
 
-// build typescript files
+// clean and build typescript files
+execSync('tsc --build --clean', { stdio: 'inherit' });
 execSync('tsc --build', { stdio: 'inherit' });
 
 // copy .{md,json} files
