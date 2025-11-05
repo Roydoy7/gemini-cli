@@ -43,7 +43,7 @@ import { StatusIndicator } from './StatusIndicator';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import ToolConfirmationMessage from './ToolConfirmationMessage';
 import { SmartVisualization } from '@/components/charts/SmartVisualization';
-import { geminiChatService } from '@/services/geminiChatService';
+import { unifiedChatService } from '@/services/unifiedChatService';
 import { useChatStore } from '@/stores/chatStore';
 import type {
   ChatMessage,
@@ -533,7 +533,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
           content: message.content,
         };
 
-        await geminiChatService.addCustomTemplate(template);
+        await unifiedChatService.addCustomTemplate(template);
 
         // Refresh the template list in the sidebar
         if (onTemplateSaved) {

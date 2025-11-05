@@ -33,7 +33,7 @@ import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
-import { geminiChatService } from '@/services/geminiChatService';
+import { unifiedChatService } from '@/services/unifiedChatService';
 import { useWorkspaceDirectories, useAuthStatus } from '@/hooks';
 import { cn } from '@/utils/cn';
 import type { ChatMessage, UniversalMessage, RoleDefinition } from '@/types';
@@ -232,7 +232,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       try {
         console.log('Fetching Excel workbooks...');
         setIsLoadingWorkbooks(true);
-        const result = await geminiChatService.getExcelWorkbooks();
+        const result = await unifiedChatService.getExcelWorkbooks();
         console.log('Excel workbooks result:', result);
         if (result.success) {
           setWorkbooks(result.workbooks);
@@ -331,7 +331,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         try {
           setLoadingTemplates(true);
           const backendTemplates =
-            await geminiChatService.getAllTemplatesAsync();
+            await unifiedChatService.getAllTemplatesAsync();
           const customTemplates = backendTemplates.filter(
             (template) => !template.isBuiltin,
           );
@@ -391,13 +391,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       if (!template.id) return;
 
       try {
-        await geminiChatService.updateCustomTemplate(template.id, {
+        await unifiedChatService.updateCustomTemplate(template.id, {
           name: template.name || '',
           content: template.template || '',
         });
 
         // Refresh templates list
-        const backendTemplates = await geminiChatService.getAllTemplatesAsync();
+        const backendTemplates = await unifiedChatService.getAllTemplatesAsync();
         const customTemplates = backendTemplates.filter((t) => !t.isBuiltin);
         setTemplates(customTemplates);
 
@@ -424,7 +424,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       if (!newTemplateName.trim() || !message.trim()) return;
 
       try {
-        await geminiChatService.addCustomTemplate({
+        await unifiedChatService.addCustomTemplate({
           id: `template-${Date.now()}`,
           name: newTemplateName.trim(),
           description: '',
@@ -442,7 +442,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         setNewTemplateName('');
 
         // Refresh templates list
-        const backendTemplates = await geminiChatService.getAllTemplatesAsync();
+        const backendTemplates = await unifiedChatService.getAllTemplatesAsync();
         const customTemplates = backendTemplates.filter((t) => !t.isBuiltin);
         setTemplates(customTemplates);
       } catch (error) {
@@ -464,10 +464,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       if (!deleteTemplateConfirm) return;
 
       try {
-        await geminiChatService.deleteCustomTemplate(deleteTemplateConfirm.id);
+        await unifiedChatService.deleteCustomTemplate(deleteTemplateConfirm.id);
         setDeleteTemplateConfirm(null);
         // Refresh templates list
-        const backendTemplates = await geminiChatService.getAllTemplatesAsync();
+        const backendTemplates = await unifiedChatService.getAllTemplatesAsync();
         const customTemplates = backendTemplates.filter((t) => !t.isBuiltin);
         setTemplates(customTemplates);
       } catch (error) {
@@ -488,7 +488,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         // Load worksheets if not already loaded
         setLoadingWorksheets((prev) => ({ ...prev, [workbookKey]: true }));
         try {
-          const result = await geminiChatService.getExcelWorksheets(
+          const result = await unifiedChatService.getExcelWorksheets(
             workbook.name,
           );
           if (result.success) {
@@ -532,7 +532,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       setLoadingSelection((prev) => ({ ...prev, [workbookName]: true }));
 
       try {
-        const result = await geminiChatService.getExcelSelection(workbookName);
+        const result = await unifiedChatService.getExcelSelection(workbookName);
         if (result.success && result.selection) {
           // Selection already contains full path, sheet name, and address
           const selectionText = result.selection;
@@ -791,7 +791,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               updateSession(sessionId, { roleId: currentRoleId });
 
               // Update backend session metadata
-              await geminiChatService.setSessionRole(sessionId, currentRoleId);
+              await unifiedChatService.setSessionRole(sessionId, currentRoleId);
               console.log(
                 `Updated session ${sessionId} role to ${currentRoleId}`,
               );
@@ -1019,7 +1019,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           updateSession(activeSessionId, { roleId: currentRole });
 
           // Update backend session metadata
-          await geminiChatService.setSessionRole(activeSessionId, currentRole);
+          await unifiedChatService.setSessionRole(activeSessionId, currentRole);
           console.log(
             `Set role ${currentRole} for new session ${activeSessionId}`,
           );
@@ -1052,7 +1052,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           } else if (action === 'switch') {
             // Switch to session's role
             try {
-              await geminiChatService.switchRole(compatibility.sessionRoleId);
+              await unifiedChatService.switchRole(compatibility.sessionRoleId);
               // Update frontend state to sync with backend
               const { setCurrentRole } = useAppStore.getState();
               setCurrentRole(compatibility.sessionRoleId);
@@ -1125,12 +1125,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
         // Ensure backend is on the same session before sending message
         const currentBackendSessionId =
-          await geminiChatService.getCurrentSessionId();
+          await unifiedChatService.getCurrentSessionId();
         if (currentBackendSessionId !== activeSessionId) {
           console.warn(
             `Backend session (${currentBackendSessionId}) != frontend session (${activeSessionId}). Syncing...`,
           );
-          await geminiChatService.switchSession(activeSessionId);
+          await unifiedChatService.switchSession(activeSessionId);
         }
 
         // Send ONLY the new user message (GeminiChatManager manages history internally)
@@ -1159,7 +1159,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           parts: parts.length > 0 ? parts : undefined,
           images: imageAttachments.length > 0 ? imageAttachments : undefined,
         };
-        const { stream, cancel } = await geminiChatService.sendMessage([
+        const { stream, cancel } = await unifiedChatService.sendMessage([
           newUserMessage,
         ]);
 
@@ -1183,12 +1183,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               details: event.thoughtSummary?.subject || 'Processing...',
             });
             // Append thought to streaming message with special formatting
-            const thoughtText =
-              event.thoughtSummary?.subject && event.thoughtSummary?.description
+            const thoughtText = event.thoughtSummary?.description
+              ? event.thoughtSummary.subject
                 ? `<think>\n**${event.thoughtSummary.subject}**: ${event.thoughtSummary.description}\n</think>\n\n`
-                : event.thoughtSummary?.subject
-                  ? `<think>\n${event.thoughtSummary.subject}\n</think>\n\n`
-                  : '';
+                : `<think>\n${event.thoughtSummary.description}\n</think>\n\n`
+              : event.thoughtSummary?.subject
+                ? `<think>\n${event.thoughtSummary.subject}\n</think>\n\n`
+                : '';
             if (thoughtText) {
               assistantContent += thoughtText;
               setStreamingMessage(assistantContent);
@@ -1747,7 +1748,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             setTimeout(async () => {
               try {
                 // Only refresh session info for title updates
-                const sessionsInfo = await geminiChatService.getSessionsInfo();
+                const sessionsInfo = await unifiedChatService.getSessionsInfo();
                 const updatedSessionInfo = sessionsInfo.find(
                   (s) => s.id === activeSessionId,
                 );

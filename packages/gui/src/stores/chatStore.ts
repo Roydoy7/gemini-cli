@@ -193,12 +193,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: { getCurrentSessionId: () => Promise<string | null> };
+            unifiedChat?: { getCurrentSessionId: () => Promise<string | null> };
           };
         }
       ).electronAPI;
       const backendSessionId =
-        await electronAPI?.geminiChat?.getCurrentSessionId();
+        await electronAPI?.unifiedChat?.getCurrentSessionId();
 
       console.log(
         '[ChatStore] loadSessionState called with frontend sessionId:',

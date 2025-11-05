@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { geminiChatService } from '@/services/geminiChatService';
+import { unifiedChatService } from '@/services/unifiedChatService';
 
 export interface WorkspaceDirectoriesState {
   directories: readonly string[];
@@ -32,7 +32,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState &
     try {
       setLoading(true);
       setError(null);
-      const dirs = await geminiChatService.getWorkspaceDirectories();
+      const dirs = await unifiedChatService.getWorkspaceDirectories();
       setDirectories(dirs);
     } catch (err) {
       const errorMessage =
@@ -61,7 +61,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState &
       );
 
       // Then sync to backend
-      await geminiChatService.addWorkspaceDirectory(directory, basePath);
+      await unifiedChatService.addWorkspaceDirectory(directory, basePath);
       console.log('Added directory to localStorage and backend:', directory);
     } catch (err) {
       // Revert UI state on error
@@ -94,7 +94,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState &
       );
 
       // Then sync to backend
-      await geminiChatService.setWorkspaceDirectories(newDirectories);
+      await unifiedChatService.setWorkspaceDirectories(newDirectories);
       // console.log('Set workspace directories in localStorage and backend:', newDirectories);
     } catch (err) {
       const errorMessage =
@@ -141,7 +141,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState &
             // Wait for service to be ready, then sync
             setTimeout(async () => {
               try {
-                await geminiChatService.setWorkspaceDirectories(parsed);
+                await unifiedChatService.setWorkspaceDirectories(parsed);
                 // console.log('Synced localStorage directories to backend:', parsed);
               } catch (error) {
                 console.warn(
@@ -152,7 +152,7 @@ export const useWorkspaceDirectories = (): WorkspaceDirectoriesState &
                 // Retry after a longer delay
                 setTimeout(async () => {
                   try {
-                    await geminiChatService.setWorkspaceDirectories(parsed);
+                    await unifiedChatService.setWorkspaceDirectories(parsed);
                     console.log(
                       'Successfully synced localStorage directories to backend on retry',
                     );

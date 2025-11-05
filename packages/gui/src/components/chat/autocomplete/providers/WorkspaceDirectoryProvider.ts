@@ -23,7 +23,7 @@ import {
   Calculator,
 } from 'lucide-react';
 import type { AutocompleteProvider, AutocompleteItem } from '../types';
-import { geminiChatService } from '@/services/geminiChatService';
+import { unifiedChatService } from '@/services/unifiedChatService';
 
 export class WorkspaceDirectoryProvider implements AutocompleteProvider {
   trigger = '@';
@@ -81,9 +81,9 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
     this.isLoading = true;
 
     try {
-      // Get workspace directories from geminiChatService
+      // Get workspace directories from unifiedChatService
       const workspaceDirectories =
-        await geminiChatService.getWorkspaceDirectories();
+        await unifiedChatService.getWorkspaceDirectories();
 
       this.cachedItems = [];
 
@@ -181,7 +181,7 @@ export class WorkspaceDirectoryProvider implements AutocompleteProvider {
 
     try {
       // Use the backend API to get directory contents
-      const contents = await geminiChatService.getDirectoryContents(directory);
+      const contents = await unifiedChatService.getDirectoryContents(directory);
 
       for (const item of contents) {
         const displayName = item.name;

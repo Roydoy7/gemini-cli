@@ -7,7 +7,7 @@
 import React, { useState, useImperativeHandle, forwardRef } from 'react';
 import { BookTemplate, Plus, Edit3, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { geminiChatService } from '@/services/geminiChatService';
+import { unifiedChatService } from '@/services/unifiedChatService';
 import { useAppStore } from '@/stores/appStore';
 import { TemplateEditorDialog } from './TemplateEditorDialog';
 import type { PresetTemplate } from '@/types';
@@ -46,7 +46,7 @@ export const TemplatePanel = forwardRef<
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      const backendTemplates = await geminiChatService.getAllTemplatesAsync();
+      const backendTemplates = await unifiedChatService.getAllTemplatesAsync();
       const customTemplates = backendTemplates.filter(
         (template) => !template.isBuiltin,
       );
@@ -107,11 +107,11 @@ export const TemplatePanel = forwardRef<
         usageCount: 0,
       };
 
-      await geminiChatService.addCustomTemplate(newTemplate);
+      await unifiedChatService.addCustomTemplate(newTemplate);
     } else if (editorMode === 'edit' && templateToEdit) {
       // Update both template and content fields to ensure consistency
       const contentToSave = templateData.template?.trim() || templateData.content?.trim() || '';
-      await geminiChatService.updateCustomTemplate(templateToEdit.id, {
+      await unifiedChatService.updateCustomTemplate(templateToEdit.id, {
         name: templateData.name?.trim() || '',
         template: contentToSave,
         content: contentToSave,
@@ -124,7 +124,7 @@ export const TemplatePanel = forwardRef<
 
   const handleDeleteTemplate = async (templateId: string) => {
     try {
-      await geminiChatService.deleteCustomTemplate(templateId);
+      await unifiedChatService.deleteCustomTemplate(templateId);
       await loadTemplates();
 
       if (selectedTemplate === templateId) {

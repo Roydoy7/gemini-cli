@@ -22,7 +22,7 @@ import { AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import type { ChatMessage } from '@/types';
 import { ToolConfirmationOutcome } from '@/types';
-import { geminiChatService } from '@/services/geminiChatService';
+import { unifiedChatService } from '@/services/unifiedChatService';
 
 interface ChatAreaHandle {
   setMessage: (message: string) => void;
@@ -229,7 +229,7 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(
 
       try {
         // Update backend first
-        await geminiChatService.updateSessionMessages(
+        await unifiedChatService.updateSessionMessages(
           activeSessionId,
           updatedMessages,
         );
@@ -273,7 +273,7 @@ export const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(
 
         try {
           // Update both frontend state and backend configuration
-          await geminiChatService.setApprovalMode(newMode);
+          await unifiedChatService.setApprovalMode(newMode);
           setApprovalMode(newMode);
           console.log(`Approval mode updated to: ${newMode}`);
         } catch (error) {

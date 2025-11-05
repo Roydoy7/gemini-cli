@@ -27,7 +27,7 @@ export function useAuthStatus(providerType: string): AuthStatus {
         const electronAPI = (
           globalThis as {
             electronAPI?: {
-              geminiChat?: {
+              unifiedChat?: {
                 getAuthPreference: (
                   providerType: string,
                 ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
@@ -42,19 +42,19 @@ export function useAuthStatus(providerType: string): AuthStatus {
           }
         ).electronAPI;
 
-        if (!electronAPI?.geminiChat) {
+        if (!electronAPI?.unifiedChat) {
           return;
         }
 
         // Get auth preference from backend
         const prefResult =
-          await electronAPI.geminiChat.getAuthPreference(providerType);
+          await electronAPI.unifiedChat.getAuthPreference(providerType);
         const authPref = prefResult?.preference;
 
         if (authPref === 'api_key') {
           // Check if API key exists
           const apiKeyResult =
-            await electronAPI.geminiChat.checkEnvApiKey(providerType);
+            await electronAPI.unifiedChat.checkEnvApiKey(providerType);
           setAuthStatus({
             type: 'api_key',
             authenticated: apiKeyResult?.detected || false,
@@ -62,7 +62,7 @@ export function useAuthStatus(providerType: string): AuthStatus {
         } else if (authPref === 'oauth') {
           // Check if OAuth is authenticated
           const oauthStatus =
-            await electronAPI.geminiChat.getOAuthStatus(providerType);
+            await electronAPI.unifiedChat.getOAuthStatus(providerType);
           setAuthStatus({
             type: 'oauth',
             authenticated: oauthStatus?.authenticated || false,
@@ -70,9 +70,9 @@ export function useAuthStatus(providerType: string): AuthStatus {
         } else {
           // No preference - check what's available
           const apiKeyResult =
-            await electronAPI.geminiChat.checkEnvApiKey(providerType);
+            await electronAPI.unifiedChat.checkEnvApiKey(providerType);
           const oauthStatus =
-            await electronAPI.geminiChat.getOAuthStatus(providerType);
+            await electronAPI.unifiedChat.getOAuthStatus(providerType);
 
           if (apiKeyResult?.detected) {
             setAuthStatus({
