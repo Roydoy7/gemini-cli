@@ -14,6 +14,8 @@ import {
 import { getErrorMessage } from '../utils/errors.js';
 import type { EventEmitter } from 'node:events';
 import { coreEvents } from '../utils/events.js';
+import { McpServerEnablementManager } from '../config/mcpServerEnablement.js';
+import { generateMcpServerKey } from '../config/mcpServerEnablement.js';
 
 /**
  * Manages the lifecycle of multiple MCP clients, including local child processes.
@@ -25,6 +27,7 @@ export class McpClientManager {
   private readonly toolRegistry: ToolRegistry;
   private discoveryState: MCPDiscoveryState = MCPDiscoveryState.NOT_STARTED;
   private readonly eventEmitter?: EventEmitter;
+  private mcpEnablementManager?: McpServerEnablementManager;
 
   constructor(toolRegistry: ToolRegistry, eventEmitter?: EventEmitter) {
     this.toolRegistry = toolRegistry;
@@ -51,11 +54,52 @@ export class McpClientManager {
       cliConfig.getMcpServerCommand(),
     );
 
+    // Initialize MCP enablement manager
+    // Always uses global directory for consistent state across frontend and backend
+    this.mcpEnablementManager = new McpServerEnablementManager();
+
     this.discoveryState = MCPDiscoveryState.IN_PROGRESS;
 
     this.eventEmitter?.emit('mcp-client-update', this.clients);
+
+    // Remove tools from disabled servers before discovery
+    for (const [name, config] of Object.entries(servers)) {
+      const serverKey = generateMcpServerKey(
+        config.extension?.name,
+        name,
+      );
+      const isEnabled = this.mcpEnablementManager!.isEnabled(serverKey);
+
+      if (!isEnabled) {
+        console.log(
+          `[McpClientManager] Removing tools from disabled MCP server: ${serverKey}`,
+        );
+        this.toolRegistry.removeMcpToolsByServer(name);
+      }
+    }
+
     const discoveryPromises = Object.entries(servers)
-      .filter(([_, config]) => !config.extension || config.extension.isActive)
+      .filter(([name, config]) => {
+        // Check if extension is active
+        if (config.extension && !config.extension.isActive) {
+          return false;
+        }
+
+        // Check if MCP server is enabled
+        const serverKey = generateMcpServerKey(
+          config.extension?.name,
+          name,
+        );
+        const isEnabled = this.mcpEnablementManager!.isEnabled(serverKey);
+
+        if (!isEnabled) {
+          console.log(
+            `[McpClientManager] Skipping disabled MCP server: ${serverKey}`,
+          );
+        }
+
+        return isEnabled;
+      })
       .map(async ([name, config]) => {
         const client = new McpClient(
           name,
@@ -124,5 +168,19 @@ export class McpClientManager {
 
   getDiscoveryState(): MCPDiscoveryState {
     return this.discoveryState;
+  }
+
+  /**
+   * Get the MCP server enablement manager
+   */
+  getMcpEnablementManager(): McpServerEnablementManager | undefined {
+    return this.mcpEnablementManager;
+  }
+
+  /**
+   * Get all client instances (for status display)
+   */
+  getClients(): Map<string, McpClient> {
+    return this.clients;
   }
 }

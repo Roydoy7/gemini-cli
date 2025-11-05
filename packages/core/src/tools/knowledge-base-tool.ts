@@ -81,89 +81,26 @@ export class KnowledgeBaseTool extends BasePythonTool<
     super(
       KnowledgeBaseTool.Name,
       'KnowledgeBase',
-      `Store and retrieve markdown content using semantic similarity search. Build a persistent, searchable knowledge base that remembers information across conversations.
-
-# WHEN TO USE
-- Save complete workflows, solutions, or code patterns for future reference
-- Store documentation or reference materials (via markitdown conversion)
-- Search for previously saved solutions when facing similar problems
-
-# TYPICAL WORKFLOW
-
-## Save a complete solution
-\`\`\`json
-{
-  "op": "store",
-  "content": "# Excel Automation Solution\\n\\nComplete workflow for reading Excel data:\\n\\n\`\`\`python\\nimport xlwings as xw\\nbook = xw.Book('data.xlsx')\\nsheet = book.sheets[0]\\ndata = sheet.range('A1').expand('table').value\\n\`\`\`\\n\\nWorks with large files, tested with 10k+ rows.",
-  "collection": "workflows",
-  "metadata": {
-    "title": "Excel Data Reading",
-    "category": "automation",
-    "language": "en"
-  }
-}
-\`\`\`
-
-## Store documentation files
-\`\`\`
-Step 1: markitdown-tools(op="convert_path_only", file_path="manual.pdf")
-Step 2: knowledge_base(op="store", file_path="manual.md", collection="docs", metadata={"title": "User Manual", "language": "en"})
-\`\`\`
-
-## Search for solutions
-\`\`\`json
-{
-  "op": "search",
-  "query": "how to read excel files",
-  "collection": "workflows",
-  "limit": 3
-}
-\`\`\`
+      `Store and retrieve markdown content using semantic similarity search. Build a persistent, searchable knowledge base across conversations.
 
 # OPERATIONS
+- **store**: Save workflows, solutions, code (via \`content\` or \`file_path\`)
+- **search**: Find relevant content with natural language queries
+- **advanced_search**: Semantic search + metadata/full-text filters
+- **list_collections**: Show all collections
+- **list_documents**: List documents in collection
+- **delete**: Remove documents by ID or filter
+- **delete_collection**: Remove entire collection
 
-## store
-- \`content\`: Direct text input (workflows, solutions, code snippets)
-- \`file_path\`: Load from markdown file (converted by markitdown)
-- \`metadata\`: Add title, category, language for better search
-- Content auto-chunks for optimal retrieval
+# KEY NOTES
+- Organize by collections (e.g., "workflows", "docs")
+- Add metadata with \`language\` field ("en", "zh", "jp") for better search
+- Match query language to document language (EN queries for EN docs)
+- First use: Downloads ~400MB model (2-5 min)
+- Storage: Persistent in \`.gemini/knowledge_base\` directory
 
-## search
-- Natural language \`query\` to find relevant content
-- **Match query language to document language** (EN queries for EN docs, ZH queries for ZH docs)
-- Returns top N results with similarity scores
-- Use \`limit\` to control results (default: 5)
-
-## advanced_search
-- Semantic search + metadata filters
-- \`where\`: Filter by metadata (e.g., \`{"category": "automation", "language": "en"}\`)
-- \`where_document\`: Full-text search (e.g., \`{"$contains": "xlwings"}\`)
-- \`similarity_threshold\`: Min similarity score (0-1)
-
-## list_collections
-- Show all collections and their metadata
-
-## list_documents
-- List all documents in a collection
-- \`content_mode\`: "full", "chunks", or "metadata_only"
-
-## delete
-- Delete by \`document_ids\` or \`where\` filter
-- Example: \`where={"source_file": "manual.pdf"}\` deletes all chunks from that file
-- Requires user confirmation
-
-## delete_collection
-- Remove entire collection and all documents
-- Requires user confirmation
-
-# KEY POINTS
-- **Collections**: Organize by type (e.g., "workflows", "docs", "solutions")
-- **Multilingual**: Supports 50+ languages (EN, ZH, JP, etc.)
-  - First use: Downloads ~400MB model (2-5 min)
-  - If fails: Auto-retry or fallback to default model
-- **Metadata**: Always add \`language\` field (\`"en"\`, \`"zh"\`, etc.) for better organization
-- **Upsert**: Re-storing same content updates instead of duplicating
-- **Storage**: Persistent in \`.gemini/knowledge_base\` directory`,
+See parameter descriptions for detailed usage of each operation.
+`,
       ['chromadb', 'sentence-transformers'], // Required Python packages
       {
         properties: {

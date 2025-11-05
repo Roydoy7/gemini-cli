@@ -393,6 +393,7 @@ export class LoopDetectionService {
   private async checkForLoopWithLLM(signal: AbortSignal) {
     const recentHistory = this.config
       .getGeminiClient()
+      .getChat()
       .getHistory()
       .slice(-LLM_LOOP_CHECK_HISTORY_COUNT);
 

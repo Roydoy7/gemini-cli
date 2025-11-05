@@ -633,7 +633,11 @@ describe('LoopDetectionService LLM Checks', () => {
   let abortController: AbortController;
 
   beforeEach(() => {
+    const mockChat = {
+      getHistory: vi.fn().mockReturnValue([]),
+    };
     mockGeminiClient = {
+      getChat: vi.fn().mockReturnValue(mockChat),
       getHistory: vi.fn().mockReturnValue([]),
     } as unknown as GeminiClient;
 
@@ -770,7 +774,7 @@ describe('LoopDetectionService LLM Checks', () => {
         parts: [{ text: 'Some follow up text' }],
       },
     ];
-    vi.mocked(mockGeminiClient.getHistory).mockReturnValue(functionCallHistory);
+    vi.mocked(mockGeminiClient.getChat().getHistory).mockReturnValue(functionCallHistory);
 
     mockBaseLlmClient.generateJson = vi
       .fn()
