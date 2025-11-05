@@ -50,7 +50,7 @@ interface AppStore extends AppState {
 
   setInitialized: (initialized: boolean) => void;
 
-  // Note: Template management moved to backend system via geminiChatService
+  // Note: Template management moved to backend system via unifiedChatService
 }
 
 export const useAppStore = create<AppStore>()(
@@ -131,8 +131,10 @@ export const useAppStore = create<AppStore>()(
           activeSessionId: null,
         }),
 
-      setCurrentProvider: (provider: ModelProviderType) =>
-        set({ currentProvider: provider }),
+      setCurrentProvider: (provider: ModelProviderType) => {
+        console.log('[AppStore] setCurrentProvider called with:', provider);
+        set({ currentProvider: provider });
+      },
 
       setCurrentModel: (model: string) => set({ currentModel: model }),
 
@@ -143,10 +145,10 @@ export const useAppStore = create<AppStore>()(
 
       syncOAuthStatus: async () => {
         try {
-          const { geminiChatService } = await import(
-            '@/services/geminiChatService'
+          const { unifiedChatService } = await import(
+            '@/services/unifiedChatService'
           );
-          const oauthStatus = await geminiChatService.getOAuthStatus('gemini');
+          const oauthStatus = await unifiedChatService.getOAuthStatus('gemini');
 
           // Update auth config based on OAuth status
           const currentState = useAppStore.getState();
@@ -235,7 +237,7 @@ export const useAppStore = create<AppStore>()(
 
       setInitialized: (initialized: boolean) => set({ initialized }),
 
-      // Note: Template management moved to backend system via geminiChatService
+      // Note: Template management moved to backend system via unifiedChatService
     }),
     {
       name: 'gemini-cli-gui',
@@ -256,8 +258,12 @@ export const useAppStore = create<AppStore>()(
         if (state) {
           state.isHydrated = true;
           console.log(
-            '[AppStore] Hydrated with currentRole:',
-            state.currentRole,
+            '[AppStore] Hydrated with:',
+            {
+              currentRole: state.currentRole,
+              currentProvider: state.currentProvider,
+              currentModel: state.currentModel,
+            },
           );
         }
       },

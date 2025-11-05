@@ -10,14 +10,16 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { AuthSelection } from '@/components/auth/AuthSelection';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
-import { geminiChatService } from '@/services/geminiChatService';
-import type { ChatSession, ModelProviderType } from '@/types';
+import { unifiedChatService } from '@/services/unifiedChatService';
+import type { ChatSession } from '@/types';
+import { ModelProviderType } from '@/types';
 import { extractImagesFromParts } from '@/utils/messageUtils';
 
 export const App: React.FC = () => {
   const { currentProvider, currentModel, currentRole, theme, isHydrated } =
     useAppStore();
-  const { setBuiltinRoles, syncOAuthStatus } = useAppStore();
+  const { setBuiltinRoles, syncOAuthStatus, setCurrentProvider } =
+    useAppStore();
   const [authStatus, setAuthStatus] = useState<{
     checking: boolean;
     authenticated: boolean;
@@ -37,7 +39,7 @@ export const App: React.FC = () => {
         const electronAPI = (
           globalThis as {
             electronAPI?: {
-              geminiChat?: {
+              unifiedChat?: {
                 getAuthPreference: (
                   providerType: string,
                 ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
@@ -52,24 +54,24 @@ export const App: React.FC = () => {
           }
         ).electronAPI;
 
-        if (!electronAPI?.geminiChat) {
+        if (!electronAPI?.unifiedChat) {
           return;
         }
 
         // Get current auth preference
         const prefResult =
-          await electronAPI.geminiChat.getAuthPreference('gemini');
+          await electronAPI.unifiedChat.getAuthPreference('gemini');
         const authPref = prefResult?.preference;
 
         // Check authentication based on preference
         let isAuthenticated = false;
         if (authPref === 'api_key') {
           const apiKeyResult =
-            await electronAPI.geminiChat.checkEnvApiKey('gemini');
+            await electronAPI.unifiedChat.checkEnvApiKey('gemini');
           isAuthenticated = apiKeyResult?.detected || false;
         } else if (authPref === 'oauth') {
           const oauthStatus =
-            await electronAPI.geminiChat.getOAuthStatus('gemini');
+            await electronAPI.unifiedChat.getOAuthStatus('gemini');
           isAuthenticated = oauthStatus?.authenticated || false;
         }
 
@@ -110,7 +112,7 @@ export const App: React.FC = () => {
         const electronAPI = (
           globalThis as {
             electronAPI?: {
-              geminiChat?: {
+              unifiedChat?: {
                 getOAuthStatus: (
                   providerType: string,
                 ) => Promise<{ authenticated: boolean; userEmail?: string }>;
@@ -119,12 +121,12 @@ export const App: React.FC = () => {
           }
         ).electronAPI;
 
-        if (!electronAPI?.geminiChat) {
+        if (!electronAPI?.unifiedChat) {
           return;
         }
 
         const oauthStatus =
-          await electronAPI.geminiChat.getOAuthStatus('gemini');
+          await electronAPI.unifiedChat.getOAuthStatus('gemini');
         console.log('[App] OAuth status check:', oauthStatus);
 
         if (oauthStatus?.authenticated) {
@@ -180,9 +182,9 @@ export const App: React.FC = () => {
 
         while (retries < maxRetries) {
           const electronAPI = (
-            globalThis as { electronAPI?: { geminiChat?: ElectronGeminiAPI } }
+            globalThis as { electronAPI?: { unifiedChat?: ElectronGeminiAPI } }
           ).electronAPI;
-          if (electronAPI?.geminiChat) {
+          if (electronAPI?.unifiedChat) {
             break;
           }
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -190,10 +192,10 @@ export const App: React.FC = () => {
         }
 
         const electronAPI = (
-          globalThis as { electronAPI?: { geminiChat?: ElectronGeminiAPI } }
+          globalThis as { electronAPI?: { unifiedChat?: ElectronGeminiAPI } }
         ).electronAPI;
 
-        if (!electronAPI?.geminiChat) {
+        if (!electronAPI?.unifiedChat) {
           console.warn('Electron API not available, showing auth selection');
           setAuthStatus({
             checking: false,
@@ -205,7 +207,7 @@ export const App: React.FC = () => {
 
         // Get user's auth preference from backend (source of truth)
         const prefResult =
-          await electronAPI.geminiChat.getAuthPreference?.('gemini');
+          await electronAPI.unifiedChat.getAuthPreference?.('gemini');
         const authPref = prefResult?.preference;
         console.log('User auth preference from backend:', authPref);
 
@@ -226,7 +228,7 @@ export const App: React.FC = () => {
         if (authPref === 'api_key') {
           // User chose API key - verify it exists
           const apiKeyResult =
-            await electronAPI.geminiChat.checkEnvApiKey('gemini');
+            await electronAPI.unifiedChat.checkEnvApiKey('gemini');
           if (apiKeyResult?.detected) {
             console.log('User chose API key and it is available');
             setAuthStatus({
@@ -249,7 +251,7 @@ export const App: React.FC = () => {
         } else if (authPref === 'oauth') {
           // User chose OAuth - verify they are logged in
           const oauthStatus =
-            await electronAPI.geminiChat.getOAuthStatus('gemini');
+            await electronAPI.unifiedChat.getOAuthStatus('gemini');
           if (oauthStatus?.authenticated) {
             console.log(
               'User chose OAuth and is authenticated:',
@@ -317,7 +319,7 @@ export const App: React.FC = () => {
     const electronAPI = (
       globalThis as {
         electronAPI?: {
-          geminiChat?: {
+          unifiedChat?: {
             onRetryAttempt: (
               callback: (
                 event: unknown,
@@ -335,11 +337,11 @@ export const App: React.FC = () => {
       }
     ).electronAPI;
 
-    if (!electronAPI?.geminiChat?.onRetryAttempt) {
+    if (!electronAPI?.unifiedChat?.onRetryAttempt) {
       return;
     }
 
-    const cleanup = electronAPI.geminiChat.onRetryAttempt((_event, data) => {
+    const cleanup = electronAPI.unifiedChat.onRetryAttempt((_event, data) => {
       console.log(
         `[App] Retry attempt ${data.attempt}/${data.maxAttempts}:`,
         data.error,
@@ -434,10 +436,12 @@ export const App: React.FC = () => {
           chatCompression: { contextPercentageThreshold: 0.7 },
         };
 
-        await geminiChatService.initialize(configParams, currentRole);
+        // Initialize with persisted provider and model from AppStore
+        console.log('[App] Initializing with provider:', currentProvider, 'model:', currentModel);
+        await unifiedChatService.initialize(configParams, currentRole, currentProvider);
 
         // Set up tool confirmation callback with sessionId support
-        geminiChatService.setConfirmationCallback(
+        unifiedChatService.setConfirmationCallback(
           async (details, sessionId) =>
             new Promise((resolve) => {
               // CRITICAL: Set the confirmation request for the SPECIFIC SESSION
@@ -475,7 +479,7 @@ export const App: React.FC = () => {
 
         // Load builtin roles after initialization
         try {
-          const roles = await geminiChatService.getAllRolesAsync();
+          const roles = await unifiedChatService.getAllRolesAsync();
           if (roles.length > 0) {
             setBuiltinRoles(roles.filter((role) => role.isBuiltin !== false));
           }
@@ -493,7 +497,7 @@ export const App: React.FC = () => {
 
         // Load sessions from backend (backend is the source of truth)
         try {
-          const sessionsInfo = await geminiChatService.getSessionsInfo();
+          const sessionsInfo = await unifiedChatService.getSessionsInfo();
           // console.log('Retrieved sessions from backend:', sessionsInfo);
 
           // Convert backend session info to frontend session format
@@ -531,7 +535,7 @@ export const App: React.FC = () => {
           // Switch to the most recent session (first in sorted list) and load its messages
           if (sessionsInfo.length > 0) {
             const mostRecentSessionId = sessionsInfo[0].id;
-            await geminiChatService.switchSession(mostRecentSessionId);
+            await unifiedChatService.switchSession(mostRecentSessionId);
             await setActiveSession(mostRecentSessionId); // CRITICAL: await to sync sessionId
             console.log(
               'Switched to most recent session:',
@@ -541,7 +545,7 @@ export const App: React.FC = () => {
             // Load messages for the initial session
             try {
               const messages =
-                await geminiChatService.getDisplayMessages(mostRecentSessionId);
+                await unifiedChatService.getDisplayMessages(mostRecentSessionId);
               // console.log('Loaded', messages.length, 'messages for initial session:', mostRecentSessionId);
 
               // Convert and update the session with messages
@@ -569,7 +573,7 @@ export const App: React.FC = () => {
         // Pre-load templates to ensure they're available when TemplatePanel mounts
         try {
           console.log('Pre-loading templates...');
-          const templates = await geminiChatService.getAllTemplatesAsync();
+          const templates = await unifiedChatService.getAllTemplatesAsync();
           console.log('Pre-loaded', templates.length, 'templates successfully');
         } catch (error) {
           console.error('Failed to pre-load templates:', error);
@@ -597,12 +601,15 @@ export const App: React.FC = () => {
     syncOAuthStatus,
   ]); // Re-run when auth status or hydration changes
 
-  const handleAuthSelection = async (method: 'oauth' | 'apikey') => {
+  const handleAuthSelection = async (
+    provider: ModelProviderType,
+    method: 'oauth' | 'apikey',
+  ) => {
     try {
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               setApiKeyPreference?: (
                 providerType: string,
               ) => Promise<{ success: boolean }>;
@@ -623,45 +630,73 @@ export const App: React.FC = () => {
         }
       ).electronAPI;
 
-      if (!electronAPI?.geminiChat) {
+      if (!electronAPI?.unifiedChat) {
         console.error('Electron API not available');
         return;
       }
 
-      if (method === 'apikey') {
-        // Set API key preference
-        await electronAPI.geminiChat.setApiKeyPreference?.('gemini');
+      // Set the selected provider as current
+      setCurrentProvider(provider);
 
-        // Check if API key is actually available
-        const apiKeyResult =
-          await electronAPI.geminiChat.checkEnvApiKey('gemini');
-        if (apiKeyResult?.detected) {
-          console.log('API key preference set and API key detected');
+      if (method === 'apikey') {
+        // Set API key preference for the selected provider
+        await electronAPI.unifiedChat.setApiKeyPreference?.(provider);
+
+        // Check if API key is actually available (skip for LM Studio)
+        if (provider !== ModelProviderType.LMSTUDIO) {
+          const apiKeyResult =
+            await electronAPI.unifiedChat.checkEnvApiKey(provider);
+          if (apiKeyResult?.detected) {
+            console.log(
+              `API key preference set and API key detected for ${provider}`,
+            );
+            setAuthStatus({
+              checking: false,
+              authenticated: true,
+              needsSelection: false,
+            });
+          } else {
+            console.error(
+              `API key preference set but no API key found for ${provider}`,
+            );
+            const envVarName =
+              provider === ModelProviderType.GEMINI
+                ? 'GEMINI_API_KEY or GOOGLE_API_KEY'
+                : provider === ModelProviderType.CLAUDE
+                  ? 'ANTHROPIC_API_KEY'
+                  : provider === ModelProviderType.OPENAI
+                    ? 'OPENAI_API_KEY'
+                    : 'API key';
+            alert(
+              `API key not found in environment. Please set ${envVarName} environment variable.`,
+            );
+            setAuthStatus({
+              checking: false,
+              authenticated: false,
+              needsSelection: true,
+            });
+          }
+        } else {
+          // LM Studio doesn't need API key
           setAuthStatus({
             checking: false,
             authenticated: true,
             needsSelection: false,
           });
-        } else {
-          console.error(
-            'API key preference set but no API key found in environment',
-          );
-          alert(
-            'API key not found in environment. Please set GEMINI_API_KEY or GOOGLE_API_KEY environment variable.',
-          );
-          setAuthStatus({
-            checking: false,
-            authenticated: false,
-            needsSelection: true,
-          });
         }
       } else {
+        // OAuth only supported for Gemini
+        if (provider !== ModelProviderType.GEMINI) {
+          console.error(`OAuth not supported for ${provider}`);
+          return;
+        }
+
         // Set OAuth preference
-        await electronAPI.geminiChat.setOAuthPreference?.('gemini');
+        await electronAPI.unifiedChat.setOAuthPreference?.(provider);
 
         // Check if already authenticated
         const oauthStatus =
-          await electronAPI.geminiChat.getOAuthStatus('gemini');
+          await electronAPI.unifiedChat.getOAuthStatus(provider);
         if (oauthStatus?.authenticated) {
           console.log('OAuth preference set and already authenticated');
           setAuthStatus({
@@ -678,8 +713,8 @@ export const App: React.FC = () => {
 
           // Start OAuth flow (this will open browser)
           // Don't await - let the polling handle completion detection
-          electronAPI.geminiChat
-            .startOAuthFlow?.('gemini')
+          electronAPI.unifiedChat
+            .startOAuthFlow?.(provider)
             .then((result) => {
               console.log('[App] OAuth flow completed with result:', result);
               if (!result?.success) {
@@ -721,7 +756,7 @@ export const App: React.FC = () => {
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               getAuthPreference: (
                 providerType: string,
               ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
@@ -736,7 +771,7 @@ export const App: React.FC = () => {
         }
       ).electronAPI;
 
-      if (!electronAPI?.geminiChat) {
+      if (!electronAPI?.unifiedChat) {
         setAuthStatus({
           checking: false,
           authenticated: false,
@@ -747,18 +782,18 @@ export const App: React.FC = () => {
 
       // Get current auth preference
       const prefResult =
-        await electronAPI.geminiChat.getAuthPreference('gemini');
+        await electronAPI.unifiedChat.getAuthPreference('gemini');
       const authPref = prefResult?.preference;
 
       // Check authentication based on preference
       let isAuthenticated = false;
       if (authPref === 'api_key') {
         const apiKeyResult =
-          await electronAPI.geminiChat.checkEnvApiKey('gemini');
+          await electronAPI.unifiedChat.checkEnvApiKey('gemini');
         isAuthenticated = apiKeyResult?.detected || false;
       } else if (authPref === 'oauth') {
         const oauthStatus =
-          await electronAPI.geminiChat.getOAuthStatus('gemini');
+          await electronAPI.unifiedChat.getOAuthStatus('gemini');
         isAuthenticated = oauthStatus?.authenticated || false;
       }
 

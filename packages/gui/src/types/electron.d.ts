@@ -4,6 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+interface McpServer {
+  key: string;
+  name: string;
+  displayName: string;
+  extensionName?: string;
+  enabled: boolean;
+  description?: string;
+  transport: 'stdio' | 'sse' | 'http';
+  connected?: boolean;
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -22,10 +33,15 @@ declare global {
       onWorkspaceDirectoriesChanged: (
         callback: (directories: string[]) => void,
       ) => () => void;
-      geminiChat: {
+      unifiedChat: {
         // ... other methods
         [key: string]: unknown;
       };
+    };
+    electron?: {
+      getMcpServers: () => Promise<McpServer[]>;
+      setMcpServersEnabled: (updates: Record<string, boolean>) => Promise<void>;
+      refreshMcpServers: () => Promise<void>;
     };
   }
 }

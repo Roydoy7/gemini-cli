@@ -18,11 +18,13 @@ import {
   CheckCircle,
   PanelRightClose,
   PanelRightOpen,
+  Server,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ModelSelector } from '@/components/chat/ModelSelector';
 import { RoleSelector } from '@/components/chat/RoleSelector';
 import { AuthSettingsModal } from '@/components/settings/AuthSettingsModal';
+import { McpSettingsModal } from '@/components/settings/McpSettingsModal';
 // Removed WorkspaceSelector import - now in Sidebar
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStatus } from '@/hooks/useAuthStatus';
@@ -48,6 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [showAuthSettings, setShowAuthSettings] = useState(false);
+  const [showMcpSettings, setShowMcpSettings] = useState(false);
   // Removed showWorkspaceSelector state - now in Sidebar
 
   // Get real-time auth status from backend
@@ -57,10 +60,12 @@ export const Header: React.FC<HeaderProps> = ({
     switch (currentProvider) {
       case 'gemini':
         return <Brain size={16} className="text-blue-500" />;
+      case 'claude':
+        return <Brain size={16} className="text-purple-500" />;
       case 'openai':
         return <Brain size={16} className="text-green-500" />;
-      case 'lm_studio':
-        return <Brain size={16} className="text-purple-500" />;
+      case 'lmstudio':
+        return <Brain size={16} className="text-orange-500" />;
       default:
         return <Brain size={16} />;
     }
@@ -229,6 +234,22 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Globe size={16} />
         </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 flex-shrink-0 hidden md:flex"
+          onClick={() => setShowMcpSettings(true)}
+          title="MCP Server Settings"
+        >
+          <Server size={16} />
+        </Button>
+
+        {/* MCP Settings Modal */}
+        <McpSettingsModal
+          open={showMcpSettings}
+          onClose={() => setShowMcpSettings(false)}
+        />
 
         <Button
           variant="ghost"

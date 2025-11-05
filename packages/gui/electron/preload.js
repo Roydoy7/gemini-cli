@@ -35,14 +35,14 @@ const electronAPI = {
       ipcRenderer.removeListener('workspace-directories-changed', callback);
   },
 
-  // GeminiChat System API
-  geminiChat: {
-    initialize: (config, initialRoleId) =>
-      ipcRenderer.invoke('geminiChat-initialize', config, initialRoleId),
+  // Unified Chat System API (Multi-provider support: Gemini, Claude, OpenAI, LM Studio)
+  unifiedChat: {
+    initialize: (config, initialRoleId, defaultProvider) =>
+      ipcRenderer.invoke('unifiedChat-initialize', config, initialRoleId, defaultProvider),
     switchRole: (roleId) =>
-      ipcRenderer.invoke('geminiChat-switch-role', roleId),
+      ipcRenderer.invoke('unifiedChat-switch-role', roleId),
     sendMessage: (messages) =>
-      ipcRenderer.invoke('geminiChat-send-message', messages),
+      ipcRenderer.invoke('unifiedChat-send-message', messages),
     sendMessageStream: (messages) => {
       const streamId = `stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -79,17 +79,17 @@ const electronAPI = {
             cleanedUp = true;
 
             // Remove specific event listeners
-            ipcRenderer.removeListener('geminiChat-stream-chunk', chunkHandler);
+            ipcRenderer.removeListener('unifiedChat-stream-chunk', chunkHandler);
             ipcRenderer.removeListener(
-              'geminiChat-stream-complete',
+              'unifiedChat-stream-complete',
               completeHandler,
             );
-            ipcRenderer.removeListener('geminiChat-stream-error', errorHandler);
+            ipcRenderer.removeListener('unifiedChat-stream-error', errorHandler);
 
             // Only cancel on backend if explicitly requested (e.g., user cancellation)
             if (shouldCancelBackend) {
               ipcRenderer
-                .invoke('geminiChat-cancel-stream', streamId)
+                .invoke('unifiedChat-cancel-stream', streamId)
                 .catch((error) => {
                   console.warn('Failed to cancel stream on backend:', error);
                 });
@@ -97,9 +97,9 @@ const electronAPI = {
           };
 
           // Set up event handlers BEFORE starting the request
-          ipcRenderer.on('geminiChat-stream-chunk', chunkHandler);
-          ipcRenderer.on('geminiChat-stream-complete', completeHandler);
-          ipcRenderer.on('geminiChat-stream-error', errorHandler);
+          ipcRenderer.on('unifiedChat-stream-chunk', chunkHandler);
+          ipcRenderer.on('unifiedChat-stream-complete', completeHandler);
+          ipcRenderer.on('unifiedChat-stream-error', errorHandler);
 
           // NOTE: Frontend timeout removed - rely on backend timeout mechanisms
           // Backend has multiple layers of timeout protection:
@@ -109,7 +109,7 @@ const electronAPI = {
 
           // NOW start the streaming request after event handlers are set
           ipcRenderer
-            .invoke('geminiChat-send-message-stream', messages, streamId)
+            .invoke('unifiedChat-send-message-stream', messages, streamId)
             .catch((error) => {
               console.error('IPC invoke failed:', error.message, error);
               cleanup(false); // false = invoke already failed, no need to cancel
@@ -123,57 +123,70 @@ const electronAPI = {
         },
       };
     },
-    getAllRoles: () => ipcRenderer.invoke('geminiChat-get-all-roles'),
-    getCurrentRole: () => ipcRenderer.invoke('geminiChat-get-current-role'),
-    getAllTemplates: () => ipcRenderer.invoke('geminiChat-get-all-templates'),
+    getAllRoles: () => ipcRenderer.invoke('unifiedChat-get-all-roles'),
+    getCurrentRole: () => ipcRenderer.invoke('unifiedChat-get-current-role'),
+    getAllTemplates: () => ipcRenderer.invoke('unifiedChat-get-all-templates'),
     addWorkspaceDirectory: (directory, basePath) =>
       ipcRenderer.invoke(
-        'geminiChat-add-workspace-directory',
+        'unifiedChat-add-workspace-directory',
         directory,
         basePath,
       ),
     getWorkspaceDirectories: () =>
-      ipcRenderer.invoke('geminiChat-get-workspace-directories'),
+      ipcRenderer.invoke('unifiedChat-get-workspace-directories'),
     getDirectoryContents: (directoryPath) =>
-      ipcRenderer.invoke('geminiChat-get-directory-contents', directoryPath),
+      ipcRenderer.invoke('unifiedChat-get-directory-contents', directoryPath),
     setWorkspaceDirectories: (directories) =>
-      ipcRenderer.invoke('geminiChat-set-workspace-directories', directories),
+      ipcRenderer.invoke('unifiedChat-set-workspace-directories', directories),
     addCustomTemplate: (template) =>
-      ipcRenderer.invoke('geminiChat-add-custom-template', template),
+      ipcRenderer.invoke('unifiedChat-add-custom-template', template),
     updateCustomTemplate: (id, updates) =>
-      ipcRenderer.invoke('geminiChat-update-custom-template', id, updates),
+      ipcRenderer.invoke('unifiedChat-update-custom-template', id, updates),
     deleteCustomTemplate: (id) =>
-      ipcRenderer.invoke('geminiChat-delete-custom-template', id),
+      ipcRenderer.invoke('unifiedChat-delete-custom-template', id),
     // Session management
-    createSession: (sessionId, title, roleId) =>
-      ipcRenderer.invoke('geminiChat-create-session', sessionId, title, roleId),
+    createSession: (sessionId, title, roleId, provider) =>
+      ipcRenderer.invoke(
+        'unifiedChat-create-session',
+        sessionId,
+        title,
+        roleId,
+        provider,
+      ),
     switchSession: (sessionId) =>
-      ipcRenderer.invoke('geminiChat-switch-session', sessionId),
+      ipcRenderer.invoke('unifiedChat-switch-session', sessionId),
     deleteSession: (sessionId) =>
-      ipcRenderer.invoke('geminiChat-delete-session', sessionId),
+      ipcRenderer.invoke('unifiedChat-delete-session', sessionId),
     deleteAllSessions: () =>
-      ipcRenderer.invoke('geminiChat-delete-all-sessions'),
+      ipcRenderer.invoke('unifiedChat-delete-all-sessions'),
     getCurrentSessionId: () =>
-      ipcRenderer.invoke('geminiChat-get-current-session-id'),
+      ipcRenderer.invoke('unifiedChat-get-current-session-id'),
     getDisplayMessages: (sessionId) =>
-      ipcRenderer.invoke('geminiChat-get-display-messages', sessionId),
-    getSessionsInfo: () => ipcRenderer.invoke('geminiChat-get-sessions-info'),
+      ipcRenderer.invoke('unifiedChat-get-display-messages', sessionId),
+    getSessionsInfo: () => ipcRenderer.invoke('unifiedChat-get-sessions-info'),
     updateSessionTitle: (sessionId, newTitle) =>
       ipcRenderer.invoke(
-        'geminiChat-update-session-title',
+        'unifiedChat-update-session-title',
         sessionId,
         newTitle,
       ),
     toggleTitleLock: (sessionId, locked) =>
-      ipcRenderer.invoke('geminiChat-toggle-title-lock', sessionId, locked),
+      ipcRenderer.invoke('unifiedChat-toggle-title-lock', sessionId, locked),
     updateSessionMessages: (sessionId, messages) =>
       ipcRenderer.invoke(
-        'geminiChat-update-session-messages',
+        'unifiedChat-update-session-messages',
         sessionId,
         messages,
       ),
     setSessionRole: (sessionId, roleId) =>
-      ipcRenderer.invoke('geminiChat-set-session-role', sessionId, roleId),
+      ipcRenderer.invoke('unifiedChat-set-session-role', sessionId, roleId),
+    // Provider management
+    switchProvider: (sessionId, providerType, model) =>
+      ipcRenderer.invoke('unifiedChat-switch-provider', sessionId, providerType, model),
+    getSessionProvider: (sessionId) =>
+      ipcRenderer.invoke('unifiedChat-get-session-provider', sessionId),
+    getAvailableModels: (providerType) =>
+      ipcRenderer.invoke('unifiedChat-get-available-models', providerType),
     // OAuth authentication
     startOAuthFlow: (providerType) =>
       ipcRenderer.invoke('oauth-start-flow', providerType),
@@ -193,7 +206,7 @@ const electronAPI = {
     setApprovalMode: (mode) => ipcRenderer.invoke('set-approval-mode', mode),
     // Direct Excel tool calls
     callExcelTool: (operation, params) =>
-      ipcRenderer.invoke('geminiChat-call-excel-tool', operation, params),
+      ipcRenderer.invoke('unifiedChat-call-excel-tool', operation, params),
     // Tool confirmation
     onToolConfirmationRequest: (callback) => {
       ipcRenderer.on('tool-confirmation-request', callback);
@@ -205,12 +218,20 @@ const electronAPI = {
       ipcRenderer.send('tool-confirmation-response', { outcome, sessionId }),
     // Retry attempt notifications
     onRetryAttempt: (callback) => {
-      ipcRenderer.on('geminiChat-retry-attempt', callback);
+      ipcRenderer.on('unifiedChat-retry-attempt', callback);
       // Return cleanup function
       return () =>
-        ipcRenderer.removeListener('geminiChat-retry-attempt', callback);
+        ipcRenderer.removeListener('unifiedChat-retry-attempt', callback);
     },
   },
+};
+
+// MCP Server Management API
+const mcpAPI = {
+  getMcpServers: () => ipcRenderer.invoke('mcp-get-servers'),
+  setMcpServersEnabled: (updates) =>
+    ipcRenderer.invoke('mcp-set-servers-enabled', updates),
+  refreshMcpServers: () => ipcRenderer.invoke('mcp-refresh-servers'),
 };
 
 // Expose protected methods that allow the renderer process to use
@@ -218,10 +239,13 @@ const electronAPI = {
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+    contextBridge.exposeInMainWorld('electron', mcpAPI);
   } catch (error) {
     console.error('Failed to expose electron API:', error);
   }
 } else {
   // @ts-expect-error (define in dts)
   window.electronAPI = electronAPI;
+  // @ts-expect-error (define in dts)
+  window.electron = mcpAPI;
 }

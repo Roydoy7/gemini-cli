@@ -10,17 +10,65 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAppStore } from '@/stores/appStore';
 import { X, Key, User, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ModelProviderType } from '@/types';
 
 interface AuthSettingsModalProps {
   open: boolean;
   onClose: () => void;
+  defaultProvider?: ModelProviderType;
 }
+
+interface ProviderAuthInfo {
+  type: ModelProviderType;
+  name: string;
+  icon: string;
+  supportsOAuth: boolean;
+  envVarName: string;
+  apiKeyUrl?: string;
+}
+
+const PROVIDERS: ProviderAuthInfo[] = [
+  {
+    type: ModelProviderType.GEMINI,
+    name: 'Google Gemini',
+    icon: '🔷',
+    supportsOAuth: true,
+    envVarName: 'GEMINI_API_KEY',
+    apiKeyUrl: 'https://makersuite.google.com/app/apikey',
+  },
+  {
+    type: ModelProviderType.CLAUDE,
+    name: 'Anthropic Claude',
+    icon: '🟣',
+    supportsOAuth: false,
+    envVarName: 'ANTHROPIC_API_KEY',
+    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  {
+    type: ModelProviderType.OPENAI,
+    name: 'OpenAI',
+    icon: '🟢',
+    supportsOAuth: false,
+    envVarName: 'OPENAI_API_KEY',
+    apiKeyUrl: 'https://platform.openai.com/api-keys',
+  },
+  {
+    type: ModelProviderType.LMSTUDIO,
+    name: 'LM Studio',
+    icon: '🖥️',
+    supportsOAuth: false,
+    envVarName: 'LMSTUDIO_BASE_URL',
+  },
+];
 
 export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
   open,
   onClose,
+  defaultProvider = ModelProviderType.GEMINI,
 }) => {
   const { authConfig, updateAuthConfig } = useAppStore();
+  const [selectedProvider, setSelectedProvider] =
+    useState<ModelProviderType>(defaultProvider);
   const [authType, setAuthType] = useState<'oauth' | 'api_key'>('api_key');
   const [envApiKeyDetected, setEnvApiKeyDetected] = useState(false);
   const [oauthStatus, setOauthStatus] = useState<{
@@ -35,23 +83,29 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
     text: string;
   } | null>(null);
 
+  const currentProvider = PROVIDERS.find((p) => p.type === selectedProvider);
+
   useEffect(() => {
     if (open) {
       loadCurrentSettings();
-      checkOAuthStatus();
+      if (currentProvider?.supportsOAuth) {
+        checkOAuthStatus();
+      }
       setMessage(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, selectedProvider]);
 
   const loadCurrentSettings = async () => {
-    console.log('[AuthSettingsModal] loadCurrentSettings: Loading settings...');
-    // Get auth preference from backend (source of truth)
+    console.log(
+      '[AuthSettingsModal] loadCurrentSettings: Loading settings for provider:',
+      selectedProvider,
+    );
     try {
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               getAuthPreference: (
                 providerType: string,
               ) => Promise<{ preference: 'api_key' | 'oauth' | null }>;
@@ -60,9 +114,9 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (electronAPI?.geminiChat) {
+      if (electronAPI?.unifiedChat) {
         const prefResult =
-          await electronAPI.geminiChat.getAuthPreference('gemini');
+          await electronAPI.unifiedChat.getAuthPreference(selectedProvider);
         const backendPref = prefResult?.preference;
 
         console.log(
@@ -72,21 +126,13 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
 
         if (backendPref) {
           setAuthType(backendPref);
-          console.log(
-            '[AuthSettingsModal] loadCurrentSettings: Set auth type to:',
-            backendPref,
-          );
         } else {
-          setAuthType('api_key'); // Default to API key if no preference
-          console.log(
-            '[AuthSettingsModal] loadCurrentSettings: No preference found, defaulting to api_key',
-          );
+          setAuthType('api_key');
         }
       } else {
-        // Fallback to store value if backend not available
-        const geminiConfig = authConfig.gemini;
-        if (geminiConfig) {
-          setAuthType(geminiConfig.type || 'api_key');
+        const providerConfig = authConfig[selectedProvider];
+        if (providerConfig) {
+          setAuthType(providerConfig.type || 'api_key');
         }
       }
     } catch (error) {
@@ -94,24 +140,21 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         '[AuthSettingsModal] Failed to load auth preference from backend:',
         error,
       );
-      // Fallback to store value
-      const geminiConfig = authConfig.gemini;
-      if (geminiConfig) {
-        setAuthType(geminiConfig.type || 'api_key');
+      const providerConfig = authConfig[selectedProvider];
+      if (providerConfig) {
+        setAuthType(providerConfig.type || 'api_key');
       }
     }
 
-    // Check if GEMINI_API_KEY environment variable is set
     await checkEnvironmentApiKey();
   };
 
   const checkEnvironmentApiKey = async () => {
     try {
-      // Use Electron API directly instead of geminiChatService to avoid initialization dependency
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               checkEnvApiKey: (
                 providerType: string,
               ) => Promise<{ detected: boolean; source?: string }>;
@@ -120,11 +163,12 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (electronAPI?.geminiChat) {
-        const result = await electronAPI.geminiChat.checkEnvApiKey('gemini');
+      if (electronAPI?.unifiedChat) {
+        const result =
+          await electronAPI.unifiedChat.checkEnvApiKey(selectedProvider);
         setEnvApiKeyDetected(result.detected);
         console.log(
-          `Environment API key check: ${result.detected ? 'detected' : 'not detected'} from ${result.source || 'unknown'}`,
+          `Environment API key check for ${selectedProvider}: ${result.detected ? 'detected' : 'not detected'} from ${result.source || 'unknown'}`,
         );
       } else {
         console.error('Electron API not available');
@@ -139,13 +183,13 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
   const checkOAuthStatus = async () => {
     try {
       console.log(
-        '[AuthSettingsModal] checkOAuthStatus: Checking OAuth status...',
+        '[AuthSettingsModal] checkOAuthStatus: Checking OAuth status for:',
+        selectedProvider,
       );
-      // Use Electron API directly instead of geminiChatService to avoid initialization dependency
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               getOAuthStatus: (
                 providerType: string,
               ) => Promise<{ authenticated: boolean; userEmail?: string }>;
@@ -154,17 +198,14 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (electronAPI?.geminiChat) {
-        const status = await electronAPI.geminiChat.getOAuthStatus('gemini');
+      if (electronAPI?.unifiedChat) {
+        const status =
+          await electronAPI.unifiedChat.getOAuthStatus(selectedProvider);
         console.log(
           '[AuthSettingsModal] checkOAuthStatus: Received status:',
           JSON.stringify(status),
         );
         setOauthStatus(status);
-        console.log(
-          '[AuthSettingsModal] checkOAuthStatus: Set oauthStatus.authenticated =',
-          status.authenticated,
-        );
       } else {
         console.error('[AuthSettingsModal] Electron API not available');
         setOauthStatus({ authenticated: false });
@@ -180,12 +221,11 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
     setMessage(null);
 
     try {
-      // Use Electron API directly to start OAuth flow
-      console.log('Starting OAuth flow...');
+      console.log('Starting OAuth flow for:', selectedProvider);
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               startOAuthFlow: (providerType: string) => Promise<{
                 success: boolean;
                 message?: string;
@@ -199,26 +239,24 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (!electronAPI?.geminiChat) {
+      if (!electronAPI?.unifiedChat) {
         throw new Error('Electron API not available');
       }
 
-      const result = await electronAPI.geminiChat.startOAuthFlow('gemini');
+      const result =
+        await electronAPI.unifiedChat.startOAuthFlow(selectedProvider);
 
       if (result.success) {
-        // Set backend OAuth preference explicitly
         console.log('Setting OAuth preference in backend...');
-        await electronAPI.geminiChat.setOAuthPreference('gemini');
+        await electronAPI.unifiedChat.setOAuthPreference(selectedProvider);
 
-        // Update configuration to use OAuth
         updateAuthConfig({
-          gemini: {
+          [selectedProvider]: {
             type: 'oauth',
-            oauthToken: 'authenticated', // We don't store the actual token in frontend
+            oauthToken: 'authenticated',
           },
         });
 
-        // Refresh OAuth status
         await checkOAuthStatus();
 
         setMessage({
@@ -226,10 +264,9 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
           text: result.message || 'Authentication successful!',
         });
 
-        // Auto-close modal after successful authentication
         setTimeout(() => {
           handleClose();
-        }, 1500); // Give user time to see the success message
+        }, 1500);
       } else {
         throw new Error(result.error || 'OAuth authentication failed');
       }
@@ -247,13 +284,13 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
   const handleUseOAuth = async () => {
     try {
       console.log(
-        '[AuthSettingsModal] handleUseOAuth: Setting OAuth preference in backend...',
+        '[AuthSettingsModal] handleUseOAuth: Setting OAuth preference for:',
+        selectedProvider,
       );
-      // Use Electron API directly to set OAuth preference
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               setOAuthPreference: (
                 providerType: string,
               ) => Promise<{ success: boolean }>;
@@ -265,32 +302,25 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (!electronAPI?.geminiChat) {
+      if (!electronAPI?.unifiedChat) {
         throw new Error('Electron API not available');
       }
 
-      console.log(
-        '[AuthSettingsModal] handleUseOAuth: Calling setOAuthPreference...',
-      );
-      await electronAPI.geminiChat.setOAuthPreference('gemini');
+      await electronAPI.unifiedChat.setOAuthPreference(selectedProvider);
 
-      // Verify the preference was saved
       const prefResult =
-        await electronAPI.geminiChat.getAuthPreference('gemini');
+        await electronAPI.unifiedChat.getAuthPreference(selectedProvider);
       console.log(
-        '[AuthSettingsModal] handleUseOAuth: Verified preference after save:',
+        '[AuthSettingsModal] handleUseOAuth: Verified preference:',
         prefResult.preference,
       );
 
       if (prefResult.preference !== 'oauth') {
-        throw new Error(
-          `Preference not saved correctly. Expected 'oauth', got '${prefResult.preference}'`,
-        );
+        throw new Error('Preference not saved correctly');
       }
 
-      // Update configuration to use OAuth
       updateAuthConfig({
-        gemini: {
+        [selectedProvider]: {
           type: 'oauth',
           oauthToken: 'authenticated',
         },
@@ -301,7 +331,6 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         text: 'Switched to OAuth authentication',
       });
 
-      // Auto-close modal after successful switch
       setTimeout(() => {
         handleClose();
       }, 1500);
@@ -320,13 +349,13 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
   const handleOAuthLogout = async () => {
     try {
       console.log(
-        '[AuthSettingsModal] handleOAuthLogout: Starting sign out...',
+        '[AuthSettingsModal] handleOAuthLogout: Signing out from:',
+        selectedProvider,
       );
-      // Use Electron API directly to clear OAuth credentials
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               clearOAuthCredentials: (
                 providerType: string,
               ) => Promise<{ success: boolean; error?: string }>;
@@ -335,25 +364,14 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (!electronAPI?.geminiChat) {
+      if (!electronAPI?.unifiedChat) {
         throw new Error('Electron API not available');
       }
 
-      console.log(
-        '[AuthSettingsModal] handleOAuthLogout: Calling clearOAuthCredentials...',
-      );
       const result =
-        await electronAPI.geminiChat.clearOAuthCredentials('gemini');
-      console.log('[AuthSettingsModal] handleOAuthLogout: Result:', result);
+        await electronAPI.unifiedChat.clearOAuthCredentials(selectedProvider);
 
       if (result.success) {
-        // Don't change the auth preference - user still wants to use OAuth, they're just signing out
-        // The auth preference should remain as 'oauth', just in an unauthenticated state
-        console.log(
-          '[AuthSettingsModal] handleOAuthLogout: Credentials cleared, refreshing status...',
-        );
-
-        // Immediately refresh OAuth status from backend to confirm credentials are cleared
         await checkOAuthStatus();
 
         setMessage({
@@ -376,18 +394,17 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
     if (!envApiKeyDetected) {
       setMessage({
         type: 'error',
-        text: 'No GEMINI_API_KEY environment variable detected. Please set the environment variable and restart the application.',
+        text: `No ${currentProvider?.envVarName} environment variable detected. Please set it and restart the application.`,
       });
       return;
     }
 
     try {
-      // Use Electron API directly to set API key preference
-      console.log('Setting API key preference in backend...');
+      console.log('Setting API key preference for:', selectedProvider);
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               setApiKeyPreference: (
                 providerType: string,
               ) => Promise<{ success: boolean }>;
@@ -396,14 +413,14 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (!electronAPI?.geminiChat) {
+      if (!electronAPI?.unifiedChat) {
         throw new Error('Electron API not available');
       }
 
-      await electronAPI.geminiChat.setApiKeyPreference('gemini');
+      await electronAPI.unifiedChat.setApiKeyPreference(selectedProvider);
 
       updateAuthConfig({
-        gemini: {
+        [selectedProvider]: {
           type: 'api_key',
           oauthToken: undefined,
         },
@@ -414,7 +431,6 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         text: 'Switched to API key authentication',
       });
 
-      // Auto-close modal after successful switch
       setTimeout(() => {
         handleClose();
       }, 1500);
@@ -432,17 +448,18 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
 
   const handleAuthTypeChange = async (newType: 'api_key' | 'oauth') => {
     console.log(
-      '[AuthSettingsModal] handleAuthTypeChange: Changing auth type to:',
+      '[AuthSettingsModal] handleAuthTypeChange: Changing to:',
       newType,
+      'for provider:',
+      selectedProvider,
     );
     setAuthType(newType);
 
-    // Immediately save the preference to backend
     try {
       const electronAPI = (
         globalThis as {
           electronAPI?: {
-            geminiChat?: {
+            unifiedChat?: {
               setApiKeyPreference: (
                 providerType: string,
               ) => Promise<{ success: boolean }>;
@@ -454,41 +471,25 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
         }
       ).electronAPI;
 
-      if (!electronAPI?.geminiChat) {
+      if (!electronAPI?.unifiedChat) {
         throw new Error('Electron API not available');
       }
 
       if (newType === 'api_key') {
-        console.log(
-          '[AuthSettingsModal] handleAuthTypeChange: Saving API key preference...',
-        );
-        await electronAPI.geminiChat.setApiKeyPreference('gemini');
+        await electronAPI.unifiedChat.setApiKeyPreference(selectedProvider);
       } else {
-        console.log(
-          '[AuthSettingsModal] handleAuthTypeChange: Saving OAuth preference...',
-        );
-        await electronAPI.geminiChat.setOAuthPreference('gemini');
-
-        // After switching to OAuth, refresh OAuth status to check if user is already logged in
-        console.log(
-          '[AuthSettingsModal] handleAuthTypeChange: Refreshing OAuth status...',
-        );
+        await electronAPI.unifiedChat.setOAuthPreference(selectedProvider);
         await checkOAuthStatus();
       }
-
-      console.log(
-        '[AuthSettingsModal] handleAuthTypeChange: Preference saved successfully',
-      );
     } catch (error) {
       console.error(
-        '[AuthSettingsModal] handleAuthTypeChange: Failed to save preference:',
+        '[AuthSettingsModal] handleAuthTypeChange: Failed:',
         error,
       );
     }
   };
 
   const handleClose = () => {
-    // Trigger auth-changed event to notify App.tsx to re-check auth status
     console.log(
       '[AuthSettingsModal] Closing modal, triggering auth-changed event',
     );
@@ -501,15 +502,31 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
-      <div className="relative bg-card rounded-lg shadow-lg p-6 max-w-md w-full">
+      <div className="relative bg-card rounded-lg shadow-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold">
-            Google Gemini Authentication
-          </h2>
+          <h2 className="text-lg font-semibold">Provider Authentication</h2>
           <Button variant="ghost" size="icon" onClick={handleClose}>
             <X size={20} />
           </Button>
+        </div>
+
+        {/* Provider Tabs */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          {PROVIDERS.map((provider) => (
+            <button
+              key={provider.type}
+              onClick={() => setSelectedProvider(provider.type)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors whitespace-nowrap ${
+                selectedProvider === provider.type
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-accent hover:bg-accent/80'
+              }`}
+            >
+              <span>{provider.icon}</span>
+              <span className="text-sm font-medium">{provider.name}</span>
+            </button>
+          ))}
         </div>
 
         {/* Message */}
@@ -530,165 +547,209 @@ export const AuthSettingsModal: React.FC<AuthSettingsModalProps> = ({
           </div>
         )}
 
-        {/* Authentication Method Selection */}
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium mb-3">
-              Authentication Method
-            </label>
+        {/* LM Studio - No Authentication Required */}
+        {selectedProvider === ModelProviderType.LMSTUDIO ? (
+          <Card className="p-4">
             <div className="space-y-3">
-              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-accent/50 transition-colors">
-                <input
-                  type="radio"
-                  value="api_key"
-                  checked={authType === 'api_key'}
-                  onChange={(e) =>
-                    handleAuthTypeChange(e.target.value as 'api_key')
-                  }
-                  className="mr-3"
-                />
-                <Key size={16} className="mr-2 text-muted-foreground" />
-                <div>
-                  <div className="text-sm font-medium">API Key</div>
-                  <div className="text-xs text-muted-foreground">
-                    Use your Gemini API key
-                  </div>
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle size={20} />
+                <span className="font-medium">No Authentication Required</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                LM Studio runs locally on your machine and doesn't require
+                authentication.
+              </p>
+              <div className="p-3 bg-accent/30 rounded-md border">
+                <div className="text-sm font-medium mb-2">
+                  Optional: Custom Server URL
                 </div>
-              </label>
-
-              <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-accent/50 transition-colors">
-                <input
-                  type="radio"
-                  value="oauth"
-                  checked={authType === 'oauth'}
-                  onChange={(e) =>
-                    handleAuthTypeChange(e.target.value as 'oauth')
-                  }
-                  className="mr-3"
-                />
-                <User size={16} className="mr-2 text-muted-foreground" />
-                <div>
-                  <div className="text-sm font-medium">
-                    Google OAuth (Recommended)
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Sign in with your Google account
-                  </div>
+                <div className="text-xs text-muted-foreground">
+                  Default: <code className="bg-accent px-1 rounded">http://localhost:1234/v1</code>
                 </div>
-              </label>
-            </div>
-          </div>
-
-          {/* API Key Configuration */}
-          {authType === 'api_key' && (
-            <Card className="p-4">
-              <div className="space-y-3">
-                <label className="block text-sm font-medium">
-                  Environment API Key
-                </label>
-                <div className="p-3 bg-accent/30 rounded-md border">
-                  {envApiKeyDetected ? (
-                    <div className="flex items-center text-green-600">
-                      <CheckCircle size={16} className="mr-2" />
-                      <span className="text-sm">
-                        GEMINI_API_KEY environment variable detected
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center text-amber-600">
-                      <AlertTriangle size={16} className="mr-2" />
-                      <span className="text-sm">
-                        GEMINI_API_KEY environment variable not found
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {!envApiKeyDetected && (
-                  <div className="text-xs text-muted-foreground">
-                    To use API key authentication, set the{' '}
-                    <code className="bg-accent px-1 rounded">
-                      GEMINI_API_KEY
-                    </code>{' '}
-                    environment variable with your API key from{' '}
-                    <a
-                      href="https://makersuite.google.com/app/apikey"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      Google AI Studio
-                    </a>{' '}
-                    and restart the application.
+                {envApiKeyDetected && (
+                  <div className="flex items-center text-green-600 mt-2">
+                    <CheckCircle size={14} className="mr-1" />
+                    <span className="text-xs">Custom LMSTUDIO_BASE_URL detected</span>
                   </div>
                 )}
-
-                <Button
-                  onClick={handleSwitchToApiKey}
-                  disabled={!envApiKeyDetected}
-                  className="w-full"
-                >
-                  {envApiKeyDetected
-                    ? 'Use API Key Authentication'
-                    : 'API Key Not Available'}
-                </Button>
               </div>
-            </Card>
-          )}
-
-          {/* OAuth Configuration */}
-          {authType === 'oauth' && (
-            <Card className="p-4">
-              <div className="space-y-4">
-                {oauthStatus.authenticated ? (
-                  <div className="text-sm">
-                    <div className="flex items-center text-green-600 mb-2">
-                      <CheckCircle size={16} className="mr-2" />
-                      Authenticated
+            </div>
+          </Card>
+        ) : (
+          <>
+            {/* Authentication Method Selection */}
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium mb-3">
+                  Authentication Method
+                </label>
+                <div className="space-y-3">
+                  {/* API Key Option */}
+                  <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-accent/50 transition-colors">
+                    <input
+                      type="radio"
+                      value="api_key"
+                      checked={authType === 'api_key'}
+                      onChange={(e) =>
+                        handleAuthTypeChange(e.target.value as 'api_key')
+                      }
+                      className="mr-3"
+                    />
+                    <Key size={16} className="mr-2 text-muted-foreground" />
+                    <div>
+                      <div className="text-sm font-medium">API Key</div>
+                      <div className="text-xs text-muted-foreground">
+                        Use your {currentProvider?.name} API key
+                      </div>
                     </div>
-                    {oauthStatus.userEmail && (
-                      <div className="text-muted-foreground mb-4">
-                        Signed in as:{' '}
-                        <span className="font-medium">
-                          {oauthStatus.userEmail}
-                        </span>
+                  </label>
+
+                  {/* OAuth Option (only for Gemini) */}
+                  {currentProvider?.supportsOAuth && (
+                    <label className="flex items-center p-3 border rounded-md cursor-pointer hover:bg-accent/50 transition-colors">
+                      <input
+                        type="radio"
+                        value="oauth"
+                        checked={authType === 'oauth'}
+                        onChange={(e) =>
+                          handleAuthTypeChange(e.target.value as 'oauth')
+                        }
+                        className="mr-3"
+                      />
+                      <User size={16} className="mr-2 text-muted-foreground" />
+                      <div>
+                        <div className="text-sm font-medium">
+                          Google OAuth (Recommended)
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Sign in with your Google account
+                        </div>
+                      </div>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* API Key Configuration */}
+              {authType === 'api_key' && (
+                <Card className="p-4">
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium">
+                      Environment API Key
+                    </label>
+                    <div className="p-3 bg-accent/30 rounded-md border">
+                      {envApiKeyDetected ? (
+                        <div className="flex items-center text-green-600">
+                          <CheckCircle size={16} className="mr-2" />
+                          <span className="text-sm">
+                            {currentProvider?.envVarName} environment variable
+                            detected
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center text-amber-600">
+                          <AlertTriangle size={16} className="mr-2" />
+                          <span className="text-sm">
+                            {currentProvider?.envVarName} environment variable
+                            not found
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {!envApiKeyDetected && (
+                      <div className="text-xs text-muted-foreground">
+                        To use API key authentication, set the{' '}
+                        <code className="bg-accent px-1 rounded">
+                          {currentProvider?.envVarName}
+                        </code>{' '}
+                        environment variable with your API key
+                        {currentProvider?.apiKeyUrl && (
+                          <>
+                            {' '}
+                            from{' '}
+                            <a
+                              href={currentProvider.apiKeyUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              {currentProvider.name} Dashboard
+                            </a>
+                          </>
+                        )}{' '}
+                        and restart the application.
                       </div>
                     )}
 
-                    <div className="space-y-2">
-                      <Button onClick={handleUseOAuth} className="w-full">
-                        Use OAuth Authentication
-                      </Button>
-                      <Button
-                        onClick={handleOAuthLogout}
-                        variant="outline"
-                        className="w-full"
-                      >
-                        Sign Out
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Sign in with your Google account to access Gemini API.
-                      This will open your browser for authentication.
-                    </p>
                     <Button
-                      onClick={handleOAuthLogin}
-                      disabled={isAuthenticating}
+                      onClick={handleSwitchToApiKey}
+                      disabled={!envApiKeyDetected}
                       className="w-full"
                     >
-                      {isAuthenticating
-                        ? 'Authenticating...'
-                        : 'Sign in with Google'}
+                      {envApiKeyDetected
+                        ? 'Use API Key Authentication'
+                        : 'API Key Not Available'}
                     </Button>
                   </div>
-                )}
-              </div>
-            </Card>
-          )}
-        </div>
+                </Card>
+              )}
+
+              {/* OAuth Configuration */}
+              {authType === 'oauth' && currentProvider?.supportsOAuth && (
+                <Card className="p-4">
+                  <div className="space-y-4">
+                    {oauthStatus.authenticated ? (
+                      <div className="text-sm">
+                        <div className="flex items-center text-green-600 mb-2">
+                          <CheckCircle size={16} className="mr-2" />
+                          Authenticated
+                        </div>
+                        {oauthStatus.userEmail && (
+                          <div className="text-muted-foreground mb-4">
+                            Signed in as:{' '}
+                            <span className="font-medium">
+                              {oauthStatus.userEmail}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <Button onClick={handleUseOAuth} className="w-full">
+                            Use OAuth Authentication
+                          </Button>
+                          <Button
+                            onClick={handleOAuthLogout}
+                            variant="outline"
+                            className="w-full"
+                          >
+                            Sign Out
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Sign in with your Google account to access Gemini
+                          API. This will open your browser for authentication.
+                        </p>
+                        <Button
+                          onClick={handleOAuthLogin}
+                          disabled={isAuthenticating}
+                          className="w-full"
+                        >
+                          {isAuthenticating
+                            ? 'Authenticating...'
+                            : 'Sign in with Google'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+            </div>
+          </>
+        )}
 
         {/* Footer */}
         <div className="flex gap-3 justify-end">

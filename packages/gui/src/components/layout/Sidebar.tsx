@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { useAppStore } from '@/stores/appStore';
 import { useChatStore } from '@/stores/chatStore';
-import { geminiChatService } from '@/services/geminiChatService';
+import { unifiedChatService } from '@/services/unifiedChatService';
 import { cn } from '@/utils/cn';
 import { extractImagesFromParts } from '@/utils/messageUtils';
 import type { ChatSession } from '@/types';
@@ -138,6 +138,8 @@ export const Sidebar: React.FC = () => {
     // Clear any existing role conflict dialog
     setRoleConflictDialog(null);
 
+    console.log('[Sidebar] Creating new session with provider:', currentProvider);
+
     const newSession: ChatSession = {
       id: `session-${Date.now()}`,
       title: 'New Chat',
@@ -149,14 +151,22 @@ export const Sidebar: React.FC = () => {
       roleId: undefined, // Don't set roleId until first message
     };
 
+    console.log('[Sidebar] New session object:', newSession);
+
     // Add session to frontend store (automatically sets as active)
     addSession(newSession);
 
     // Notify backend to create and switch to new session
     try {
-      await geminiChatService.createSession(newSession.id, newSession.title); // Don't pass roleId
+      console.log('[Sidebar] Calling unifiedChatService.createSession with provider:', currentProvider);
+      await unifiedChatService.createSession(
+        newSession.id,
+        newSession.title,
+        undefined, // Don't pass roleId
+        currentProvider, // Pass current provider
+      );
       // Switch backend to new session to keep frontend and backend in sync
-      await geminiChatService.switchSession(newSession.id);
+      await unifiedChatService.switchSession(newSession.id);
 
       // CRITICAL: Sync chatStore.currentSessionId with backend for new session
       await setActiveSession(newSession.id);
@@ -223,7 +233,7 @@ export const Sidebar: React.FC = () => {
 
     // Notify backend to delete session FIRST, wait for it to complete
     try {
-      await geminiChatService.deleteSession(sessionId);
+      await unifiedChatService.deleteSession(sessionId);
       console.log('Backend session deleted:', sessionId);
 
       // Only after backend confirms deletion, remove from frontend store
@@ -242,7 +252,7 @@ export const Sidebar: React.FC = () => {
   const handleDeleteAllSessions = async () => {
     try {
       // First notify backend to delete all sessions
-      await geminiChatService.deleteAllSessions();
+      await unifiedChatService.deleteAllSessions();
       console.log('All backend sessions deleted');
 
       // Then clear frontend store
@@ -291,14 +301,14 @@ export const Sidebar: React.FC = () => {
   const performSessionSwitch = async (sessionId: string) => {
     try {
       // First switch backend session to ensure consistency
-      await geminiChatService.switchSession(sessionId);
+      await unifiedChatService.switchSession(sessionId);
 
       // Only switch frontend after backend confirms success
       // CRITICAL: await to sync chatStore.currentSessionId with backend
       await setActiveSession(sessionId);
 
       // Load session messages from backend
-      const messages = await geminiChatService.getDisplayMessages(sessionId);
+      const messages = await unifiedChatService.getDisplayMessages(sessionId);
       console.log(
         'Loaded',
         messages.length,
@@ -355,7 +365,7 @@ export const Sidebar: React.FC = () => {
 
       // Then switch to the session's role
       if (targetRoleId) {
-        await geminiChatService.switchRole(targetRoleId);
+        await unifiedChatService.switchRole(targetRoleId);
         setCurrentRole(targetRoleId); // Update frontend state
         console.log('Switched to session role:', targetRoleId);
       }
@@ -390,7 +400,7 @@ export const Sidebar: React.FC = () => {
 
     try {
       // Update backend
-      await geminiChatService.toggleTitleLock(sessionId, newLocked);
+      await unifiedChatService.toggleTitleLock(sessionId, newLocked);
 
       // Update frontend store
       updateSession(sessionId, { titleLockedByUser: newLocked });

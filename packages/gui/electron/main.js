@@ -10,7 +10,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const {
-  GeminiChatManager,
+  UnifiedChatManager,
   Config,
   RoleManager,
   WorkspaceManager,
@@ -20,8 +20,8 @@ const {
   loadBuiltinExtensions,
 } = require('@google/gemini-cli-core');
 
-// GeminiChatManager instance - we'll initialize this when needed
-let geminiChatManager = null;
+// UnifiedChatManager instance - we'll initialize this when needed
+let unifiedChatManager = null;
 let templateManager = null;
 let isInitialized = false;
 let initializationPromise = null;
@@ -122,20 +122,21 @@ ipcMain.handle('fs-read-file-as-base64', async (_, filePath) => {
   }
 });
 
-// Helper function to ensure GeminiChatManager is initialized
+// Helper function to ensure UnifiedChatManager is initialized
 const ensureInitialized = async (
   configParams = {},
   initialRoleId = undefined,
+  defaultProvider = 'gemini',
 ) => {
   // If already initialized, return immediately
-  if (geminiChatManager && isInitialized) {
-    return geminiChatManager;
+  if (unifiedChatManager && isInitialized) {
+    return unifiedChatManager;
   }
 
   // If initialization is in progress, wait for it
   if (initializationPromise) {
     await initializationPromise;
-    return geminiChatManager;
+    return unifiedChatManager;
   }
 
   // Start initialization
@@ -262,7 +263,7 @@ const ensureInitialized = async (
         (attempt, maxAttempts, error, delayMs) => {
           // Send retry notification to all renderer processes
           BrowserWindow.getAllWindows().forEach((window) => {
-            window.webContents.send('geminiChat-retry-attempt', {
+            window.webContents.send('unifiedChat-retry-attempt', {
               attempt,
               maxAttempts,
               error: error?.message || String(error),
@@ -273,15 +274,15 @@ const ensureInitialized = async (
         },
       );
 
-      // Initialize SessionManager FIRST (before GeminiChatManager)
-      // This ensures sessions are loaded when GeminiChatManager.initialize() tries to access them
+      // Initialize SessionManager FIRST (before UnifiedChatManager)
+      // This ensures sessions are loaded when UnifiedChatManager.initialize() tries to access them
       await SessionManager.getInstance().initializeWithConfig({
         config: config,
       });
 
-      // Initialize GeminiChatManager with the proper Config instance
-      geminiChatManager = new GeminiChatManager(config);
-      await geminiChatManager.initialize(initialRoleId);
+      // Initialize UnifiedChatManager with the proper Config instance
+      unifiedChatManager = new UnifiedChatManager(config);
+      await unifiedChatManager.initialize(initialRoleId, defaultProvider);
 
       // Initialize WorkspaceManager with config to ensure proper setup
       const workspaceManager = WorkspaceManager.getInstance(config);
@@ -293,37 +294,78 @@ const ensureInitialized = async (
       // console.log('TemplateManager initialized with config')
 
       isInitialized = true;
-      // console.log('MultiModelSystem, SessionManager and WorkspaceManager initialized with LM Studio default model')
+      // console.log('UnifiedChatManager, SessionManager and WorkspaceManager initialized with default provider:', defaultProvider)
     } catch (error) {
-      console.error('Failed to initialize GeminiChatManager:', error);
+      console.error('Failed to initialize UnifiedChatManager:', error);
       initializationPromise = null; // Reset on error
       throw error;
     }
   })();
 
   await initializationPromise;
-  return geminiChatManager;
+  return unifiedChatManager;
 };
 
-// GeminiChat IPC handlers - Now using actual GeminiChatManager
+// GeminiChat IPC handlers - Now using UnifiedChatManager (supports multi-provider)
 ipcMain.handle(
-  'geminiChat-initialize',
-  async (_, configParams, initialRoleId) => {
+  'unifiedChat-initialize',
+  async (_, configParams, initialRoleId, defaultProvider) => {
     try {
-      // console.log('GeminiChat initialize called with:', configParams, 'initialRoleId:', initialRoleId)
-      await ensureInitialized(configParams, initialRoleId);
+      // console.log('UnifiedChat initialize called with:', configParams, 'initialRoleId:', initialRoleId, 'defaultProvider:', defaultProvider)
+      await ensureInitialized(configParams, initialRoleId, defaultProvider || 'gemini');
       return { success: true };
     } catch (error) {
-      console.error('Failed to initialize GeminiChatManager:', error);
+      console.error('Failed to initialize UnifiedChatManager:', error);
       throw error;
     }
   },
 );
 
-// Removed: Project now uses only Gemini, model list is hardcoded in frontend
-// ipcMain.handle('geminiChat-get-available-models', ...)
+// Provider management handlers
+ipcMain.handle('unifiedChat-switch-provider', async (_, sessionId, providerType, model) => {
+  try {
+    const manager = await ensureInitialized();
+    const config = manager.getConfig();
 
-ipcMain.handle('geminiChat-get-all-roles', async () => {
+    console.log(`[Main.js] switchProvider: sessionId=${sessionId}, provider=${providerType}, model=${model}`);
+
+    // Set global model if provided (do this first before changing provider)
+    if (model) {
+      config.setGlobalModel(model);
+      console.log(`[Main.js] Set global model: ${model}`);
+    }
+
+    // Set global provider and reinitialize tools (async now)
+    await manager.setSessionProvider(sessionId, providerType);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to switch provider:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('unifiedChat-get-session-provider', async (_, sessionId) => {
+  try {
+    const manager = await ensureInitialized();
+    return manager.getSessionProvider(sessionId);
+  } catch (error) {
+    console.error('Failed to get session provider:', error);
+    return 'gemini'; // Default fallback
+  }
+});
+
+ipcMain.handle('unifiedChat-get-available-models', async (_, providerType) => {
+  try {
+    const manager = await ensureInitialized();
+    return await manager.getAvailableModels(providerType);
+  } catch (error) {
+    console.error('Failed to get available models:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('unifiedChat-get-all-roles', async () => {
   // console.log('MultiModel getAllRoles called')
   try {
     const system = await ensureInitialized();
@@ -347,7 +389,7 @@ ipcMain.handle('geminiChat-get-all-roles', async () => {
   }
 });
 
-ipcMain.handle('geminiChat-get-current-role', async () => {
+ipcMain.handle('unifiedChat-get-current-role', async () => {
   // console.log('MultiModel getCurrentRole called')
   try {
     const system = await ensureInitialized();
@@ -371,9 +413,9 @@ ipcMain.handle('geminiChat-get-current-role', async () => {
 
 // Add more handlers as needed...
 // Removed: Project now uses only Gemini, no provider switching needed
-// ipcMain.handle('geminiChat-switch-provider', ...)
+// ipcMain.handle('unifiedChat-switch-provider', ...)
 
-ipcMain.handle('geminiChat-switch-role', async (_, roleId) => {
+ipcMain.handle('unifiedChat-switch-role', async (_, roleId) => {
   // console.log('MultiModel switchRole called:', roleId)
   try {
     const system = await ensureInitialized();
@@ -387,7 +429,7 @@ ipcMain.handle('geminiChat-switch-role', async (_, roleId) => {
 });
 
 // Workspace directory management handlers
-ipcMain.handle('geminiChat-get-workspace-directories', async () => {
+ipcMain.handle('unifiedChat-get-workspace-directories', async () => {
   try {
     // console.log('MultiModel getWorkspaceDirectories called')
     const system = await ensureInitialized();
@@ -401,7 +443,7 @@ ipcMain.handle('geminiChat-get-workspace-directories', async () => {
 });
 
 ipcMain.handle(
-  'geminiChat-get-directory-contents',
+  'unifiedChat-get-directory-contents',
   async (_, directoryPath) => {
     try {
       // console.log('MultiModel getDirectoryContents called for:', directoryPath)
@@ -420,7 +462,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  'geminiChat-add-workspace-directory',
+  'unifiedChat-add-workspace-directory',
   async (event, directory, basePath) => {
     try {
       // console.log('MultiModel addWorkspaceDirectory called:', directory, 'basePath:', basePath)
@@ -451,7 +493,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  'geminiChat-set-workspace-directories',
+  'unifiedChat-set-workspace-directories',
   async (event, directories) => {
     try {
       // console.log('MultiModel setWorkspaceDirectories called:', directories)
@@ -477,7 +519,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('geminiChat-get-all-templates', async () => {
+ipcMain.handle('unifiedChat-get-all-templates', async () => {
   try {
     await ensureInitialized();
     const templates = templateManager.getAllTemplates();
@@ -489,7 +531,7 @@ ipcMain.handle('geminiChat-get-all-templates', async () => {
   }
 });
 
-ipcMain.handle('geminiChat-add-custom-template', async (_, template) => {
+ipcMain.handle('unifiedChat-add-custom-template', async (_, template) => {
   try {
     await ensureInitialized();
     templateManager.addCustomTemplate(template);
@@ -501,7 +543,7 @@ ipcMain.handle('geminiChat-add-custom-template', async (_, template) => {
   }
 });
 
-ipcMain.handle('geminiChat-update-custom-template', async (_, id, updates) => {
+ipcMain.handle('unifiedChat-update-custom-template', async (_, id, updates) => {
   try {
     await ensureInitialized();
     templateManager.updateCustomTemplate(id, updates);
@@ -513,7 +555,7 @@ ipcMain.handle('geminiChat-update-custom-template', async (_, id, updates) => {
   }
 });
 
-ipcMain.handle('geminiChat-delete-custom-template', async (_, id) => {
+ipcMain.handle('unifiedChat-delete-custom-template', async (_, id) => {
   try {
     await ensureInitialized();
     templateManager.deleteCustomTemplate(id);
@@ -526,7 +568,7 @@ ipcMain.handle('geminiChat-delete-custom-template', async (_, id) => {
 });
 
 // History management handlers
-ipcMain.handle('geminiChat-get-history', async () => {
+ipcMain.handle('unifiedChat-get-history', async () => {
   try {
     const system = await ensureInitialized();
     const history = SessionManager.getInstance().getHistory();
@@ -538,7 +580,7 @@ ipcMain.handle('geminiChat-get-history', async () => {
   }
 });
 
-ipcMain.handle('geminiChat-set-history', async (_, history) => {
+ipcMain.handle('unifiedChat-set-history', async (_, history) => {
   try {
     const system = await ensureInitialized();
     SessionManager.getInstance().setHistory(history);
@@ -550,7 +592,7 @@ ipcMain.handle('geminiChat-set-history', async (_, history) => {
   }
 });
 
-ipcMain.handle('geminiChat-clear-history', async () => {
+ipcMain.handle('unifiedChat-clear-history', async () => {
   try {
     const system = await ensureInitialized();
     SessionManager.getInstance().clearHistory();
@@ -564,12 +606,25 @@ ipcMain.handle('geminiChat-clear-history', async () => {
 
 // Session management handlers
 ipcMain.handle(
-  'geminiChat-create-session',
-  async (_, sessionId, title = 'New Chat', roleId) => {
+  'unifiedChat-create-session',
+  async (_, sessionId, title = 'New Chat', roleId, provider) => {
     try {
       const system = await ensureInitialized();
-      SessionManager.getInstance().createSession(sessionId, title, roleId);
-      // console.log('MultiModel createSession called:', sessionId, title, 'roleId:', roleId)
+      const config = system.getConfig();
+      console.log('[Main.js] createSession called with:', { sessionId, title, roleId, provider });
+
+      // Set global provider if provided
+      if (provider) {
+        config.setGlobalProvider(provider);
+        console.log(`[Main.js] Set global provider: ${provider}`);
+      }
+
+      SessionManager.getInstance().createSession(
+        sessionId,
+        title,
+        roleId,
+      );
+      console.log('[Main.js] SessionManager.createSession completed');
       return { success: true };
     } catch (error) {
       console.error('Failed to create session:', error);
@@ -578,7 +633,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('geminiChat-switch-session', async (_, sessionId) => {
+ipcMain.handle('unifiedChat-switch-session', async (_, sessionId) => {
   try {
     const system = await ensureInitialized();
     // Use GeminiChatManager.switchSession to properly load history into GeminiClient
@@ -591,7 +646,7 @@ ipcMain.handle('geminiChat-switch-session', async (_, sessionId) => {
   }
 });
 
-ipcMain.handle('geminiChat-delete-session', async (_, sessionId) => {
+ipcMain.handle('unifiedChat-delete-session', async (_, sessionId) => {
   try {
     const system = await ensureInitialized();
     SessionManager.getInstance().deleteSession(sessionId);
@@ -603,7 +658,7 @@ ipcMain.handle('geminiChat-delete-session', async (_, sessionId) => {
   }
 });
 
-ipcMain.handle('geminiChat-delete-all-sessions', async () => {
+ipcMain.handle('unifiedChat-delete-all-sessions', async () => {
   try {
     const system = await ensureInitialized();
     const sessionManager = SessionManager.getInstance();
@@ -622,7 +677,7 @@ ipcMain.handle('geminiChat-delete-all-sessions', async () => {
   }
 });
 
-ipcMain.handle('geminiChat-get-current-session-id', async () => {
+ipcMain.handle('unifiedChat-get-current-session-id', async () => {
   try {
     const system = await ensureInitialized();
     const sessionId = SessionManager.getInstance().getCurrentSessionId();
@@ -634,7 +689,7 @@ ipcMain.handle('geminiChat-get-current-session-id', async () => {
   }
 });
 
-ipcMain.handle('geminiChat-get-display-messages', async (_, sessionId) => {
+ipcMain.handle('unifiedChat-get-display-messages', async (_, sessionId) => {
   try {
     const system = await ensureInitialized();
     const messages = SessionManager.getInstance().getDisplayMessages(sessionId);
@@ -646,7 +701,7 @@ ipcMain.handle('geminiChat-get-display-messages', async (_, sessionId) => {
   }
 });
 
-ipcMain.handle('geminiChat-get-sessions-info', async () => {
+ipcMain.handle('unifiedChat-get-sessions-info', async () => {
   try {
     const system = await ensureInitialized();
     const sessionsInfo = SessionManager.getInstance().getSessionsInfo();
@@ -659,7 +714,7 @@ ipcMain.handle('geminiChat-get-sessions-info', async () => {
 });
 
 ipcMain.handle(
-  'geminiChat-update-session-title',
+  'unifiedChat-update-session-title',
   async (_, sessionId, newTitle) => {
     try {
       const system = await ensureInitialized();
@@ -673,7 +728,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('geminiChat-toggle-title-lock', async (_, sessionId, locked) => {
+ipcMain.handle('unifiedChat-toggle-title-lock', async (_, sessionId, locked) => {
   try {
     const system = await ensureInitialized();
     SessionManager.getInstance().toggleTitleLock(sessionId, locked);
@@ -686,7 +741,7 @@ ipcMain.handle('geminiChat-toggle-title-lock', async (_, sessionId, locked) => {
 });
 
 ipcMain.handle(
-  'geminiChat-update-session-messages',
+  'unifiedChat-update-session-messages',
   async (_, sessionId, messages) => {
     try {
       const system = await ensureInitialized();
@@ -705,7 +760,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('geminiChat-set-session-role', async (_, sessionId, roleId) => {
+ipcMain.handle('unifiedChat-set-session-role', async (_, sessionId, roleId) => {
   try {
     const system = await ensureInitialized();
     SessionManager.getInstance().setSessionRole(sessionId, roleId);
@@ -718,7 +773,7 @@ ipcMain.handle('geminiChat-set-session-role', async (_, sessionId, roleId) => {
 });
 
 // Add message sending handler
-ipcMain.handle('geminiChat-send-message', async (_, messages, signal) => {
+ipcMain.handle('unifiedChat-send-message', async (_, messages, signal) => {
   try {
     // console.log('MultiModel sendMessage called with:', messages?.length, 'messages')
     const system = await ensureInitialized();
@@ -749,7 +804,7 @@ ipcMain.handle('geminiChat-send-message', async (_, messages, signal) => {
 });
 
 // Handle stream cancellation from frontend
-ipcMain.handle('geminiChat-cancel-stream', async (event, streamId) => {
+ipcMain.handle('unifiedChat-cancel-stream', async (event, streamId) => {
   try {
     const streamInfo = activeStreams.get(streamId);
     if (streamInfo) {
@@ -760,7 +815,7 @@ ipcMain.handle('geminiChat-cancel-stream', async (event, streamId) => {
       activeStreams.delete(streamId);
 
       // Send cancellation event to frontend
-      event.sender.send('geminiChat-stream-error', {
+      event.sender.send('unifiedChat-stream-error', {
         streamId,
         sessionId: streamInfo.sessionId, // Include sessionId from tracked stream
         error: 'Stream cancelled by user',
@@ -779,7 +834,7 @@ ipcMain.handle('geminiChat-cancel-stream', async (event, streamId) => {
 
 // Add streaming message handler using electron-ipc-stream
 ipcMain.handle(
-  'geminiChat-send-message-stream',
+  'unifiedChat-send-message-stream',
   async (event, messages, streamId) => {
     // Get current session ID at the very beginning
     // This is critical: we need it for progress handler, confirmation handler, and stream association
@@ -797,7 +852,7 @@ ipcMain.handle(
       // Set up tool progress handler for real-time progress updates
       system.setToolProgressHandler((progressEvent) => {
         // Send progress event to renderer process
-        event.sender.send('geminiChat-stream-chunk', {
+        event.sender.send('unifiedChat-stream-chunk', {
           streamId,
           sessionId: currentSessionId,
           type: 'tool_progress',
@@ -925,10 +980,6 @@ ipcMain.handle(
         console.log(`[Main] Entering for-await loop for stream ${streamId}`);
         for await (const chunk of streamGenerator) {
           chunkCount++;
-          console.log(
-            `[Main] Stream ${streamId} received chunk #${chunkCount}, type:`,
-            chunk.type,
-          );
           // Check if stream was cancelled
           if (abortController.signal.aborted) {
             console.log(
@@ -965,7 +1016,7 @@ ipcMain.handle(
               timestamp: Date.now(),
             };
 
-            event.sender.send('geminiChat-stream-error', errorData);
+            event.sender.send('unifiedChat-stream-error', errorData);
 
             // Break the loop to stop processing
             break;
@@ -981,7 +1032,7 @@ ipcMain.handle(
               compressionInfo: chunk.compressionInfo,
               timestamp: Date.now(),
             };
-            event.sender.send('geminiChat-stream-chunk', compressionData);
+            event.sender.send('unifiedChat-stream-chunk', compressionData);
           } else if (chunk.type === 'content') {
             // Turn events use 'value' field, convert to frontend format
             const content = chunk.value || chunk.content || '';
@@ -993,7 +1044,7 @@ ipcMain.handle(
               role: 'assistant',
               timestamp: Date.now(),
             };
-            event.sender.send('geminiChat-stream-chunk', chunkData);
+            event.sender.send('unifiedChat-stream-chunk', chunkData);
 
             // Accumulate content for final response
             if (content) {
@@ -1014,7 +1065,7 @@ ipcMain.handle(
                 role: 'assistant',
                 timestamp: Date.now(),
               };
-              event.sender.send('geminiChat-stream-chunk', chunkData);
+              event.sender.send('unifiedChat-stream-chunk', chunkData);
             }
             // Don't accumulate thought in final content
           } else if (chunk.type === 'finished') {
@@ -1036,7 +1087,7 @@ ipcMain.handle(
               role: 'assistant',
               timestamp: Date.now(),
             };
-            event.sender.send('geminiChat-stream-chunk', chunkData);
+            event.sender.send('unifiedChat-stream-chunk', chunkData);
           } else if (chunk.type === 'tool_call_response') {
             // Handle tool call responses with proper field mapping
             const responseValue = chunk.value || {};
@@ -1056,7 +1107,7 @@ ipcMain.handle(
               role: 'assistant',
               timestamp: Date.now(),
             };
-            event.sender.send('geminiChat-stream-chunk', chunkData);
+            event.sender.send('unifiedChat-stream-chunk', chunkData);
           } else if (chunk.type === 'tool_progress') {
             // Handle tool progress events
             const progressValue = chunk.value || {};
@@ -1072,7 +1123,7 @@ ipcMain.handle(
               details: progressValue.details,
               timestamp: Date.now(),
             };
-            event.sender.send('geminiChat-stream-chunk', chunkData);
+            event.sender.send('unifiedChat-stream-chunk', chunkData);
           } else {
             // Handle other event types
             const chunkData = {
@@ -1084,7 +1135,7 @@ ipcMain.handle(
               timestamp: Date.now(),
               ...chunk, // Include any additional properties
             };
-            event.sender.send('geminiChat-stream-chunk', chunkData);
+            event.sender.send('unifiedChat-stream-chunk', chunkData);
 
             // Accumulate content if present
             const content = chunk.content || chunk.value;
@@ -1104,7 +1155,7 @@ ipcMain.handle(
           timestamp: Date.now(),
         };
 
-        event.sender.send('geminiChat-stream-complete', completionData);
+        event.sender.send('unifiedChat-stream-complete', completionData);
 
         return { success: true, totalContent: fullContent };
       } catch (streamError) {
@@ -1127,7 +1178,7 @@ ipcMain.handle(
           timestamp: Date.now(),
         };
 
-        event.sender.send('geminiChat-stream-error', errorData);
+        event.sender.send('unifiedChat-stream-error', errorData);
         throw streamError;
       }
     } catch (error) {
@@ -1152,7 +1203,7 @@ ipcMain.handle(
           error: errorMessage,
           timestamp: Date.now(),
         };
-        event.sender.send('geminiChat-stream-error', errorData);
+        event.sender.send('unifiedChat-stream-error', errorData);
       }
 
       throw error;
@@ -1348,7 +1399,7 @@ ipcMain.handle('set-approval-mode', async (_, mode) => {
 });
 
 // Direct Excel tool call handler
-ipcMain.handle('geminiChat-call-excel-tool', async (_, operation, params) => {
+ipcMain.handle('unifiedChat-call-excel-tool', async (_, operation, params) => {
   try {
     const system = await ensureInitialized();
     const { ExcelTool } = require('@google/gemini-cli-core');
@@ -1375,5 +1426,111 @@ ipcMain.handle('geminiChat-call-excel-tool', async (_, operation, params) => {
       success: false,
       error: error.message,
     };
+  }
+});
+
+// MCP Server Management handlers
+ipcMain.handle('mcp-get-servers', async () => {
+  try {
+    const system = await ensureInitialized();
+    const config = system.getConfig();
+    const {
+      McpServerEnablementManager,
+      generateMcpServerKey,
+      MCPServerStatus,
+      getAllMCPServerStatuses,
+    } = require('@google/gemini-cli-core');
+
+    // Get MCP servers from configuration
+    const mcpServers = config.getMcpServers() || {};
+
+    // Get enablement manager
+    const enablementManager = new McpServerEnablementManager();
+
+    // Get server statuses
+    const serverStatuses = getAllMCPServerStatuses();
+
+    // Build server list
+    const servers = [];
+    for (const [name, serverConfig] of Object.entries(mcpServers)) {
+      const serverKey = generateMcpServerKey(
+        serverConfig.extension?.name,
+        name,
+      );
+
+      const enabled = enablementManager.isEnabled(serverKey);
+      const status = serverStatuses.get(name);
+      const connected = status === MCPServerStatus.CONNECTED;
+
+      // Determine transport type
+      let transport = 'stdio';
+      if (serverConfig.httpUrl) {
+        transport = 'http';
+      } else if (serverConfig.url) {
+        transport = 'sse';
+      }
+
+      servers.push({
+        key: serverKey,
+        name,
+        displayName: serverConfig.extension
+          ? `${name} (${serverConfig.extension.name})`
+          : name,
+        extensionName: serverConfig.extension?.name,
+        enabled,
+        description: serverConfig.description,
+        transport,
+        connected,
+      });
+    }
+
+    return servers;
+  } catch (error) {
+    console.error('Failed to get MCP servers:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('mcp-set-servers-enabled', async (_, updates) => {
+  try {
+    const system = await ensureInitialized();
+    const config = system.getConfig();
+    const { McpServerEnablementManager } = require('@google/gemini-cli-core');
+
+    // Get enablement manager
+    const enablementManager = new McpServerEnablementManager();
+
+    // Apply updates
+    enablementManager.setMultiple(updates);
+
+    // Re-discover MCP tools to apply the changes
+    // This will remove tools from disabled servers and discover tools from newly enabled servers
+    const toolRegistry = config.getToolRegistry();
+    await toolRegistry.discoverMcpTools();
+    console.log('[Main] MCP server enablement updated, tools re-discovered');
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to set MCP servers enabled:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('mcp-refresh-servers', async () => {
+  try {
+    // Trigger re-discovery of MCP servers
+    // This would require re-initializing the system or
+    // calling the discovery method again
+    const system = await ensureInitialized();
+
+    // For now, just return success
+    // In a full implementation, you'd want to:
+    // 1. Stop existing MCP clients
+    // 2. Re-discover MCP servers
+    // 3. Start new MCP clients
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to refresh MCP servers:', error);
+    throw error;
   }
 });

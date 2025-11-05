@@ -7,12 +7,12 @@
 // import type { PresetTemplate } from '@google/gemini-cli-core';
 
 // Temporarily define core types locally until build issues are resolved
+// Must match ModelProviderType in packages/core/src/core/clientPoolRouter.ts
 export enum ModelProviderType {
   GEMINI = 'gemini',
+  CLAUDE = 'claude',
   OPENAI = 'openai',
-  LM_STUDIO = 'lm_studio',
-  ANTHROPIC = 'anthropic',
-  CUSTOM = 'custom',
+  LMSTUDIO = 'lmstudio',
 }
 
 export interface ModelProviderConfig {
@@ -308,13 +308,18 @@ export interface AuthConfig {
     oauthToken?: string;
     // Note: API key is read from GEMINI_API_KEY environment variable, not stored in config
   };
-  openai?: {
-    apiKey: string;
-    organization?: string;
+  claude?: {
+    type: 'api_key';
+    // Note: API key is read from ANTHROPIC_API_KEY environment variable, not stored in config
   };
-  lmStudio?: {
-    baseUrl: string;
-    apiKey?: string;
+  openai?: {
+    type: 'api_key';
+    // Note: API key is read from OPENAI_API_KEY environment variable, not stored in config
+  };
+  lmstudio?: {
+    type: 'api_key';
+    baseUrl?: string;
+    // Note: LM Studio doesn't require authentication, baseUrl is optional
   };
 }
 

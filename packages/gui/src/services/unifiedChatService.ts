@@ -9,7 +9,6 @@ import type {
   UniversalStreamEvent,
   RoleDefinition,
   PresetTemplate,
-  ModelProviderType,
   CompressionInfo,
   ToolCall,
   ChatMessage,
@@ -20,22 +19,33 @@ import type {
   ToolCallConfirmationDetails,
   ToolConfirmationOutcome,
 } from '@/types';
+import { ModelProviderType } from '@/types';
 import { useChatStore } from '@/stores/chatStore';
 import type { SessionState } from '@/stores/chatStore';
 
-// Define Electron API interface
+// Define Electron API interface for unified chat
 interface ElectronAPI {
-  geminiChat: {
+  unifiedChat: {
     initialize: (
       config: Record<string, unknown>,
       initialRoleId?: string,
+      defaultProvider?: ModelProviderType,
     ) => Promise<void>;
-    switchProvider: (providerType: string, model: string) => Promise<void>;
+    switchProvider: (
+      sessionId: string,
+      providerType: ModelProviderType,
+      model?: string,
+    ) => Promise<void>;
+    getSessionProvider: (sessionId: string) => Promise<ModelProviderType>;
     switchRole: (roleId: string) => Promise<boolean>;
     sendMessage: (
       messages: UniversalMessage[],
+      provider?: ModelProviderType,
     ) => Promise<UniversalStreamEvent[]>;
-    sendMessageStream: (messages: UniversalMessage[]) => {
+    sendMessageStream: (
+      messages: UniversalMessage[],
+      provider?: ModelProviderType,
+    ) => {
       streamId: string;
       startStream: (
         onChunk: (chunk: {
@@ -57,9 +67,10 @@ interface ElectronAPI {
           content: string;
           role: string;
           timestamp: number;
+          sessionId?: string;
         }) => void,
-        onError: (error: { type: string; error: string }) => void,
-      ) => () => void; // Returns cleanup function
+        onError: (error: { type: string; error: string; sessionId?: string }) => void,
+      ) => () => void;
     };
     getAllRoles: () => Promise<RoleDefinition[]>;
     getCurrentRole: () => Promise<RoleDefinition | null>;
@@ -92,6 +103,7 @@ interface ElectronAPI {
       sessionId: string,
       title?: string,
       roleId?: string,
+      provider?: ModelProviderType,
     ) => Promise<void>;
     switchSession: (sessionId: string) => Promise<void>;
     deleteSession: (sessionId: string) => Promise<void>;
@@ -105,6 +117,7 @@ interface ElectronAPI {
         messageCount: number;
         lastUpdated: Date;
         roleId?: string;
+        provider?: ModelProviderType;
       }>
     >;
     updateSessionTitle: (sessionId: string, newTitle: string) => Promise<void>;
@@ -120,14 +133,14 @@ interface ElectronAPI {
         event: unknown,
         data: {
           streamId: string;
-          sessionId?: string; // CRITICAL: Session ID for routing
+          sessionId?: string;
           confirmationDetails: ToolCallConfirmationDetails;
         },
       ) => void,
     ) => () => void;
     sendToolConfirmationResponse: (
       outcome: string,
-      sessionId?: string, // CRITICAL: Include sessionId in response
+      sessionId?: string,
     ) => void;
     // Retry attempt notifications
     onRetryAttempt: (
@@ -163,6 +176,10 @@ interface ElectronAPI {
     ) => Promise<{ success: boolean; error?: string }>;
     getApprovalMode: () => Promise<'default' | 'autoEdit' | 'yolo'>;
     setApprovalMode: (mode: 'default' | 'autoEdit' | 'yolo') => Promise<void>;
+    // Model availability
+    getAvailableModels: (
+      providerType: ModelProviderType,
+    ) => Promise<string[]>;
     // Direct Excel tool calls
     callExcelTool: (
       operation: string,
@@ -179,21 +196,25 @@ interface ElectronAPI {
   };
 }
 
-declare global {
-  interface GlobalThis {
-    electronAPI?: ElectronAPI;
-  }
-}
-
-class GeminiChatService {
+class UnifiedChatService {
   private initialized = false;
   private switchingRole = false;
   private lastRoleSwitch: { roleId: string; timestamp: number } | null = null;
-  private modelsCache: Record<string, string[]> | null = null;
-  private modelsCacheTimestamp: number = 0;
+  private modelsCache: Record<ModelProviderType, string[]> = {
+    gemini: [],
+    claude: [],
+    openai: [],
+    lmstudio: [],
+  };
+  private modelsCacheTimestamp: Record<ModelProviderType, number> = {
+    gemini: 0,
+    claude: 0,
+    openai: 0,
+    lmstudio: 0,
+  };
   private readonly MODELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  // Tool confirmation callback - includes sessionId to route to correct session
+  // Tool confirmation callback
   private confirmationCallback?: (
     details: ToolCallConfirmationDetails,
     sessionId?: string,
@@ -217,18 +238,19 @@ class GeminiChatService {
   }
 
   private get api() {
-    const electronAPI = (globalThis as GlobalThis).electronAPI;
-    if (!electronAPI?.geminiChat) {
-      throw new Error('Electron API not available');
+    const electronAPI = (window as Window & { electronAPI?: ElectronAPI }).electronAPI;
+    if (!electronAPI?.unifiedChat) {
+      throw new Error('Unified Chat Electron API not available');
     }
-    return electronAPI.geminiChat;
+    return electronAPI.unifiedChat;
   }
 
   async initialize(
     config: Record<string, unknown>,
     initialRoleId?: string,
+    defaultProvider: ModelProviderType = ModelProviderType.GEMINI,
   ): Promise<void> {
-    await this.api.initialize(config, initialRoleId);
+    await this.api.initialize(config, initialRoleId, defaultProvider);
     this.initialized = true;
 
     // Set up tool confirmation listener
@@ -256,35 +278,35 @@ class GeminiChatService {
   private setupConfirmationListener(): void {
     if (this.api.onToolConfirmationRequest) {
       this.api.onToolConfirmationRequest(async (_, data) => {
-        console.log('Tool confirmation request from main process:', data);
+        console.log('[UnifiedChatService] Tool confirmation request:', data);
 
-        // Extract sessionId from request data
         const sessionId = data.sessionId;
 
         if (this.confirmationCallback) {
           try {
-            // Call the registered callback to handle confirmation in GUI
-            // Pass sessionId so callback can route to correct session
             const outcome = await this.confirmationCallback(
               data.confirmationDetails,
               sessionId,
             );
             console.log(
-              'Sending confirmation response:',
+              '[UnifiedChatService] Sending confirmation response:',
               outcome,
               'sessionId:',
               sessionId,
             );
 
-            // Send the response back to main process WITH sessionId
             this.api.sendToolConfirmationResponse(outcome, sessionId);
           } catch (error) {
-            console.error('Error handling tool confirmation:', error);
-            // Send cancel as fallback WITH sessionId
+            console.error(
+              '[UnifiedChatService] Error handling tool confirmation:',
+              error,
+            );
             this.api.sendToolConfirmationResponse('cancel', sessionId);
           }
         } else {
-          console.warn('No confirmation callback registered, auto-cancelling');
+          console.warn(
+            '[UnifiedChatService] No confirmation callback registered, auto-cancelling',
+          );
           this.api.sendToolConfirmationResponse('cancel', sessionId);
         }
       });
@@ -295,9 +317,11 @@ class GeminiChatService {
   private setupRetryListener(): void {
     if (this.api.onRetryAttempt) {
       this.api.onRetryAttempt((_, data) => {
-        console.log('Retry attempt notification from main process:', data);
+        console.log(
+          '[UnifiedChatService] Retry attempt notification:',
+          data,
+        );
 
-        // Update chatStore with retry state
         const chatState = useChatStore.getState();
         chatState.setRetryState({
           isRetrying: true,
@@ -306,10 +330,8 @@ class GeminiChatService {
           errorMessage: data.error,
         });
 
-        // Auto-clear retry state after the delay plus a buffer
         setTimeout(() => {
           const currentState = useChatStore.getState();
-          // Only clear if we're still on the same attempt (hasn't been updated)
           if (
             currentState.retryState?.attempt === data.attempt &&
             currentState.retryState?.maxAttempts === data.maxAttempts
@@ -321,26 +343,44 @@ class GeminiChatService {
               errorMessage: '',
             });
           }
-        }, data.delayMs + 1000); // Add 1s buffer
+        }, data.delayMs + 1000);
       });
     }
   }
 
+  /**
+   * Switch provider for a session
+   */
   async switchProvider(
-    _providerType: ModelProviderType,
-    model: string,
+    sessionId: string,
+    providerType: ModelProviderType,
+    model?: string,
   ): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
 
-    // Project now uses only Gemini, no provider switching needed
-    console.log(`Model switched to: ${model} (provider switching removed)`);
+    console.log(
+      `[UnifiedChatService] Switching session ${sessionId} to provider: ${providerType}, model: ${model || 'default'}`,
+    );
+
+    await this.api.switchProvider(sessionId, providerType, model);
+  }
+
+  /**
+   * Get the current provider for a session
+   */
+  async getSessionProvider(sessionId: string): Promise<ModelProviderType> {
+    if (!this.initialized) {
+      throw new Error('UnifiedChatService not initialized');
+    }
+
+    return await this.api.getSessionProvider(sessionId);
   }
 
   async switchRole(roleId: string): Promise<boolean> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
 
     // Prevent duplicate calls within 1 second
@@ -351,7 +391,7 @@ class GeminiChatService {
       now - this.lastRoleSwitch.timestamp < 1000
     ) {
       console.log(
-        `Ignoring duplicate switchRole call for ${roleId} (within 1s)`,
+        `[UnifiedChatService] Ignoring duplicate switchRole call for ${roleId}`,
       );
       return true;
     }
@@ -359,14 +399,14 @@ class GeminiChatService {
     // Prevent concurrent calls
     if (this.switchingRole) {
       console.log(
-        `Role switch already in progress, ignoring call for ${roleId}`,
+        `[UnifiedChatService] Role switch already in progress, ignoring call for ${roleId}`,
       );
       return false;
     }
 
     this.switchingRole = true;
     try {
-      console.log(`Switching to role: ${roleId}`);
+      console.log(`[UnifiedChatService] Switching to role: ${roleId}`);
       const result = await this.api.switchRole(roleId);
 
       if (result) {
@@ -379,20 +419,22 @@ class GeminiChatService {
     }
   }
 
-  async sendMessage(messages: UniversalMessage[]): Promise<{
+  async sendMessage(
+    messages: UniversalMessage[],
+    provider?: ModelProviderType,
+  ): Promise<{
     stream: AsyncGenerator<UniversalStreamEvent>;
     cancel: () => void;
   }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
 
-    const streamResponse = this.api.sendMessageStream(messages);
+    const streamResponse = this.api.sendMessageStream(messages, provider);
 
-    // Get current session ID BEFORE starting stream for event filtering
+    // Get current session ID for event filtering
     const currentSessionId = await this.getCurrentSessionId();
 
-    // Create our own async generator using real-time callbacks
     let cleanup: (() => void) | null = null;
 
     async function* eventGenerator(): AsyncGenerator<UniversalStreamEvent> {
@@ -402,7 +444,6 @@ class GeminiChatService {
       let eventIndex = 0;
       let resolveNext: (() => void) | null = null;
 
-      // Set up real-time callbacks
       cleanup = streamResponse.startStream(
         // onChunk callback
         (chunk: {
@@ -410,7 +451,7 @@ class GeminiChatService {
           content?: string;
           role?: string;
           timestamp: number;
-          sessionId?: string; // CRITICAL: Session ID from backend
+          sessionId?: string;
           compressionInfo?: CompressionInfo;
           toolCall?: ToolCall;
           toolCallId?: string;
@@ -423,22 +464,20 @@ class GeminiChatService {
           message?: string;
           details?: Record<string, unknown>;
         }) => {
-          // CRITICAL: Check if this event belongs to current session or another session
+          // Check if this event belongs to current session
           const isCurrentSession =
             !chunk.sessionId ||
             !currentSessionId ||
             chunk.sessionId === currentSessionId;
 
-          // If event is from another session, update that session's saved state
+          // Handle background session updates
           if (!isCurrentSession && chunk.sessionId) {
-            // Update background session state directly
             const chatState = useChatStore.getState();
             const sessionStates = chatState.sessionStates;
             const backgroundSessionState =
               sessionStates.get(chunk.sessionId) ??
-              GeminiChatService.createDefaultSessionState();
+              UnifiedChatService.createDefaultSessionState();
 
-            // Update background session state based on event type
             if (chunk.type === 'thought') {
               backgroundSessionState.currentOperation = {
                 type: 'thinking',
@@ -463,14 +502,14 @@ class GeminiChatService {
               };
             }
 
-            // Save updated state back to map
             const newSessionStates = new Map(sessionStates);
             newSessionStates.set(chunk.sessionId, backgroundSessionState);
             chatState.sessionStates = newSessionStates;
 
-            // Don't add to events queue (don't show in current session UI)
             return;
           }
+
+          // Handle current session events
           if (chunk.type === 'content_delta' && chunk.content) {
             events.push({
               type: 'content_delta',
@@ -478,87 +517,56 @@ class GeminiChatService {
               role: chunk.role as 'assistant',
               timestamp: chunk.timestamp,
             });
-            // Immediately wake up the generator
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
             }
           } else if (chunk.type === 'thought') {
-            // Handle thought events - pass through with structured data
             events.push({
               type: 'thought',
               thoughtSummary: chunk.thoughtSummary,
               timestamp: chunk.timestamp,
             });
-            // Wake up the generator for thought event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
             }
           } else if (chunk.type === 'compression') {
-            // Handle compression events
             events.push({
               type: 'compression',
               compressionInfo: chunk.compressionInfo,
               timestamp: chunk.timestamp,
             });
-            // Wake up the generator for compression event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
             }
           } else if (chunk.type === 'tool_call_request') {
-            // Handle tool call request events
             events.push({
               type: 'tool_call_request',
               toolCall: chunk.toolCall,
               timestamp: chunk.timestamp,
             });
-            // Wake up the generator for tool call event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
             }
           } else if (chunk.type === 'tool_call_response') {
-            // Handle tool call response events
-            console.log(
-              '[GeminiChatService] Received tool_call_response event',
-            );
-            console.log('[GeminiChatService] toolCallId:', chunk.toolCallId);
-            console.log('[GeminiChatService] toolName:', chunk.toolName);
-            console.log('[GeminiChatService] toolSuccess:', chunk.toolSuccess);
-            console.log('[GeminiChatService] sessionId:', chunk.sessionId);
-            console.log('[GeminiChatService] content:', chunk.content);
-
             events.push({
               type: 'tool_call_response',
               content: chunk.content,
               toolCallId: chunk.toolCallId,
               toolName: chunk.toolName,
-              toolSuccess: chunk.toolSuccess, // CRITICAL: Include toolSuccess field from backend
+              toolSuccess: chunk.toolSuccess,
               toolResponseData: chunk.toolResponseData,
-              sessionId: chunk.sessionId, // CRITICAL: Include sessionId for routing to correct session
+              sessionId: chunk.sessionId,
               timestamp: chunk.timestamp,
             });
-            console.log(
-              '[GeminiChatService] Added tool_call_response to events queue, total events:',
-              events.length,
-            );
-
-            // Wake up the generator for tool response event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
             }
           } else if (chunk.type === 'tool_progress') {
-            // Handle tool progress events
-            console.log('[GeminiChatService] Received tool_progress event');
-            console.log('[GeminiChatService] toolCallId:', chunk.toolCallId);
-            console.log('[GeminiChatService] toolName:', chunk.toolName);
-            console.log('[GeminiChatService] stage:', chunk.stage);
-            console.log('[GeminiChatService] progress:', chunk.progress);
-            console.log('[GeminiChatService] message:', chunk.message);
-
             events.push({
               type: 'tool_progress',
               toolCallId: chunk.toolCallId,
@@ -569,8 +577,6 @@ class GeminiChatService {
               details: chunk.details,
               timestamp: chunk.timestamp,
             });
-
-            // Wake up the generator for tool progress event
             if (resolveNext) {
               resolveNext();
               resolveNext = null;
@@ -585,21 +591,18 @@ class GeminiChatService {
           timestamp: number;
           sessionId?: string;
         }) => {
-          // Check if completion is for current session or another session
           const isCurrentSession =
             !data.sessionId ||
             !currentSessionId ||
             data.sessionId === currentSessionId;
 
-          // If completion is from another session, clear its operation state
           if (!isCurrentSession && data.sessionId) {
             const chatState = useChatStore.getState();
             const sessionStates = chatState.sessionStates;
             const backgroundSessionState =
               sessionStates.get(data.sessionId) ??
-              GeminiChatService.createDefaultSessionState();
+              UnifiedChatService.createDefaultSessionState();
 
-            // Clear operation state when stream completes
             backgroundSessionState.currentOperation = null;
             backgroundSessionState.streamingMessage = '';
 
@@ -607,11 +610,9 @@ class GeminiChatService {
             newSessionStates.set(data.sessionId, backgroundSessionState);
             chatState.sessionStates = newSessionStates;
 
-            console.log(
-              `[GeminiChatService] Updated completion state for background session ${data.sessionId}`,
-            );
             return;
           }
+
           events.push({
             type: 'message_complete',
             content: data.content,
@@ -619,7 +620,6 @@ class GeminiChatService {
             timestamp: data.timestamp,
           });
           isComplete = true;
-          // Wake up the generator for completion
           if (resolveNext) {
             resolveNext();
             resolveNext = null;
@@ -627,21 +627,18 @@ class GeminiChatService {
         },
         // onError callback
         (error: { type: string; error: string; sessionId?: string }) => {
-          // Check if error is for current session or another session
           const isCurrentSession =
             !error.sessionId ||
             !currentSessionId ||
             error.sessionId === currentSessionId;
 
-          // If error is from another session, update its error state
           if (!isCurrentSession && error.sessionId) {
             const chatState = useChatStore.getState();
             const sessionStates = chatState.sessionStates;
             const backgroundSessionState =
               sessionStates.get(error.sessionId) ??
-              GeminiChatService.createDefaultSessionState();
+              UnifiedChatService.createDefaultSessionState();
 
-            // Set error state and clear operation
             backgroundSessionState.error = error.error;
             backgroundSessionState.currentOperation = null;
 
@@ -649,18 +646,15 @@ class GeminiChatService {
             newSessionStates.set(error.sessionId, backgroundSessionState);
             chatState.sessionStates = newSessionStates;
 
-            console.log(
-              `[GeminiChatService] Updated error state for background session ${error.sessionId}`,
-            );
             return;
           }
+
           events.push({
             type: 'error',
             error: error.error,
             timestamp: Date.now(),
           });
           hasError = true;
-          // Wake up the generator for error
           if (resolveNext) {
             resolveNext();
             resolveNext = null;
@@ -671,18 +665,15 @@ class GeminiChatService {
       try {
         // Real-time event yielding loop
         while (!isComplete && !hasError) {
-          // Yield any new events that have arrived
           while (eventIndex < events.length) {
             const event = events[eventIndex];
             yield event;
             eventIndex++;
           }
 
-          // Wait for the next event to arrive (event-driven instead of polling)
           if (!isComplete && !hasError && eventIndex >= events.length) {
             await new Promise<void>((resolve) => {
               resolveNext = resolve;
-              // Fallback timeout to prevent infinite waiting
               setTimeout(() => {
                 if (resolveNext === resolve) {
                   resolveNext = null;
@@ -693,7 +684,7 @@ class GeminiChatService {
           }
         }
 
-        // Yield any remaining events
+        // Yield remaining events
         while (eventIndex < events.length) {
           const event = events[eventIndex];
           yield event;
@@ -712,43 +703,78 @@ class GeminiChatService {
     };
   }
 
+  /**
+   * Get available models for a specific provider
+   */
   async getAvailableModels(
-    providerType?: ModelProviderType,
-  ): Promise<Record<string, string[]>> {
+    providerType: ModelProviderType,
+  ): Promise<string[]> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
 
-    // Check cache if no specific provider is requested and cache is still valid
+    // Check cache
     const now = Date.now();
     if (
-      !providerType &&
-      this.modelsCache &&
-      now - this.modelsCacheTimestamp < this.MODELS_CACHE_TTL
+      this.modelsCache[providerType] &&
+      this.modelsCache[providerType].length > 0 &&
+      now - this.modelsCacheTimestamp[providerType] < this.MODELS_CACHE_TTL
     ) {
-      return this.modelsCache;
+      return this.modelsCache[providerType];
     }
 
-    // Return hardcoded Gemini models since getAvailableModels API is removed
-    const models: Record<string, string[]> = {
-      gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-    };
+    // Fetch from backend
+    const models = await this.api.getAvailableModels(providerType);
 
-    // Cache the full model list if no specific provider was requested
-    if (!providerType) {
-      this.modelsCache = models;
-      this.modelsCacheTimestamp = now;
-    }
+    // Update cache
+    this.modelsCache[providerType] = models;
+    this.modelsCacheTimestamp[providerType] = now;
 
     return models;
+  }
+
+  /**
+   * Get all available models for all providers
+   */
+  async getAllAvailableModels(): Promise<Record<ModelProviderType, string[]>> {
+    if (!this.initialized) {
+      throw new Error('UnifiedChatService not initialized');
+    }
+
+    const providers: ModelProviderType[] = [
+      ModelProviderType.GEMINI,
+      ModelProviderType.CLAUDE,
+      ModelProviderType.OPENAI,
+      ModelProviderType.LMSTUDIO,
+    ];
+    const result: Record<ModelProviderType, string[]> = {
+      gemini: [],
+      claude: [],
+      openai: [],
+      lmstudio: [],
+    };
+
+    await Promise.all(
+      providers.map(async (provider) => {
+        try {
+          result[provider] = await this.getAvailableModels(provider);
+        } catch (error) {
+          console.error(
+            `[UnifiedChatService] Failed to get models for ${provider}:`,
+            error,
+          );
+          result[provider] = [];
+        }
+      }),
+    );
+
+    return result;
   }
 
   getAllRoles(): RoleDefinition[] {
     if (!this.initialized) {
       return [];
     }
-
-    // This needs to be async but keeping interface for compatibility
     return [];
   }
 
@@ -756,7 +782,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return [];
     }
-
     return await this.api.getAllRoles();
   }
 
@@ -764,8 +789,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return null;
     }
-
-    // This needs to be async but keeping interface for compatibility
     return null;
   }
 
@@ -773,7 +796,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return null;
     }
-
     return await this.api.getCurrentRole();
   }
 
@@ -781,8 +803,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return [];
     }
-
-    // This needs to be async but keeping interface for compatibility
     return [];
   }
 
@@ -790,7 +810,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return [];
     }
-
     return await this.api.getAllTemplates();
   }
 
@@ -799,18 +818,15 @@ class GeminiChatService {
     basePath?: string,
   ): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.addWorkspaceDirectory(directory, basePath);
   }
 
   async setWorkspaceDirectories(directories: readonly string[]): Promise<void> {
     if (!this.initialized) {
-      // Silently ignore if not initialized - the sync will happen later
       return;
     }
-
     await this.api.setWorkspaceDirectories(directories);
   }
 
@@ -818,7 +834,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return [];
     }
-
     return await this.api.getWorkspaceDirectories();
   }
 
@@ -837,13 +852,15 @@ class GeminiChatService {
 
     try {
       const items = await this.api.getDirectoryContents(directoryPath);
-      // Convert modified dates from strings back to Date objects
       return items.map((item) => ({
         ...item,
         modified: item.modified ? new Date(item.modified) : undefined,
       }));
     } catch (error) {
-      console.error('Failed to get directory contents:', error);
+      console.error(
+        '[UnifiedChatService] Failed to get directory contents:',
+        error,
+      );
       return [];
     }
   }
@@ -852,9 +869,8 @@ class GeminiChatService {
     template: Omit<PresetTemplate, 'isBuiltin'>,
   ): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.addCustomTemplate(template);
   }
 
@@ -863,17 +879,15 @@ class GeminiChatService {
     updates: Partial<Omit<PresetTemplate, 'id' | 'isBuiltin'>>,
   ): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.updateCustomTemplate(id, updates);
   }
 
   async deleteCustomTemplate(id: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.deleteCustomTemplate(id);
   }
 
@@ -882,35 +896,32 @@ class GeminiChatService {
     sessionId: string,
     title?: string,
     roleId?: string,
+    provider?: ModelProviderType,
   ): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
-    await this.api.createSession(sessionId, title, roleId);
+    await this.api.createSession(sessionId, title, roleId, provider);
   }
 
   async switchSession(sessionId: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.switchSession(sessionId);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.deleteSession(sessionId);
   }
 
   async deleteAllSessions(): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.deleteAllSessions();
   }
 
@@ -918,7 +929,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return null;
     }
-
     return await this.api.getCurrentSessionId();
   }
 
@@ -926,7 +936,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return [];
     }
-
     return await this.api.getDisplayMessages(sessionId);
   }
 
@@ -937,28 +946,26 @@ class GeminiChatService {
       messageCount: number;
       lastUpdated: Date;
       roleId?: string;
+      provider?: ModelProviderType;
     }>
   > {
     if (!this.initialized) {
       return [];
     }
-
     return await this.api.getSessionsInfo();
   }
 
   async updateSessionTitle(sessionId: string, newTitle: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.updateSessionTitle(sessionId, newTitle);
   }
 
   async toggleTitleLock(sessionId: string, locked: boolean): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.toggleTitleLock(sessionId, locked);
   }
 
@@ -967,17 +974,15 @@ class GeminiChatService {
     messages: ChatMessage[],
   ): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.updateSessionMessages(sessionId, messages);
   }
 
   async setSessionRole(sessionId: string, roleId: string): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.setSessionRole(sessionId, roleId);
   }
 
@@ -986,9 +991,8 @@ class GeminiChatService {
     providerType: string,
   ): Promise<{ success: boolean; message?: string; error?: string }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     return await this.api.startOAuthFlow(providerType);
   }
 
@@ -998,7 +1002,6 @@ class GeminiChatService {
     if (!this.initialized) {
       return { authenticated: false };
     }
-
     return await this.api.getOAuthStatus(providerType);
   }
 
@@ -1006,9 +1009,8 @@ class GeminiChatService {
     providerType: string,
   ): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     return await this.api.clearOAuthCredentials(providerType);
   }
 
@@ -1016,9 +1018,8 @@ class GeminiChatService {
     providerType: string,
   ): Promise<{ detected: boolean; source: string }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     return await this.api.checkEnvApiKey(providerType);
   }
 
@@ -1026,9 +1027,8 @@ class GeminiChatService {
     providerType: string,
   ): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     return await this.api.setApiKeyPreference(providerType);
   }
 
@@ -1036,9 +1036,8 @@ class GeminiChatService {
     providerType: string,
   ): Promise<{ success: boolean; error?: string }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     return await this.api.setOAuthPreference(providerType);
   }
 
@@ -1046,26 +1045,24 @@ class GeminiChatService {
     if (!this.initialized) {
       return 'default';
     }
-
     return await this.api.getApprovalMode();
   }
 
   async setApprovalMode(mode: 'default' | 'autoEdit' | 'yolo'): Promise<void> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
-
     await this.api.setApprovalMode(mode);
   }
 
-  // Excel tool methods using direct Excel tool
+  // Excel tool methods
   async getExcelWorkbooks(): Promise<{
     success: boolean;
     workbooks: Array<{ name: string; path?: string }>;
     error?: string;
   }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
 
     try {
@@ -1084,7 +1081,10 @@ class GeminiChatService {
         error: result.error || 'Failed to get workbooks from Excel tool',
       };
     } catch (error) {
-      console.error('Error getting Excel workbooks:', error);
+      console.error(
+        '[UnifiedChatService] Error getting Excel workbooks:',
+        error,
+      );
       return {
         success: false,
         workbooks: [],
@@ -1099,7 +1099,7 @@ class GeminiChatService {
     error?: string;
   }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
 
     try {
@@ -1120,7 +1120,10 @@ class GeminiChatService {
         error: result.error || 'Failed to get worksheets from Excel tool',
       };
     } catch (error) {
-      console.error('Error getting Excel worksheets:', error);
+      console.error(
+        '[UnifiedChatService] Error getting Excel worksheets:',
+        error,
+      );
       return {
         success: false,
         worksheets: [],
@@ -1133,7 +1136,7 @@ class GeminiChatService {
     workbook: string,
   ): Promise<{ success: boolean; selection?: string; error?: string }> {
     if (!this.initialized) {
-      throw new Error('GeminiChatService not initialized');
+      throw new Error('UnifiedChatService not initialized');
     }
 
     try {
@@ -1153,7 +1156,10 @@ class GeminiChatService {
         error: result.error || 'Failed to get selection from Excel',
       };
     } catch (error) {
-      console.error('Error getting Excel selection:', error);
+      console.error(
+        '[UnifiedChatService] Error getting Excel selection:',
+        error,
+      );
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -1162,4 +1168,4 @@ class GeminiChatService {
   }
 }
 
-export const geminiChatService = new GeminiChatService();
+export const unifiedChatService = new UnifiedChatService();
