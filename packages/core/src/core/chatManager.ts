@@ -6,7 +6,7 @@
 
 import type { Config } from '../config/config.js';
 import { ApprovalMode } from '../config/config.js';
-import type { Content, Part } from '@google/genai';
+import type { Part } from '@google/genai';
 import type { GeminiClient } from './client.js';
 import { GeminiClientPool } from './clientPool.js';
 import { SessionManager } from '../sessions/SessionManager.js';
@@ -28,6 +28,7 @@ import type {
   ToolConfirmationOutcome,
 } from '../tools/tools.js';
 import { ToolErrorType } from '../tools/tool-error.js';
+import type { IClient } from './IClient.js';
 
 /**
  * GeminiChatManager - Unified chat management system
@@ -96,9 +97,8 @@ export class GeminiChatManager {
    * This is called automatically by the client pool
    */
   private saveSessionFromClient(sessionId: string, client: GeminiClient): void {
-    const geminiHistory = client.getHistory();
-    const messages = this.convertGeminiToUniversal(geminiHistory);
-    this.sessionManager.saveSessionHistory(sessionId, messages);
+    const universalHistory = client.getHistory();
+    this.sessionManager.saveSessionHistory(sessionId, universalHistory);
   }
 
   /**
@@ -601,7 +601,7 @@ export class GeminiChatManager {
   /**
    * Get the GeminiClient instance for the current session
    */
-  getClient(): GeminiClient | undefined {
+  getClient(): IClient | undefined {
     const sessionId = this.sessionManager.getCurrentSessionId();
     if (!sessionId) {
       return undefined;
@@ -646,188 +646,6 @@ export class GeminiChatManager {
   }
 
   /**
-   * Convert Content[] (Gemini format) to UniversalMessage[] (SessionManager format)
-   */
-  private convertGeminiToUniversal(contents: Content[]): UniversalMessage[] {
-    const messages: UniversalMessage[] = [];
-
-    console.log(
-      `[GeminiChatManager] Converting ${contents.length} Gemini contents to UniversalMessage`,
-    );
-
-    for (const content of contents) {
-      // Skip system messages (handled separately)
-      if (content.role !== 'user' && content.role !== 'model') {
-        continue;
-      }
-
-      // Map Gemini role to UniversalMessage role
-      const role = content.role === 'model' ? 'assistant' : 'user';
-
-      // Extract text content for display
-      let textContent = '';
-      const toolCalls: Array<{
-        id: string;
-        name: string;
-        arguments: Record<string, unknown>;
-      }> = [];
-      let toolCallId: string | undefined;
-      let toolName: string | undefined;
-
-      for (const part of content.parts || []) {
-        if ('text' in part && part.text) {
-          textContent += part.text;
-        }
-
-        // Extract function calls (tool calls from assistant)
-        if (
-          'functionCall' in part &&
-          part.functionCall &&
-          part.functionCall.name
-        ) {
-          const args =
-            (part.functionCall.args as Record<string, unknown>) || {};
-
-          // Use Gemini API's native ID or generate one
-          const functionCallId =
-            part.functionCall.id ??
-            `${part.functionCall.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-          toolCalls.push({
-            id: functionCallId,
-            name: part.functionCall.name,
-            arguments: args,
-          });
-        }
-
-        // Extract function responses (tool responses)
-        if ('functionResponse' in part && part.functionResponse) {
-          toolName = part.functionResponse.name;
-          const response = part.functionResponse.response;
-
-          // CRITICAL: Extract callId from functionResponse.id field
-          // This ID matches the functionCall.id from the corresponding tool call
-          if (part.functionResponse.id) {
-            toolCallId = part.functionResponse.id;
-
-            // CRITICAL: Update the corresponding toolCall with status information
-            // Find the toolCall in previously created messages and update it
-            const hasError =
-              response && typeof response === 'object' && 'error' in response;
-
-            // Search backwards through messages to find the assistant message with this toolCall
-            for (let i = messages.length - 1; i >= 0; i--) {
-              const msg = messages[i];
-              if (msg.role === 'assistant' && msg.toolCalls) {
-                const toolCallIndex = msg.toolCalls.findIndex(
-                  (tc) => tc.id === toolCallId,
-                );
-                if (toolCallIndex !== -1) {
-                  // Update the toolCall with status information
-                  msg.toolCalls[toolCallIndex] = {
-                    ...msg.toolCalls[toolCallIndex],
-                    status: hasError ? 'failed' : 'completed',
-                    success: !hasError,
-                    result: hasError
-                      ? `Tool execution failed: ${String(response['error'])}`
-                      : response &&
-                          typeof response === 'object' &&
-                          'output' in response
-                        ? String(response['output'])
-                        : 'Tool executed successfully',
-                  };
-                  console.log(
-                    `[GeminiChatManager] Updated toolCall ${toolCallId} status: ${hasError ? 'failed' : 'completed'}`,
-                  );
-                  break;
-                }
-              }
-            }
-          } else {
-            // Fallback: generate new ID if not found (shouldn't happen in normal flow)
-            console.warn(
-              `[GeminiChatManager] functionResponse missing id field, generating fallback ID`,
-            );
-            toolCallId = `call_${Date.now()}`;
-          }
-
-          if (
-            response &&
-            typeof response === 'object' &&
-            'output' in response
-          ) {
-            textContent += String(response['output']);
-          }
-        }
-      }
-
-      // Create UniversalMessage
-      if (toolCallId && toolName) {
-        // This is a tool response
-        const toolMessage: UniversalMessage = {
-          role: 'tool',
-          content: textContent,
-          tool_call_id: toolCallId,
-          name: toolName,
-          timestamp: new Date(),
-          // CRITICAL: Preserve complete parts array to maintain ALL fields
-          parts: content.parts as unknown[],
-        };
-        messages.push(toolMessage);
-      } else {
-        // Regular message (user or assistant)
-        const message: UniversalMessage = {
-          role,
-          content: textContent,
-          timestamp: new Date(),
-          // CRITICAL: Preserve complete parts array to maintain ALL fields
-          parts: content.parts as unknown[],
-        };
-
-        if (toolCalls.length > 0) {
-          message.toolCalls = toolCalls;
-        }
-
-        messages.push(message);
-      }
-    }
-
-    return messages;
-  }
-
-  /**
-   * Convert UniversalMessage[] (SessionManager format) to Content[] (Gemini format)
-   */
-  private convertUniversalToGemini(messages: UniversalMessage[]): Content[] {
-    const contents: Content[] = [];
-
-    for (const msg of messages) {
-      if (msg.role === 'system') {
-        // System messages are handled as systemInstruction, skip from history
-        continue;
-      }
-
-      // Map UniversalMessage role to Gemini Content role
-      let role: 'user' | 'model' = 'user';
-      if (msg.role === 'assistant') {
-        role = 'model';
-      } else if (msg.role === 'tool') {
-        role = 'user'; // Tool responses are sent as 'user' role in Gemini
-      }
-
-      // CRITICAL: Use the original parts array directly
-      // This preserves ALL fields including thoughtSignature, fileData, etc.
-      if (msg.parts && msg.parts.length > 0) {
-        contents.push({
-          role,
-          parts: msg.parts as Part[],
-        });
-      }
-    }
-
-    return contents;
-  }
-
-  /**
    * Restore session history into a specific GeminiClient instance
    * Used by clientPool when creating a new client for an existing session
    */
@@ -838,15 +656,12 @@ export class GeminiChatManager {
     // Get history from SessionManager (UniversalMessage[])
     const universalHistory = this.sessionManager.getDisplayMessages(sessionId);
 
-    // Convert to Gemini format (Content[])
-    const geminiHistory = this.convertUniversalToGemini(universalHistory);
-
-    // Load into GeminiClient
-    if (geminiHistory.length > 0) {
-      // Restart chat with existing history
-      await client.startChat(geminiHistory);
+    // Load into GeminiClient - client handles conversion to its native format
+    if (universalHistory.length > 0) {
+      // Set history using UniversalMessage format
+      client.setHistory(universalHistory);
       console.log(
-        `[GeminiChatManager] Restored ${geminiHistory.length} messages into GeminiClient for session ${sessionId}`,
+        `[GeminiChatManager] Restored ${universalHistory.length} messages into GeminiClient for session ${sessionId}`,
       );
     } else {
       // Fresh chat

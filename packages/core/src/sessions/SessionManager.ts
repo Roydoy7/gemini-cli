@@ -16,8 +16,7 @@ export interface SessionData {
   createdAt: Date;
   conversationHistory: UniversalMessage[];
   metadata?: {
-    provider?: string;
-    model?: string;
+    // Note: provider and model are now global settings in Config, not per-session
     roleId?: string;
     titleLockedByUser?: boolean; // User manually set title, prevent auto-updates
   };
@@ -184,6 +183,7 @@ export class SessionManager {
 
   /**
    * Create a new session
+   * Note: Provider is now a global setting in Config, not per-session
    */
   createSession(
     sessionId: string,
@@ -370,6 +370,7 @@ export class SessionManager {
     this.updateSessionMetadata(sessionId, { roleId });
   }
 
+
   /**
    * Save history for a specific session (called by GeminiClient)
    * This replaces the session's entire conversation history
@@ -446,19 +447,27 @@ export class SessionManager {
   getDisplayMessages(sessionId?: string): UniversalMessage[] {
     const targetSessionId = sessionId || this.currentSessionId;
     if (!targetSessionId) {
+      console.log('[SessionManager] getDisplayMessages: No target session ID');
       return [];
     }
 
+    console.log(`[SessionManager] getDisplayMessages: Looking for session ${targetSessionId}`);
+    console.log(`[SessionManager] Available sessions: ${Array.from(this.sessions.keys()).join(', ')}`);
+
     const session = this.sessions.get(targetSessionId);
     if (!session) {
+      console.warn(`[SessionManager] getDisplayMessages: Session ${targetSessionId} not found in Map!`);
       return [];
     }
+
+    console.log(`[SessionManager] getDisplayMessages: Found session ${targetSessionId} with ${session.conversationHistory.length} messages`);
 
     // Filter out "Please continue." continuation prompts from display
     const displayMessages = session.conversationHistory.filter(
       (msg) => !(msg.role === 'user' && msg.content === 'Please continue.'),
     );
 
+    console.log(`[SessionManager] getDisplayMessages: Returning ${displayMessages.length} messages after filtering`);
     return displayMessages;
   }
 

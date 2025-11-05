@@ -17,6 +17,7 @@ import {
   getEnvironmentContext,
 } from '../utils/environmentContext.js';
 import type { ServerGeminiStreamEvent, ChatCompressionInfo } from './turn.js';
+import type { UniversalMessage } from './message-types.js';
 import { CompressionStatus } from './turn.js';
 import { Turn, GeminiEventType } from './turn.js';
 import type { Config } from '../config/config.js';
@@ -55,6 +56,7 @@ import { handleFallback } from '../fallback/handler.js';
 import type { RoutingContext } from '../routing/routingStrategy.js';
 import { uiTelemetryService } from '../telemetry/uiTelemetry.js';
 import { debugLogger } from '../utils/debugLogger.js';
+import type { IClient } from './IClient.js';
 
 export function isThinkingSupported(model: string) {
   return model.startsWith('gemini-2.5') || model === DEFAULT_GEMINI_MODEL_AUTO;
@@ -109,7 +111,7 @@ function createSystemReminderPart() {
 
 const MAX_TURNS = 100;
 
-export class GeminiClient {
+export class GeminiClient implements IClient {
   private chat?: GeminiChat;
   private readonly generateContentConfig: GenerateContentConfig = {
     temperature: 0,
@@ -167,16 +169,19 @@ export class GeminiClient {
     return this.chat !== undefined;
   }
 
-  getHistory(): Content[] {
-    return this.getChat().getHistory();
+  getHistory(): UniversalMessage[] {
+    const geminiHistory = this.getChat().getHistory();
+    return this.convertGeminiToUniversal(geminiHistory);
   }
 
   stripThoughtsFromHistory() {
     this.getChat().stripThoughtsFromHistory();
   }
 
-  setHistory(history: Content[]) {
-    this.getChat().setHistory(history);
+  setHistory(history: UniversalMessage[]) {
+    console.log('[GeminiClient] setHistory: Converting UniversalMessage[] to Gemini format');
+    const geminiHistory = this.convertUniversalToGemini(history);
+    this.getChat().setHistory(geminiHistory);
     this.forceFullIdeContext = true;
   }
 
@@ -221,7 +226,8 @@ export class GeminiClient {
     // ToolRegistry is for the original gemini-cli, while ToolsetManager manages role-specific toolsets.
     const { ToolsetManager } = await import('../tools/ToolsetManager.js');
     const toolsetManager = new ToolsetManager();
-    const roleToolClasses = toolsetManager.getToolsForRole(currentRole.id);
+    // Filter tools by provider - only get tools that work with Gemini
+    const roleToolClasses = toolsetManager.getToolsForRole(currentRole.id, 'gemini');
 
     // Get the tool registry
     const toolRegistry = this.config.getToolRegistry();
@@ -664,8 +670,8 @@ ${envContextString}
       history.length > 0 ? history[history.length - 1] : undefined;
     const hasPendingToolCall =
       !!lastMessage &&
-      lastMessage.role === 'model' &&
-      (lastMessage.parts?.some((p) => 'functionCall' in p) || false);
+      lastMessage.role === 'assistant' &&
+      (lastMessage.toolCalls && lastMessage.toolCalls.length > 0);
 
     if (this.config.getIdeMode() && !hasPendingToolCall) {
       const { contextParts, newIdeContext } = this.getIdeContextParts(
@@ -709,18 +715,31 @@ ${envContextString}
       signal,
     };
 
-    let modelToUse: string;
+    let modelToUse: string | undefined | null;
 
-    // Determine Model (Stickiness vs. Routing)
-    if (this.currentSequenceModel) {
-      modelToUse = this.currentSequenceModel;
-    } else {
-      const router = await this.config.getModelRouterService();
-      const decision = await router.route(routingContext);
-      modelToUse = decision.model;
-      // Lock the model for the rest of the sequence
+    // First, try to get model from Config (global model setting)
+    const globalModel = this.config.getGlobalModel();
+    if (globalModel) {
+      modelToUse = globalModel;
+      console.log(`[GeminiClient] Using global model from config: ${modelToUse}`);
+      // Lock the model for the sequence
       this.currentSequenceModel = modelToUse;
     }
+
+    // If no global model found, determine Model (Stickiness vs. Routing)
+    if (!modelToUse) {
+      if (this.currentSequenceModel) {
+        modelToUse = this.currentSequenceModel;
+      } else {
+        const router = this.config.getModelRouterService();
+        const decision = await router.route(routingContext);
+        modelToUse = decision.model;
+        // Lock the model for the rest of the sequence
+        this.currentSequenceModel = modelToUse;
+      }
+    }
+
+    console.log(`[GeminiClient] Sending message with model: ${modelToUse}`);
 
     const resultStream = turn.run(modelToUse, modifiedRequest, linkedSignal);
     for await (const event of resultStream) {
@@ -1024,5 +1043,159 @@ ${envContextString}
     }
 
     return info;
+  }
+
+  /**
+   * Get list of available Gemini models
+   * Returns hardcoded list as Gemini doesn't provide a model listing API
+   */
+  async getAvailableModels(): Promise<string[]> {
+    return ['gemini-2.5-pro', 'gemini-2.5-flash'];
+  }
+
+  /**
+   * Convert Gemini Content[] format to UniversalMessage[]
+   */
+  private convertGeminiToUniversal(messages: Content[]): UniversalMessage[] {
+    const universalMessages: UniversalMessage[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') continue;
+
+      // Tool response messages (user role with functionResponse parts)
+      const functionResponseParts = msg.parts?.filter((p) => 'functionResponse' in p) || [];
+      if (functionResponseParts.length > 0) {
+        for (const part of functionResponseParts) {
+          if ('functionResponse' in part && part.functionResponse) {
+            universalMessages.push({
+              role: 'tool',
+              content: JSON.stringify(part.functionResponse.response),
+              tool_call_id: part.functionResponse.name,
+              timestamp: new Date(),
+            });
+          }
+        }
+        continue;
+      }
+
+      // Assistant messages (model role)
+      if (msg.role === 'model') {
+        let textContent = '';
+        const toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+
+        for (const part of msg.parts || []) {
+          if ('text' in part && part.text) {
+            textContent += part.text;
+          } else if ('functionCall' in part && part.functionCall) {
+            toolCalls.push({
+              id: part.functionCall.name || '',
+              name: part.functionCall.name || '',
+              arguments: (part.functionCall.args || {}) as Record<string, unknown>,
+            });
+          }
+        }
+
+        const message: UniversalMessage = {
+          role: 'assistant',
+          content: textContent,
+          timestamp: new Date(),
+          parts: msg.parts, // Preserve original Gemini parts
+        };
+
+        if (toolCalls.length > 0) {
+          message.toolCalls = toolCalls;
+        }
+
+        universalMessages.push(message);
+        continue;
+      }
+
+      // User messages
+      if (msg.role === 'user') {
+        const textParts = msg.parts?.filter((p) => 'text' in p) || [];
+        const textContent = textParts.map((p) => ('text' in p ? p.text : '')).join('');
+
+        if (textContent) {
+          universalMessages.push({
+            role: 'user',
+            content: textContent,
+            timestamp: new Date(),
+            parts: msg.parts, // Preserve original Gemini parts
+          });
+        }
+      }
+    }
+
+    return universalMessages;
+  }
+
+  /**
+   * Convert UniversalMessage[] to Gemini Content[] format
+   */
+  private convertUniversalToGemini(messages: UniversalMessage[]): Content[] {
+    const geminiMessages: Content[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') continue;
+
+      // Tool response messages
+      if (msg.role === 'tool') {
+        let responseObj: Record<string, unknown>;
+        try {
+          responseObj = JSON.parse(msg.content) as Record<string, unknown>;
+        } catch {
+          responseObj = { result: msg.content };
+        }
+
+        geminiMessages.push({
+          role: 'user',
+          parts: [
+            {
+              functionResponse: {
+                name: msg.tool_call_id || '',
+                response: responseObj,
+              },
+            },
+          ],
+        });
+        continue;
+      }
+
+      // Assistant messages
+      if (msg.role === 'assistant') {
+        const parts: Array<{ text?: string; functionCall?: { name: string; args: Record<string, unknown> } }> = [];
+
+        if (msg.content) {
+          parts.push({ text: msg.content });
+        }
+
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          for (const tc of msg.toolCalls) {
+            parts.push({
+              functionCall: {
+                name: tc.name,
+                args: tc.arguments,
+              },
+            });
+          }
+        }
+
+        geminiMessages.push({
+          role: 'model',
+          parts,
+        });
+        continue;
+      }
+
+      // User messages
+      if (msg.role === 'user') {
+        geminiMessages.push({
+          role: 'user',
+          parts: [{ text: msg.content }],
+        });
+      }
+    }
+
+    return geminiMessages;
   }
 }

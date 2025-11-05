@@ -20,6 +20,16 @@ export * from './commands/extensions.js';
 // Export Core Logic
 export * from './core/client.js';
 export * from './core/chatManager.js';
+export * from './core/unifiedChatManager.js';
+export * from './core/IClient.js';
+export * from './core/IClientPool.js';
+export * from './core/clientPoolRouter.js';
+export * from './core/claudeClient.js';
+export * from './core/claudeClientPool.js';
+export * from './core/openaiClient.js';
+export * from './core/openaiClientPool.js';
+export * from './core/lmstudioClient.js';
+export * from './core/lmstudioClientPool.js';
 export * from './core/contentGenerator.js';
 export { AuthType } from './core/contentGenerator.js';
 export * from './core/loggingContentGenerator.js';
@@ -178,6 +188,14 @@ export * from './telemetry/index.js';
 export { sessionId } from './utils/session.js';
 export * from './utils/browser.js';
 export { Storage } from './config/storage.js';
+export {
+  McpServerEnablementManager,
+  generateMcpServerKey,
+} from './config/mcpServerEnablement.js';
+export type {
+  McpServerEnablementConfig,
+  AllMcpServersEnablementConfig,
+} from './config/mcpServerEnablement.js';
 
 // Export test utils
 export * from './test-utils/index.js';

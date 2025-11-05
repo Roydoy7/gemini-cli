@@ -6,6 +6,8 @@
 
 import type { Config } from '../config/config.js';
 import { GeminiClient } from './client.js';
+import type { IClientPool } from './IClientPool.js';
+import type { IClient } from './IClient.js';
 
 /**
  * Timeout duration for idle client cleanup (15 minutes)
@@ -47,7 +49,9 @@ class ClientWrapper {
    * Save current session history
    */
   async save(): Promise<void> {
+    console.log(`[ClientWrapper] save called for session: ${this.sessionId}`);
     this.onSave(this.sessionId, this.client);
+    console.log(`[ClientWrapper] onSave callback executed for: ${this.sessionId}`);
   }
 
   /**
@@ -70,7 +74,7 @@ class ClientWrapper {
  * - Auto-releases idle clients after 15 minutes
  * - Each client is responsible for saving its own history
  */
-export class GeminiClientPool {
+export class GeminiClientPool implements IClientPool {
   private clients: Map<string, ClientWrapper> = new Map();
   private readonly config: Config;
 
@@ -91,7 +95,7 @@ export class GeminiClientPool {
   /**
    * Get or create a GeminiClient for the specified session
    */
-  async getOrCreate(sessionId: string): Promise<GeminiClient> {
+  async getOrCreate(sessionId: string): Promise<IClient> {
     // If client exists, reset its idle timer and return
     const existing = this.clients.get(sessionId);
     if (existing) {
@@ -133,7 +137,7 @@ export class GeminiClientPool {
   /**
    * Get existing client without creating
    */
-  get(sessionId: string): GeminiClient | undefined {
+  get(sessionId: string): IClient | undefined {
     const wrapper = this.clients.get(sessionId);
     if (wrapper) {
       wrapper.resetIdleTimer();
@@ -153,9 +157,14 @@ export class GeminiClientPool {
    * Save a session's history
    */
   async save(sessionId: string): Promise<void> {
+    console.log(`[GeminiClientPool] save called for session: ${sessionId}`);
     const wrapper = this.clients.get(sessionId);
     if (wrapper) {
+      console.log(`[GeminiClientPool] Found wrapper for ${sessionId}, calling wrapper.save()`);
       await wrapper.save();
+      console.log(`[GeminiClientPool] wrapper.save() completed for ${sessionId}`);
+    } else {
+      console.warn(`[GeminiClientPool] No wrapper found for session: ${sessionId}`);
     }
   }
 

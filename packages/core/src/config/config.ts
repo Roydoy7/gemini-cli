@@ -343,6 +343,10 @@ export class Config {
   private readonly folderTrust: boolean;
   private ideMode: boolean;
 
+  // Global provider and model settings (shared across all sessions)
+  private globalProvider: string = 'gemini';
+  private globalModel: string = DEFAULT_GEMINI_MODEL;
+
   private inFallbackMode = false;
   private readonly maxSessionTurns: number;
   private readonly listExtensions: boolean;
@@ -653,6 +657,36 @@ export class Config {
     }
 
     this.model = newModel;
+  }
+
+  /**
+   * Get the global provider setting (shared across all sessions)
+   */
+  getGlobalProvider(): string {
+    return this.globalProvider;
+  }
+
+  /**
+   * Set the global provider setting (affects all sessions)
+   */
+  setGlobalProvider(provider: string): void {
+    this.globalProvider = provider;
+    console.log(`[Config] Global provider set to: ${provider}`);
+  }
+
+  /**
+   * Get the global model setting (shared across all sessions)
+   */
+  getGlobalModel(): string {
+    return this.globalModel;
+  }
+
+  /**
+   * Set the global model setting (affects all sessions)
+   */
+  setGlobalModel(model: string): void {
+    this.globalModel = model;
+    console.log(`[Config] Global model set to: ${model}`);
   }
 
   isInFallbackMode(): boolean {

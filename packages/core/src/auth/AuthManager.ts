@@ -72,6 +72,13 @@ export class AuthManager {
       supportsApiKey: true,
       envApiKeyName: 'GEMINI_API_KEY',
     },
+    claude: {
+      id: 'claude',
+      name: 'Anthropic Claude',
+      supportsOAuth: false, // Anthropic doesn't use OAuth, only API keys
+      supportsApiKey: true,
+      envApiKeyName: 'ANTHROPIC_API_KEY',
+    },
     openai: {
       id: 'openai',
       name: 'OpenAI',
@@ -79,18 +86,12 @@ export class AuthManager {
       supportsApiKey: true,
       envApiKeyName: 'OPENAI_API_KEY',
     },
-    anthropic: {
-      id: 'anthropic',
-      name: 'Anthropic Claude',
-      supportsOAuth: false, // Anthropic doesn't use OAuth, only API keys
-      supportsApiKey: true,
-      envApiKeyName: 'ANTHROPIC_API_KEY',
-    },
-    lm_studio: {
-      id: 'lm_studio',
+    lmstudio: {
+      id: 'lmstudio',
       name: 'LM Studio',
       supportsOAuth: false,
       supportsApiKey: false, // Local model, no auth needed
+      envApiKeyName: 'LMSTUDIO_BASE_URL', // Optional base URL
     },
   };
 
