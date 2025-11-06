@@ -261,6 +261,16 @@ ${envContextString}
       | import('@google/genai').GenerateContentResponseUsageMetadata
       | undefined;
 
+    // Track token usage statistics (import TokenUsage type)
+    type TokenUsage = import('./message-types.js').TokenUsage;
+    let tokenUsage: TokenUsage | undefined;
+
+    // Track tool use input accumulation (for streaming tool parameters)
+    const toolInputAccumulators = new Map<
+      number,
+      { id: string; name: string; partialJson: string }
+    >();
+
     try {
       // Convert Claude events to Gemini events (event type conversion only)
       // History management is now handled by ClaudeChat.processStreamResponse()
@@ -276,23 +286,76 @@ ${envContextString}
 
           // Convert Claude stream events to Gemini format
           switch (claudeEvent.type) {
+            case 'message_start':
+              // Message started - collect initial usage stats
+              if (claudeEvent.message?.usage) {
+                const usage = claudeEvent.message.usage;
+                tokenUsage = {
+                  inputTokens: usage.input_tokens || 0,
+                  outputTokens: usage.output_tokens || 0,
+                  totalTokens:
+                    (usage.input_tokens || 0) + (usage.output_tokens || 0),
+                  cacheCreationInputTokens:
+                    usage.cache_creation_input_tokens || 0,
+                  cacheReadInputTokens: usage.cache_read_input_tokens || 0,
+                  provider: 'claude',
+                  model: claudeEvent.message.model,
+                  serviceTier:
+                    'service_tier' in usage
+                      ? (usage.service_tier as string)
+                      : undefined,
+                  timestamp: new Date(),
+                };
+
+                // Add cache creation details if present
+                if ('cache_creation' in usage && usage.cache_creation) {
+                  const cacheCreation = usage.cache_creation as unknown as Record<
+                    string,
+                    number | undefined
+                  >;
+                  tokenUsage.cacheCreation = {
+                    ephemeral_5m_input_tokens:
+                      cacheCreation['ephemeral_5m_input_tokens'],
+                    ephemeral_1h_input_tokens:
+                      cacheCreation['ephemeral_1h_input_tokens'],
+                  };
+                }
+
+                // Emit token usage event
+                yield {
+                  type: GeminiEventType.TokenUsage,
+                  value: tokenUsage,
+                };
+              }
+              break;
+
             case 'content_block_start':
               // New content block started
               if (claudeEvent.content_block) {
-                // If it's a tool use block, emit ToolCallRequest
+                // If it's a tool use block, store it for later (we'll emit after input is complete)
                 if (claudeEvent.content_block.type === 'tool_use') {
                   const toolUseBlock = claudeEvent.content_block;
-                  yield {
-                    type: GeminiEventType.ToolCallRequest,
-                    value: {
-                      callId: toolUseBlock.id,
-                      name: toolUseBlock.name,
-                      args:
-                        (toolUseBlock.input as Record<string, unknown>) || {},
-                      isClientInitiated: false,
-                      prompt_id,
-                    },
+                  toolInputAccumulators.set(claudeEvent.index, {
+                    id: toolUseBlock.id,
+                    name: toolUseBlock.name,
+                    partialJson: JSON.stringify(toolUseBlock.input || {}),
+                  });
+                }
+                // Handle thinking blocks (Claude Extended Thinking)
+                else if (claudeEvent.content_block.type === 'thinking') {
+                  const thinkingBlock = claudeEvent.content_block as {
+                    type: 'thinking';
+                    thinking: string;
                   };
+                  if (thinkingBlock.thinking) {
+                    yield {
+                      type: GeminiEventType.Thought,
+                      value: {
+                        subject: '',
+                        description: thinkingBlock.thinking,
+                      },
+                    };
+                  }
                 }
               }
               break;
@@ -305,7 +368,77 @@ ${envContextString}
                   value: claudeEvent.delta.text,
                 };
               }
+              // Handle thinking deltas (streaming thinking content)
+              else if (claudeEvent.delta.type === 'thinking_delta') {
+                const thinkingDelta = claudeEvent.delta as {
+                  type: 'thinking_delta';
+                  thinking: string;
+                };
+                if (thinkingDelta.thinking) {
+                  yield {
+                    type: GeminiEventType.Thought,
+                    value: {
+                      subject: '',
+                      description: thinkingDelta.thinking,
+                    },
+                  };
+                }
+              }
+              // Handle input_json_delta (streaming tool parameters)
+              else if (claudeEvent.delta.type === 'input_json_delta') {
+                const inputDelta = claudeEvent.delta as {
+                  type: 'input_json_delta';
+                  partial_json: string;
+                };
+                // Accumulate the partial JSON
+                const accumulator = toolInputAccumulators.get(claudeEvent.index);
+                if (accumulator) {
+                  accumulator.partialJson += inputDelta.partial_json;
+                }
+              }
               break;
+
+            case 'content_block_stop': {
+              // Content block completed - emit tool call if this was a tool_use block
+              const accumulator = toolInputAccumulators.get(claudeEvent.index);
+              if (accumulator) {
+                try {
+                  // Parse the complete JSON input
+                  const args = JSON.parse(accumulator.partialJson) as Record<
+                    string,
+                    unknown
+                  >;
+                  yield {
+                    type: GeminiEventType.ToolCallRequest,
+                    value: {
+                      callId: accumulator.id,
+                      name: accumulator.name,
+                      args,
+                      isClientInitiated: false,
+                      prompt_id,
+                    },
+                  };
+                } catch (error) {
+                  console.error(
+                    `[ClaudeClient] Failed to parse tool input JSON: ${error}`,
+                  );
+                  // Emit with empty args on parse error
+                  yield {
+                    type: GeminiEventType.ToolCallRequest,
+                    value: {
+                      callId: accumulator.id,
+                      name: accumulator.name,
+                      args: {},
+                      isClientInitiated: false,
+                      prompt_id,
+                    },
+                  };
+                }
+                // Clean up accumulator
+                toolInputAccumulators.delete(claudeEvent.index);
+              }
+              break;
+            }
 
             case 'message_delta':
               // Handle stop reason and usage metadata
@@ -332,6 +465,19 @@ ${envContextString}
                     (claudeEvent.usage.input_tokens || 0) +
                     (claudeEvent.usage.output_tokens || 0),
                 };
+
+                // Update token usage statistics (delta provides final output token count)
+                if (tokenUsage) {
+                  tokenUsage.outputTokens = claudeEvent.usage.output_tokens || 0;
+                  tokenUsage.totalTokens =
+                    tokenUsage.inputTokens + tokenUsage.outputTokens;
+
+                  // Emit updated token usage event with final counts
+                  yield {
+                    type: GeminiEventType.TokenUsage,
+                    value: tokenUsage,
+                  };
+                }
               }
               break;
 

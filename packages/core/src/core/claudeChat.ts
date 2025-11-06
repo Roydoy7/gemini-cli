@@ -5,17 +5,17 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  MessageParam,
-  MessageCreateParams,
-  MessageStreamEvent,
-  Tool,
-  TextBlock,
-  ContentBlock,
-} from '@anthropic-ai/sdk';
 import type { Content } from '@google/genai';
 import type { Config } from '../config/config.js';
 import { ChatRecordingService } from '../services/chatRecordingService.js';
+
+// Type aliases for Anthropic SDK types
+type MessageParam = Anthropic.Messages.MessageParam;
+type MessageCreateParams = Anthropic.Messages.MessageCreateParams;
+type MessageStreamEvent = Anthropic.Messages.MessageStreamEvent;
+type Tool = Anthropic.Messages.Tool;
+type TextBlock = Anthropic.Messages.TextBlock;
+type ContentBlock = Anthropic.Messages.ContentBlock;
 
 /**
  * Stream event types for Claude chat
@@ -76,7 +76,46 @@ export class ClaudeChat {
       }
     }
 
+    // Prepare messages with cache breakpoint for conversation history
+    // Add cache_control to the last message in history to enable caching
     const requestMessages = [...this.history];
+
+    // Apply cache breakpoint to the last history message (before adding new user message)
+    // This caches the entire conversation history up to this point
+    if (requestMessages.length > 0) {
+      const lastMsg = requestMessages[requestMessages.length - 1];
+      if (lastMsg && typeof lastMsg.content !== 'string' && Array.isArray(lastMsg.content)) {
+        // If content is an array of blocks, add cache_control to the last cacheable block
+        const contentBlocks = [...lastMsg.content];
+        if (contentBlocks.length > 0) {
+          // Find the last cacheable block (text, tool_use, or tool_result)
+          // thinking blocks don't support cache_control
+          for (let i = contentBlocks.length - 1; i >= 0; i--) {
+            const block = contentBlocks[i];
+            if (
+              block.type === 'text' ||
+              block.type === 'tool_use' ||
+              block.type === 'tool_result'
+            ) {
+              // Add cache_control using type assertion as the TypeScript definitions
+              // don't include cache_control yet, but the API supports it
+              contentBlocks[i] = {
+                ...block,
+                cache_control: { type: 'ephemeral' as const },
+              } as unknown as ContentBlock;
+              requestMessages[requestMessages.length - 1] = {
+                ...lastMsg,
+                content: contentBlocks,
+              };
+              break;
+            }
+          }
+        }
+      }
+      // Note: If content is a string, we cannot add cache_control to it directly
+      // In that case, caching will rely on system prompt and tools caching
+    }
+
     const historyLengthBeforeRequest = this.history.length;
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -105,8 +144,16 @@ export class ClaudeChat {
           ];
         }
 
+        // Apply cache_control to tools for prompt caching
+        // Caching tools is very beneficial as tool definitions rarely change
         if (self.tools && self.tools.length > 0) {
-          params.tools = self.tools;
+          const toolsWithCache = [...self.tools];
+          // Add cache_control to the last tool
+          toolsWithCache[toolsWithCache.length - 1] = {
+            ...toolsWithCache[toolsWithCache.length - 1],
+            cache_control: { type: 'ephemeral' as const },
+          };
+          params.tools = toolsWithCache;
         }
 
         const stream = self.client.messages.stream(params);
@@ -182,6 +229,19 @@ export class ClaudeChat {
             const block = contentBlocks[chunk.index];
             if (block && block.type === 'text') {
               block.text += chunk.delta.text;
+            }
+          } else if (chunk.delta.type === 'thinking_delta') {
+            // Handle thinking content deltas (Claude Extended Thinking)
+            const thinkingDelta = chunk.delta as {
+              type: 'thinking_delta';
+              thinking: string;
+            };
+            const block = contentBlocks[chunk.index] as {
+              type: 'thinking';
+              thinking: string;
+            };
+            if (block && block.type === 'thinking') {
+              block.thinking += thinkingDelta.thinking;
             }
           } else if (chunk.delta.type === 'input_json_delta') {
             // Handle tool input streaming

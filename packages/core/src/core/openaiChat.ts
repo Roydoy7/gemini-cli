@@ -5,17 +5,17 @@
  */
 
 import OpenAI from 'openai';
-import type {
-  ChatCompletionChunk,
-  ChatCompletionMessageParam,
-  ChatCompletionCreateParamsStreaming,
-  ChatCompletionTool,
-  ChatCompletionContentPart,
-  ChatCompletionContentPartText,
-} from 'openai';
 import type { Content } from '@google/genai';
 import type { Config } from '../config/config.js';
 import { ChatRecordingService } from '../services/chatRecordingService.js';
+
+// Type aliases for OpenAI SDK types
+type ChatCompletionChunk = OpenAI.Chat.Completions.ChatCompletionChunk;
+type ChatCompletionMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+type ChatCompletionCreateParamsStreaming = OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+type ChatCompletionTool = OpenAI.Chat.Completions.ChatCompletionTool;
+type ChatCompletionContentPart = OpenAI.Chat.Completions.ChatCompletionContentPart;
+type ChatCompletionContentPartText = OpenAI.Chat.Completions.ChatCompletionContentPartText;
 
 /**
  * Stream event types for OpenAI chat

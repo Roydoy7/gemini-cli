@@ -64,6 +64,7 @@ export enum GeminiEventType {
   Retry = 'retry',
   ContextWindowWillOverflow = 'context_window_will_overflow',
   InvalidStream = 'invalid_stream',
+  TokenUsage = 'token_usage',
 }
 
 export type ServerGeminiRetryEvent = {
@@ -208,6 +209,11 @@ export type ServerGeminiCitationEvent = {
   value: string;
 };
 
+export type ServerGeminiTokenUsageEvent = {
+  type: GeminiEventType.TokenUsage;
+  value: import('./message-types.js').TokenUsage;
+};
+
 // The original union type, now composed of the individual types
 export type ServerGeminiStreamEvent =
   | ServerGeminiChatCompressedEvent
@@ -225,7 +231,8 @@ export type ServerGeminiStreamEvent =
   | ServerGeminiUserCancelledEvent
   | ServerGeminiRetryEvent
   | ServerGeminiContextWindowWillOverflowEvent
-  | ServerGeminiInvalidStreamEvent;
+  | ServerGeminiInvalidStreamEvent
+  | ServerGeminiTokenUsageEvent;
 
 // A turn manages the agentic loop turn within the server context.
 export class Turn {

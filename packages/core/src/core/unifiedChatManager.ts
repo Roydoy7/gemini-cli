@@ -61,6 +61,12 @@ export class UnifiedChatManager {
   private toolProgressHandler?: (event: ToolProgressEvent) => void;
   private activeToolScheduler?: CoreToolScheduler;
 
+  // Track token usage for each session (sessionId -> TokenUsage)
+  private sessionTokenUsage: Map<
+    string,
+    import('./message-types.js').TokenUsage
+  > = new Map();
+
   // Note: Provider is now a global setting stored in Config, not per-session
 
   constructor(config: Config) {
@@ -278,6 +284,21 @@ export class UnifiedChatManager {
       `[UnifiedChatManager] Saving ${messages.length} messages: ${messagesWithToolCalls.length} with toolCalls, ${toolMessages.length} tool responses`,
     );
 
+    // Attach token usage to the last assistant message if available
+    const tokenUsage = this.sessionTokenUsage.get(sessionId);
+    if (tokenUsage && messages.length > 0) {
+      // Find the last assistant message
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'assistant') {
+          messages[i].tokenUsage = tokenUsage;
+          console.log(
+            `[UnifiedChatManager] Attached token usage to last assistant message: ${tokenUsage.totalTokens} tokens (input: ${tokenUsage.inputTokens}, output: ${tokenUsage.outputTokens})`,
+          );
+          break;
+        }
+      }
+    }
+
     this.sessionManager.saveSessionHistory(sessionId, messages);
   }
 
@@ -366,6 +387,15 @@ export class UnifiedChatManager {
                 description: event.value.description,
               },
             };
+            continue;
+          }
+
+          // Collect token usage events
+          if (event.type === GeminiEventType.TokenUsage) {
+            // Store token usage for this session
+            this.sessionTokenUsage.set(sessionId, event.value);
+            // Yield token usage event to frontend
+            yield event;
             continue;
           }
 

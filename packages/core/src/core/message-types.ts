@@ -20,6 +20,11 @@ export interface UniversalMessage {
    * When converting back to Gemini format, use this field to restore the exact original structure
    */
   parts?: unknown[]; // Using unknown[] to avoid circular dependency with @google/genai types
+  /**
+   * Token usage statistics for this message (assistant messages only)
+   * Records input/output tokens and provider-specific metrics
+   */
+  tokenUsage?: TokenUsage;
 }
 
 /**
@@ -128,4 +133,68 @@ export interface ToolProgressEvent {
   details?: Record<string, unknown>;
   /** Timestamp when the event occurred */
   timestamp: number;
+}
+
+/**
+ * Token usage statistics for LLM API calls
+ * Supports multiple providers (Claude, OpenAI, Gemini, LM Studio)
+ */
+export interface TokenUsage {
+  /** Total input tokens (prompt tokens) */
+  inputTokens: number;
+  /** Total output tokens (completion tokens) */
+  outputTokens: number;
+  /** Total tokens (input + output) */
+  totalTokens: number;
+
+  // Claude-specific caching metrics
+  /** Tokens written to cache (Claude Prompt Caching) */
+  cacheCreationInputTokens?: number;
+  /** Tokens read from cache (Claude Prompt Caching) */
+  cacheReadInputTokens?: number;
+  /** Cache creation details (ephemeral_5m, ephemeral_1h) */
+  cacheCreation?: {
+    ephemeral_5m_input_tokens?: number;
+    ephemeral_1h_input_tokens?: number;
+  };
+
+  // Claude Extended Thinking metrics
+  /** Tokens used in thinking process (Claude Extended Thinking) */
+  thinkingTokens?: number;
+
+  // OpenAI-specific metrics
+  /** Reasoning tokens (OpenAI o1/o3 models) */
+  reasoningTokens?: number;
+  /** Completion tokens details (OpenAI) */
+  completionTokensDetails?: {
+    reasoning_tokens?: number;
+    accepted_prediction_tokens?: number;
+    rejected_prediction_tokens?: number;
+  };
+  /** Prompt tokens details (OpenAI) */
+  promptTokensDetails?: {
+    cached_tokens?: number;
+    audio_tokens?: number;
+  };
+
+  // Gemini-specific metrics
+  /** Candidates token count (Gemini) */
+  candidatesTokenCount?: number;
+  /** Prompt token count (Gemini, alternative naming) */
+  promptTokenCount?: number;
+  /** Total token count (Gemini, alternative naming) */
+  totalTokenCount?: number;
+  /** Cached content token count (Gemini context caching) */
+  cachedContentTokenCount?: number;
+
+  // Provider information
+  /** LLM provider (claude, openai, gemini, lmstudio) */
+  provider?: string;
+  /** Model used for this request */
+  model?: string;
+  /** Service tier (e.g., "standard", "premium") */
+  serviceTier?: string;
+
+  /** Timestamp when usage was recorded */
+  timestamp?: Date;
 }
