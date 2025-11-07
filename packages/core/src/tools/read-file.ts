@@ -99,7 +99,7 @@ class ReadFileToolInvocation extends BaseToolInvocation<
       llmContent = `
 IMPORTANT: The file content has been truncated.
 Status: Showing lines ${start}-${end} of ${total} total lines.
-Action: To read more of the file, you can use the 'offset' and 'limit' parameters in a subsequent 'read_file' call. For example, to read the next section of the file, use offset: ${nextOffset}.
+Action: To read more of the file, you can use the 'offset' and 'limit' parameters in a subsequent '${READ_FILE_TOOL_NAME}' call. For example, to read the next section of the file, use offset: ${nextOffset}.
 
 --- FILE CONTENT (truncated) ---
 ${result.llmContent}`;
@@ -150,7 +150,20 @@ export class ReadFileTool extends BaseDeclarativeTool<
     super(
       ReadFileTool.Name,
       'ReadFile',
-      `Reads and returns the content of a specified file. If the file is large, the content will be truncated. The tool's response will clearly indicate if truncation has occurred and will provide details on how to read more of the file using the 'offset' and 'limit' parameters. Handles text, images (PNG, JPG, GIF, WEBP, SVG, BMP), and PDF files. For text files, it can read specific line ranges.`,
+      `Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows reading images (eg PNG, JPG, etc). When reading an image file the contents are presented visually
+- This tool can read PDF files (.pdf). PDFs are processed page by page, extracting both text and visual content for analysis
+- This tool can only read files, not directories. To read a directory, use a shell command
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents`,
       Kind.Read,
       {
         properties: {

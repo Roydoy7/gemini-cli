@@ -54,6 +54,41 @@ export interface GrepToolParams {
    * File pattern to include in the search (for search_content_in_folder op, e.g. "*.js", "*.{ts,tsx}")
    */
   include?: string;
+
+  /**
+   * Output mode: "content" shows matching lines (default), "files_with_matches" shows only file paths, "count" shows match counts
+   */
+  output_mode?: 'content' | 'files_with_matches' | 'count';
+
+  /**
+   * Number of lines to show after each match (only works with output_mode: "content")
+   */
+  '-A'?: number;
+
+  /**
+   * Number of lines to show before each match (only works with output_mode: "content")
+   */
+  '-B'?: number;
+
+  /**
+   * Number of lines to show before and after each match (only works with output_mode: "content")
+   */
+  '-C'?: number;
+
+  /**
+   * Case insensitive search (default: true)
+   */
+  '-i'?: boolean;
+
+  /**
+   * Limit output to first N lines/entries
+   */
+  head_limit?: number;
+
+  /**
+   * Skip first N lines/entries before applying head_limit
+   */
+  offset?: number;
 }
 
 /**
@@ -249,6 +284,8 @@ class GrepToolInvocation extends BaseToolInvocation<
       return { llmContent: noMatchMsg, returnDisplay: `No matches found` };
     }
 
+    const outputMode = this.params.output_mode || 'content';
+
     // Group matches by file
     const matchesByFile = allMatches.reduce(
       (acc, match) => {
@@ -265,18 +302,39 @@ class GrepToolInvocation extends BaseToolInvocation<
 
     const matchCount = allMatches.length;
     const matchTerm = matchCount === 1 ? 'match' : 'matches';
+    const fileCount = Object.keys(matchesByFile).length;
 
-    let llmContent = `Found ${matchCount} ${matchTerm} for pattern "${this.params.pattern}" ${searchLocationDescription}${this.params.include ? ` (filter: "${this.params.include}")` : ''}:
+    let llmContent = '';
+
+    if (outputMode === 'files_with_matches') {
+      // Only show file paths
+      llmContent = `Found ${matchCount} ${matchTerm} in ${fileCount} file(s) for pattern "${this.params.pattern}" ${searchLocationDescription}${this.params.include ? ` (filter: "${this.params.include}")` : ''}:
+`;
+      for (const filePath in matchesByFile) {
+        llmContent += `${filePath}\n`;
+      }
+    } else if (outputMode === 'count') {
+      // Show match counts per file
+      llmContent = `Match counts for pattern "${this.params.pattern}" ${searchLocationDescription}${this.params.include ? ` (filter: "${this.params.include}")` : ''}:
+`;
+      for (const filePath in matchesByFile) {
+        const count = matchesByFile[filePath].length;
+        llmContent += `${filePath}: ${count}\n`;
+      }
+      llmContent += `\nTotal: ${matchCount} ${matchTerm} in ${fileCount} file(s)`;
+    } else {
+      // Default: show content
+      llmContent = `Found ${matchCount} ${matchTerm} for pattern "${this.params.pattern}" ${searchLocationDescription}${this.params.include ? ` (filter: "${this.params.include}")` : ''}:
 ---
 `;
-
-    for (const filePath in matchesByFile) {
-      llmContent += `File: ${filePath}\n`;
-      matchesByFile[filePath].forEach((match) => {
-        const trimmedLine = match.line.trim();
-        llmContent += `L${match.lineNumber}: ${trimmedLine}\n`;
-      });
-      llmContent += '---\n';
+      for (const filePath in matchesByFile) {
+        llmContent += `File: ${filePath}\n`;
+        matchesByFile[filePath].forEach((match) => {
+          const trimmedLine = match.line.trim();
+          llmContent += `L${match.lineNumber}: ${trimmedLine}\n`;
+        });
+        llmContent += '---\n';
+      }
     }
 
     return {
@@ -315,7 +373,8 @@ class GrepToolInvocation extends BaseToolInvocation<
       content = buffer.toString('utf8');
     }
 
-    const regex = new RegExp(this.params.pattern, 'i');
+    const caseInsensitive = this.params['-i'] ?? true;
+    const regex = new RegExp(this.params.pattern, caseInsensitive ? 'i' : '');
     const lines = content.split(/\r?\n/);
     const matches: GrepMatch[] = [];
 
@@ -329,22 +388,67 @@ class GrepToolInvocation extends BaseToolInvocation<
       }
     });
 
+    // Apply offset and head_limit
+    const offset = this.params.offset ?? 0;
+    const headLimit = this.params.head_limit;
+    const filteredMatches = headLimit
+      ? matches.slice(offset, offset + headLimit)
+      : matches.slice(offset);
+
     if (matches.length === 0) {
       const noMatchMsg = `No matches found for pattern "${this.params.pattern}" in file "${fileDisplayPath}".`;
       return { llmContent: noMatchMsg, returnDisplay: `No matches found` };
     }
 
-    const matchCount = matches.length;
+    const outputMode = this.params.output_mode || 'content';
+    const totalMatchCount = matches.length;
+    const matchCount = filteredMatches.length;
     const matchTerm = matchCount === 1 ? 'match' : 'matches';
 
-    let llmContent = `Found ${matchCount} ${matchTerm} for pattern "${this.params.pattern}" in file "${fileDisplayPath}":
----
-`;
+    let llmContent = '';
 
-    matches.forEach((match) => {
-      const trimmedLine = match.line.trim();
-      llmContent += `L${match.lineNumber}: ${trimmedLine}\n`;
-    });
+    if (outputMode === 'files_with_matches') {
+      // Only show file path
+      llmContent = `Found ${totalMatchCount} ${matchTerm} in file "${fileDisplayPath}"`;
+      if (offset > 0 || headLimit) {
+        llmContent += ` (showing ${matchCount})`;
+      }
+    } else if (outputMode === 'count') {
+      // Show match count
+      llmContent = `${fileDisplayPath}: ${totalMatchCount}`;
+    } else {
+      // Default: show content
+      llmContent = `Found ${totalMatchCount} ${matchTerm} for pattern "${this.params.pattern}" in file "${fileDisplayPath}"`;
+      if (offset > 0 || headLimit) {
+        llmContent += ` (showing ${matchCount})`;
+      }
+      llmContent += `:\n---\n`;
+
+      // Calculate context lines
+      const contextAfter = this.params['-C'] ?? this.params['-A'] ?? 0;
+      const contextBefore = this.params['-C'] ?? this.params['-B'] ?? 0;
+
+      if (contextAfter > 0 || contextBefore > 0) {
+        // Show matches with context
+        filteredMatches.forEach((match) => {
+          const startLine = Math.max(0, match.lineNumber - 1 - contextBefore);
+          const endLine = Math.min(lines.length - 1, match.lineNumber - 1 + contextAfter);
+
+          for (let i = startLine; i <= endLine; i++) {
+            const lineNum = i + 1;
+            const prefix = lineNum === match.lineNumber ? '' : '-';
+            llmContent += `${prefix}L${lineNum}: ${lines[i].trim()}\n`;
+          }
+          llmContent += '\n';
+        });
+      } else {
+        // Show matches without context
+        filteredMatches.forEach((match) => {
+          const trimmedLine = match.line.trim();
+          llmContent += `L${match.lineNumber}: ${trimmedLine}\n`;
+        });
+      }
+    }
 
     return {
       llmContent: llmContent.trim(),
@@ -742,8 +846,24 @@ export class GrepTool extends BaseDeclarativeTool<GrepToolParams, ToolResult> {
   constructor(private readonly config: Config) {
     super(
       GrepTool.Name,
-      'SearchText',
-      'Searches for a regular expression pattern within file contents. Supports two operations: search_content_in_folder (searches in a folder/directory with optional file filtering) and search_content_in_file (searches in a specific file). Returns the lines containing matches, along with their file paths and line numbers.',
+      'SearchContent',
+      `A powerful search tool built on ripgrep.
+
+Usage:
+- ALWAYS use this tool for search tasks. NEVER invoke \`grep\` or \`rg\` as a shell command. This tool has been optimized for correct permissions and access.
+- Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
+- Two operation modes:
+  - \`search_content_in_folder\`: Search across multiple files in a directory (use \`include\` to filter by file pattern)
+  - \`search_content_in_file\`: Search within a specific file (faster, requires exact file path)
+- Output modes: "content" shows matching lines (default), "files_with_matches" shows only file paths, "count" shows match counts
+- Context lines: Use -A, -B, or -C parameters to show lines before/after matches (only with output_mode: "content")
+- Pagination: Use head_limit and offset to control output size
+- Returns the lines containing matches, along with their file paths and line numbers in the format:
+  File: path/to/file.ts
+  L123: matching line content
+  ---
+- Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.`,
       Kind.Search,
       {
         properties: {
@@ -751,7 +871,7 @@ export class GrepTool extends BaseDeclarativeTool<GrepToolParams, ToolResult> {
             type: 'string',
             enum: ['search_content_in_folder', 'search_content_in_file'],
             description:
-              'Operation: search_content_in_folder (search in a folder with optional glob pattern filtering) or search_content_in_file (search in a specific file)',
+              'Operation mode: "search_content_in_folder" to search across multiple files in a directory (use with folder_path and optional include pattern), or "search_content_in_file" to search within a single specific file (use with file_path, faster for single file searches)',
           },
           pattern: {
             description:
@@ -772,6 +892,42 @@ export class GrepTool extends BaseDeclarativeTool<GrepToolParams, ToolResult> {
             description:
               "For search_content_in_folder: Optional glob pattern to filter which files are searched (e.g., '*.js', '*.{ts,tsx}', 'src/**'). If omitted, searches all files (respecting potential global ignores).",
             type: 'string',
+          },
+          output_mode: {
+            type: 'string',
+            enum: ['content', 'files_with_matches', 'count'],
+            description:
+              'Output mode: "content" shows matching lines (default), "files_with_matches" shows only file paths, "count" shows match counts',
+          },
+          '-A': {
+            type: 'number',
+            description:
+              'Number of lines to show after each match (rg -A). Requires output_mode: "content", ignored otherwise.',
+          },
+          '-B': {
+            type: 'number',
+            description:
+              'Number of lines to show before each match (rg -B). Requires output_mode: "content", ignored otherwise.',
+          },
+          '-C': {
+            type: 'number',
+            description:
+              'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise.',
+          },
+          '-i': {
+            type: 'boolean',
+            description:
+              'Case insensitive search (rg -i). Defaults to true.',
+          },
+          head_limit: {
+            type: 'number',
+            description:
+              'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes.',
+          },
+          offset: {
+            type: 'number',
+            description:
+              'Skip first N lines/entries before applying head_limit, equivalent to "| tail -n +N | head -N". Works across all output modes. Defaults to 0.',
           },
         },
         required: ['op', 'pattern'],

@@ -47,7 +47,7 @@ export const OUTPUT_UPDATE_INTERVAL_MS = 1000;
 
 export interface ShellToolParams {
   command: string;
-  description?: string; // Brief description of what this command does (required by schema for LLM)
+  description: string; // Brief description of what this command does (required by schema for LLM)
   directory?: string;
 }
 
@@ -402,22 +402,51 @@ export class ShellToolInvocation extends BaseToolInvocation<
 function getShellToolDescription(): string {
   const returnedInfo = `
 
-      The following information is returned:
+The following information is returned:
 
-      Command: Executed command.
-      Directory: Directory where command was executed, or \`(root)\`.
-      Stdout: Output on stdout stream. Can be \`(empty)\` or partial on error and for any unwaited background processes.
-      Stderr: Output on stderr stream. Can be \`(empty)\` or partial on error and for any unwaited background processes.
-      Error: Error or \`(none)\` if no error was reported for the subprocess.
-      Exit Code: Exit code or \`(none)\` if terminated by signal.
-      Signal: Signal number or \`(none)\` if no signal was received.
-      Background PIDs: List of background processes started or \`(none)\`.
-      Process Group PGID: Process group started or \`(none)\``;
+Command: Executed command.
+Directory: Directory where command was executed, or \`(root)\`.
+Output: Output on stdout stream. Can be \`(empty)\` or partial on error and for any unwaited background processes.
+Error: Error or \`(none)\` if no error was reported for the subprocess.
+Exit Code: Exit code or \`(none)\` if terminated by signal.
+Signal: Signal number or \`(none)\` if no signal was received.
+Background PIDs: List of background processes started or \`(none)\`.
+Process Group PGID: Process group started or \`(none)\``;
+
+  const usageNotes = `
+
+Usage notes:
+- The command argument is required.
+- You can specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). If not specified, commands will timeout after 120000ms (2 minutes).
+- It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
+- If the output exceeds 30000 characters, output will be truncated before being returned to you.
+- You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs.
+- Avoid using this tool with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
+  - File search: Use Glob (NOT find or ls)
+  - Content search: Use Grep (NOT grep or rg)
+  - Read files: Use Read (NOT cat/head/tail)
+  - Edit files: Use Edit (NOT sed/awk)
+  - Write files: Use Write (NOT echo >/cat <<EOF)
+  - Communication: Output text directly (NOT echo/printf)
+- When issuing multiple commands:
+  - If the commands are independent and can run in parallel, make multiple tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two tool calls in parallel.
+  - If the commands depend on each other and must run sequentially, use a single call with '&&' to chain them together (e.g., \`git add . && git commit -m "message" && git push\`). For instance, if one operation must complete before another starts (like mkdir before cp, or git add before git commit), run these operations sequentially instead.
+  - Use ';' only when you need to run commands sequentially but don't care if earlier commands fail
+  - DO NOT use newlines to separate commands (newlines are ok in quoted strings)
+- Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.`;
 
   if (os.platform() === 'win32') {
-    return `This tool executes a given shell command as \`powershell.exe -NoProfile -Command <command>\`. Command can start background processes using PowerShell constructs such as \`Start-Process -NoNewWindow\` or \`Start-Job\`.${returnedInfo}`;
+    return `Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
+
+IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
+
+This tool executes a given shell command as \`powershell.exe -NoProfile -Command <command>\`. Command can start background processes using PowerShell constructs such as \`Start-Process -NoNewWindow\` or \`Start-Job\`.${returnedInfo}${usageNotes}`;
   } else {
-    return `This tool executes a given shell command as \`bash -c <command>\`. Command can start background processes using \`&\`. Command is executed as a subprocess that leads its own process group. Command process group can be terminated as \`kill -- -PGID\` or signaled as \`kill -s SIGNAL -- -PGID\`.${returnedInfo}`;
+    return `Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
+
+IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
+
+This tool executes a given shell command as \`bash -c <command>\`. Command can start background processes using \`&\`. Command is executed as a subprocess that leads its own process group. Command process group can be terminated as \`kill -- -PGID\` or signaled as \`kill -s SIGNAL -- -PGID\`.${returnedInfo}${usageNotes}`;
   }
 }
 
