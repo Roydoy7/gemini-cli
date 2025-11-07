@@ -109,7 +109,7 @@ export abstract class BasePythonTool<
   }
 
   /**
-   * Get the embedded Python path (same logic as PythonEmbeddedTool)
+   * Get the embedded Python path (same logic as PythonTool)
    */
   protected getEmbeddedPythonPath(): string {
     const currentFileUrl = import.meta.url;

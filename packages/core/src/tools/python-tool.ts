@@ -27,27 +27,25 @@ import { getErrorMessage } from '../utils/errors.js';
 import { ShellExecutionService } from '../services/shellExecutionService.js';
 import type { ShellExecutionConfig } from '../services/shellExecutionService.js';
 import type { AnsiOutput } from '../utils/terminalSerializer.js';
-import { XlwingsDocTool } from '../tools/xlwings-doc-tool.js';
-import { GeminiSearchTool } from '../tools/gemini-search-tool.js';
-import { KnowledgeBaseTool } from './knowledge-base-tool.js';
 
 export const OUTPUT_UPDATE_INTERVAL_MS = 1000;
 
-export interface PythonEmbeddedToolParams {
+export interface PythonToolParams {
   code: string;
   description?: string;
   timeout?: number;
   workingDirectory?: string;
   requirements?: string[];
+  get_guide?: 'excel' | 'basics' | 'error_handling';
 }
 
-class PythonEmbeddedToolInvocation extends BaseToolInvocation<
-  PythonEmbeddedToolParams,
+class PythonToolInvocation extends BaseToolInvocation<
+  PythonToolParams,
   ToolResult
 > {
   constructor(
     private readonly config: Config,
-    params: PythonEmbeddedToolParams,
+    params: PythonToolParams,
     private readonly allowlist: Set<string>,
   ) {
     super(params);
@@ -67,6 +65,11 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
   override async shouldConfirmExecute(
     _abortSignal: AbortSignal,
   ): Promise<ToolCallConfirmationDetails | false> {
+    // Skip confirmation for get_guide requests (read-only operation)
+    if (this.params.get_guide) {
+      return false;
+    }
+
     // Check if Python execution is already allowed
     if (this.allowlist.has('python_embedded')) {
       return false;
@@ -107,7 +110,7 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
       if (progressCallback) {
         progressCallback({
           callId,
-          toolName: 'python-embedded-tools',
+          toolName: 'python',
           stage,
           progress,
           message,
@@ -118,6 +121,15 @@ class PythonEmbeddedToolInvocation extends BaseToolInvocation<
     };
 
     try {
+      // Handle guide request - return guide without executing code
+      if (this.params.get_guide) {
+        const guide = this.getGuideContent(this.params.get_guide);
+        return {
+          llmContent: guide,
+          returnDisplay: `📚 Python Guide: ${this.params.get_guide}`,
+        };
+      }
+
       emitProgress(
         ToolExecutionStage.PREPARING,
         0,
@@ -492,7 +504,7 @@ sys.exit(_exit_code)`;
               // Map Python stage to ToolExecutionStage
               progressCallback({
                 callId,
-                toolName: 'python-embedded-tools',
+                toolName: 'python',
                 stage: ToolExecutionStage.EXECUTING,
                 progress: eventData.progress,
                 message: eventData.message || eventData.stage,
@@ -757,6 +769,141 @@ The script took too long to complete. Consider:
     }
   }
 
+  private getGuideContent(guide: 'excel' | 'basics' | 'error_handling'): string {
+    const guides = {
+      excel: `# EXCEL OPERATIONS GUIDE
+
+## Library Selection
+- **openpyxl** (default): File-based operations, large datasets, data processing
+- **xlwings**: Interactive Excel, charts, macros, real-time updates
+
+## Excel Critical Notes
+- Excel stores numbers as floats: '027' becomes 27.0 (leading zeros lost)
+- Don't rely on expand(), end(), used_range with merged/empty cells - use explicit ranges
+- When user specifies column ranges (e.g., "XA to XS"), use them directly
+- Always verify modifications: read back and confirm changes succeeded
+
+## Safe Excel Data Comparison
+\`\`\`python
+def normalize_for_comparison(value):
+    """Normalize Excel value for safe comparison"""
+    variants = {str(value).strip()}
+    try:
+        num = float(value)
+        variants.update({str(int(num)), str(num)})
+    except (ValueError, TypeError):
+        pass
+    return variants
+\`\`\`
+
+## Performance Tips
+\`\`\`python
+# Batch write for performance
+sheet.range('A1').value = data_list  # Single call, not row-by-row
+
+# Explicit ranges (reliable)
+sheet.range('XA30:XS31').value  # Don't use expand() with merged cells
+\`\`\`
+
+## Common Operations
+\`\`\`python
+# Read Excel with openpyxl
+import openpyxl
+wb = openpyxl.load_workbook('file.xlsx')
+sheet = wb['Sheet1']
+data = sheet['A1:C10']
+
+# Write Excel with openpyxl
+sheet['A1'] = 'Hello'
+wb.save('file.xlsx')
+
+# Use xlwings for interactive Excel
+import xlwings as xw
+wb = xw.Book('file.xlsx')
+sheet = wb.sheets['Sheet1']
+sheet.range('A1').value = [[1, 2], [3, 4]]
+wb.save()
+\`\`\``,
+
+      basics: `# PYTHON BASICS GUIDE
+
+## Core Guidelines
+- Avoid returning large data to LLM (use file operations instead to save tokens)
+- Always use UTF-8 encoding for files: open(file, "r", encoding="utf-8")
+- Use absolute paths for file operations
+- For Windows paths: use double backslashes (C:\\\\path) or raw strings (r"C:\\path")
+- Specify requirements: ["pandas", "openpyxl", "matplotlib"] as needed
+
+## File Operations
+\`\`\`python
+# Read file with UTF-8
+with open('/path/to/file.txt', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Write file with UTF-8
+with open('/path/to/file.txt', 'w', encoding='utf-8') as f:
+    f.write('Hello World')
+
+# Process large files line by line
+with open('large_file.txt', 'r', encoding='utf-8') as f:
+    for line in f:
+        process(line)
+\`\`\`
+
+## Common Libraries Available
+- **pandas**: Data analysis and manipulation
+- **openpyxl**: Excel file operations
+- **xlwings**: Interactive Excel control
+- **matplotlib**: Data visualization
+- **requests**: HTTP requests
+- **beautifulsoup4**: HTML parsing`,
+
+      error_handling: `# ERROR HANDLING STRATEGY
+
+## Two-Strike Rule
+1. **First error**: Fix the specific issue
+2. **Second same error**: Try COMPLETELY DIFFERENT approach (different library/method)
+
+## Common Issues
+
+### UnicodeEncodeError (Windows)
+\`\`\`python
+# Always specify UTF-8 encoding
+with open(file, 'r', encoding='utf-8') as f:
+    content = f.read()
+\`\`\`
+
+### Excel Type Mismatches
+\`\`\`python
+# Excel may return float when you expect string
+value = sheet['A1'].value
+if value is not None:
+    value = str(value).strip()
+\`\`\`
+
+### Path Issues (Windows)
+\`\`\`python
+# Use raw strings or double backslashes
+path = r"C:\\Users\\Documents\\file.xlsx"
+# or
+path = "C:\\\\Users\\\\Documents\\\\file.xlsx"
+# or use forward slashes (Python converts them)
+path = "C:/Users/Documents/file.xlsx"
+\`\`\`
+
+### Import Errors
+If a package is not found, specify it in requirements parameter:
+\`\`\`json
+{
+  "code": "import pandas as pd",
+  "requirements": ["pandas"]
+}
+\`\`\``,
+    };
+
+    return guides[guide];
+  }
+
   private getEmbeddedPythonPath(): string {
     // Use import.meta.url to get the current file location
     const currentFileUrl = import.meta.url;
@@ -768,9 +915,9 @@ The script took too long to complete. Consider:
         ? currentFilePath.slice(1) // Remove leading slash on Windows
         : currentFilePath;
 
-    // Path structure: packages/core/src/tools/python-embedded-tool.ts
+    // Path structure: packages/core/src/tools/python-tool.ts
     // Go up: src/tools -> src -> core -> packages -> python-3.13.7
-    const toolsPath = path.dirname(normalizedPath); // packages/core/dist/src/tools/python-embedded-tool.js
+    const toolsPath = path.dirname(normalizedPath); // packages/core/dist/src/tools/python-tool.js
     const srcPath = path.dirname(toolsPath); // packages/core/dist/src
     const distPath = path.dirname(srcPath); // packages/core/dist
     const corePath = path.dirname(distPath); // packages/core
@@ -784,80 +931,48 @@ The script took too long to complete. Consider:
   }
 }
 
-export class PythonEmbeddedTool extends BaseDeclarativeTool<
-  PythonEmbeddedToolParams,
+export class PythonTool extends BaseDeclarativeTool<
+  PythonToolParams,
   ToolResult
 > {
-  static readonly Name: string = 'python-embedded-tools';
+  static readonly Name: string = 'python';
 
   private readonly allowlist = new Set<string>();
 
   constructor(private readonly config: Config) {
     super(
-      'python-embedded-tools',
-      'Python Code Execution (Embedded)',
+      'python',
+      'Python',
       `Execute Python code using embedded Python 3.13.7 environment.
 
-# CORE GUIDELINES
-- Avoid returning large data to LLM (use file operations instead to save tokens)
-- Always use UTF-8 encoding for files: open(file, "r", encoding="utf-8")
+# QUICK GUIDE
+- Use UTF-8 encoding for files: open(file, "r", encoding="utf-8")
 - Use absolute paths for file operations
-- For Windows paths: use double backslashes (C:\\path) or raw strings (r"C:\\path")
 - Specify requirements: ["pandas", "openpyxl", "matplotlib"] as needed
-- Always verify Excel modifications by re-reading the data
+- Available libraries: pandas, openpyxl, xlwings, matplotlib, requests, beautifulsoup4
 
-# EXCEL OPERATIONS
-- **openpyxl** (default): File-based operations, large datasets, data processing
-- **xlwings**: Interactive Excel, charts, macros, real-time updates
-- For xlwings guidance: use ${XlwingsDocTool.Name}
+# GET DETAILED GUIDES
+When you need detailed guidance, use the \`get_guide\` parameter instead of \`code\`:
+- \`get_guide: "excel"\` - Excel operations, library selection, common patterns
+- \`get_guide: "basics"\` - Core guidelines, file operations, available libraries
+- \`get_guide: "error_handling"\` - Common errors and solutions
 
-## Excel Critical Notes
-- Excel stores numbers as floats: '027' becomes 27.0 (leading zeros lost)
-- Don't rely on expand(), end(), used_range with merged/empty cells - use explicit ranges
-- When user specifies column ranges (e.g., "XA to XS"), use them directly
-- Always verify modifications: read back and confirm changes succeeded
+This retrieves detailed documentation without consuming tokens in the main description.
 
-# ERROR HANDLING
-1. First error: Fix the specific issue
-2. Second same error: Try COMPLETELY DIFFERENT approach (different library/method)
-3. Third attempt: Use ${GeminiSearchTool.Name} for solutions
-
-# EXAMPLES
-\`\`\`python
-# Safe Excel data comparison (handles type mismatches)
-def normalize_for_comparison(value):
-    """Normalize Excel value for safe comparison"""
-    variants = {str(value).strip()}
-    try:
-        num = float(value)
-        variants.update({str(int(num)), str(num)})
-    except (ValueError, TypeError):
-        pass
-    return variants
-
-# Batch write for performance
-sheet.range('A1').value = data_list  # Single call, not row-by-row
-
-# Explicit ranges (reliable)
-sheet.range('XA30:XS31').value  # Don't use expand() with merged cells
-\`\`\`
-
-For detailed Excel guides, error patterns, or complex scenarios: query ${KnowledgeBaseTool.Name} with "python_excel_guide" or use ${GeminiSearchTool.Name}.
 `,
       Kind.Execute,
       {
         type: 'object',
-        required: ['code', 'description'],
         properties: {
           code: {
             type: 'string',
             description:
-              'Python code to execute. Can be multi-line and include imports. IMPORTANT: When working with text/files, always specify UTF-8 encoding (e.g., open(file, "r", encoding="utf-8")) to prevent UnicodeEncodeError on Windows systems.',
+              'Python code to execute. Can be multi-line and include imports. IMPORTANT: When working with text/files, always specify UTF-8 encoding (e.g., open(file, "r", encoding="utf-8")) to prevent UnicodeEncodeError on Windows systems. Required when get_guide is not specified.',
           },
           description: {
             type: 'string',
             description:
-              'REQUIRED: Clear description of what this code will do and why. This description will be shown to the user in the confirmation dialog to help them understand the purpose of the code execution. Should be concise (1-2 sentences) but informative enough for the user to make an informed decision.',
+              'Clear description of what this code will do and why. This description will be shown to the user in the confirmation dialog to help them understand the purpose of the code execution. Should be concise (1-2 sentences) but informative enough for the user to make an informed decision. Required when get_guide is not specified.',
           },
           timeout: {
             type: 'number',
@@ -876,6 +991,12 @@ For detailed Excel guides, error patterns, or complex scenarios: query ${Knowled
             description:
               'List of Python packages to install before execution (e.g., ["requests", "pandas", "matplotlib"])',
           },
+          get_guide: {
+            type: 'string',
+            enum: ['excel', 'basics', 'error_handling'],
+            description:
+              'Get detailed guide documentation. Use this to retrieve comprehensive guides without code execution: "excel" for Excel operations and best practices, "basics" for core Python guidelines and file operations, "error_handling" for common errors and solutions. When specified, code and description are not required.',
+          },
         },
         additionalProperties: false,
       },
@@ -885,9 +1006,9 @@ For detailed Excel guides, error patterns, or complex scenarios: query ${Knowled
   }
 
   protected createInvocation(
-    params: PythonEmbeddedToolParams,
-  ): ToolInvocation<PythonEmbeddedToolParams, ToolResult> {
-    return new PythonEmbeddedToolInvocation(
+    params: PythonToolParams,
+  ): ToolInvocation<PythonToolParams, ToolResult> {
+    return new PythonToolInvocation(
       this.config,
       params,
       this.allowlist,
@@ -905,9 +1026,9 @@ For detailed Excel guides, error patterns, or complex scenarios: query ${Knowled
         ? currentFilePath.slice(1) // Remove leading slash on Windows
         : currentFilePath;
 
-    // Path structure: packages/core/src/tools/python-embedded-tool.ts
+    // Path structure: packages/core/src/tools/python-tool.ts
     // Go up: src/tools -> src -> core -> packages -> python-3.13.7
-    const toolsPath = path.dirname(normalizedPath); // packages/core/dist/src/tools/python-embedded-tool.js
+    const toolsPath = path.dirname(normalizedPath); // packages/core/dist/src/tools/python-tool.js
     const srcPath = path.dirname(toolsPath); // packages/core/dist/src
     const distPath = path.dirname(srcPath); // packages/core/dist
     const corePath = path.dirname(distPath); // packages/core

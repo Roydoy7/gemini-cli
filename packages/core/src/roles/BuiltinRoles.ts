@@ -7,7 +7,7 @@
 import type { RoleDefinition } from './types.js';
 // import { TodoTool } from '../tools/todo-tool.js'
 // import { LSTool } from '../tools/ls.js';
-import { PythonEmbeddedTool } from '../tools/python-embedded-tool.js';
+import { PythonTool } from '../tools/python-tool.js';
 // import { ExcelTool } from '../tools/excel-dotnet-tool.js';
 // import { XlwingsTool } from '../tools/xlwings-tool.js';
 // import { PDFTool } from '../tools/pdf-tool.js';
@@ -54,7 +54,7 @@ You have access to file operations, shell commands, and code analysis tools. Use
 
 # EXCEL CAPABILITIES
 - **Direct tools**: Read/write Excel files, cell/sheet operations, formulas, data validation, CSV
-- **Python-based** (via ${PythonEmbeddedTool.name}): Complex processing with xlwings, pandas, openpyxl, xlsxwriter
+- **Python-based** (via ${PythonTool.name}): Complex processing with xlwings, pandas, openpyxl, xlsxwriter
 - **Strategy**: Use simplest approach - direct tools for simple operations, Python for complex data processing/analysis
 
 # COMMUNICATION STYLE

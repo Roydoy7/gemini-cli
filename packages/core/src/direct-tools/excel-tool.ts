@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { PythonEmbeddedTool } from '../tools/python-embedded-tool.js';
+import { PythonTool } from '../tools/python-tool.js';
 import type { Config } from '../config/config.js';
 
 interface WorkbookInfo {
@@ -36,10 +36,10 @@ export interface ExcelToolResult {
  * Direct Excel tool for frontend integration using xlwings
  */
 export class ExcelTool {
-  private pythonTool: PythonEmbeddedTool;
+  private pythonTool: PythonTool;
 
   constructor(config: Config) {
-    this.pythonTool = new PythonEmbeddedTool(config);
+    this.pythonTool = new PythonTool(config);
   }
 
   /**
