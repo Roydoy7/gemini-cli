@@ -51,10 +51,10 @@ import {
   NextSpeakerCheckEvent,
   MalformedJsonResponseEvent,
 } from '../telemetry/types.js';
+import { uiTelemetryService } from '../telemetry/uiTelemetry.js';
 import type { IdeContext, File } from '../ide/types.js';
 import { handleFallback } from '../fallback/handler.js';
 import type { RoutingContext } from '../routing/routingStrategy.js';
-import { uiTelemetryService } from '../telemetry/uiTelemetry.js';
 import { debugLogger } from '../utils/debugLogger.js';
 import type { IClient } from './IClient.js';
 
@@ -143,8 +143,17 @@ export class GeminiClient implements IClient {
     this.roleManager = RoleManager.getInstance();
   }
 
+  private updateTelemetryTokenCount() {
+    if (this.chat) {
+      uiTelemetryService.setLastPromptTokenCount(
+        this.chat.getLastPromptTokenCount(),
+      );
+    }
+  }
+
   async initialize() {
     this.chat = await this.startChat();
+    this.updateTelemetryTokenCount();
   }
 
   private getContentGeneratorOrFail(): ContentGenerator {
@@ -299,6 +308,7 @@ export class GeminiClient implements IClient {
 
   async resetChat(): Promise<void> {
     this.chat = await this.startChat();
+    this.updateTelemetryTokenCount();
   }
 
   getChatRecordingService(): ChatRecordingService | undefined {
@@ -660,8 +670,7 @@ ${envContextString}
     );
 
     const remainingTokenCount =
-      tokenLimit(modelForLimitCheck) -
-      uiTelemetryService.getLastPromptTokenCount();
+      tokenLimit(modelForLimitCheck) - this.getChat().getLastPromptTokenCount();
 
     if (estimatedRequestTokenCount > remainingTokenCount * 0.95) {
       yield {
@@ -769,6 +778,9 @@ ${envContextString}
         return turn;
       }
       yield event;
+
+      this.updateTelemetryTokenCount();
+
       if (event.type === GeminiEventType.InvalidStream) {
         if (this.config.getContinueOnFailedApiCall()) {
           if (isInvalidStreamRetry) {
@@ -1058,6 +1070,7 @@ ${envContextString}
     } else if (info.compressionStatus === CompressionStatus.COMPRESSED) {
       if (newHistory) {
         this.chat = await this.startChat(newHistory);
+        this.updateTelemetryTokenCount();
         this.forceFullIdeContext = true;
       }
     }

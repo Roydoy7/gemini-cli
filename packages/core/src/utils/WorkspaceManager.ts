@@ -102,14 +102,11 @@ export class WorkspaceManager {
    * @param directory The directory path to add
    * @param basePath Optional base path for resolving relative paths
    */
-  async addWorkspaceDirectory(
-    directory: string,
-    basePath?: string,
-  ): Promise<void> {
+  async addWorkspaceDirectory(directory: string): Promise<void> {
     const previousDirectories = this.getDirectories();
 
     try {
-      this.workspaceContext.addDirectory(directory, basePath);
+      this.workspaceContext.addDirectory(directory);
       const newDirectories = this.getDirectories();
 
       if (newDirectories.length > previousDirectories.length) {

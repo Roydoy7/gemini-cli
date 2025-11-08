@@ -12,7 +12,7 @@ import { TextDecoder } from 'node:util';
 import os from 'node:os';
 import type { IPty } from '@lydell/node-pty';
 import { getCachedEncodingForBuffer } from '../utils/systemEncoding.js';
-// import { getShellConfiguration } from '../utils/shell-utils.js';
+import { getShellConfiguration, type ShellType } from '../utils/shell-utils.js';
 import { isBinary } from '../utils/textUtils.js';
 import pkg from '@xterm/headless';
 import {
@@ -23,6 +23,22 @@ const { Terminal } = pkg;
 
 const SIGKILL_TIMEOUT_MS = 200;
 const MAX_CHILD_PROCESS_BUFFER_SIZE = 16 * 1024 * 1024; // 16MB
+
+const BASH_SHOPT_OPTIONS = 'promptvars nullglob extglob nocaseglob dotglob';
+const BASH_SHOPT_GUARD = `shopt -u ${BASH_SHOPT_OPTIONS};`;
+
+function ensurePromptvarsDisabled(command: string, shell: ShellType): string {
+  if (shell !== 'bash') {
+    return command;
+  }
+
+  const trimmed = command.trimStart();
+  if (trimmed.startsWith(BASH_SHOPT_GUARD)) {
+    return command;
+  }
+
+  return `${BASH_SHOPT_GUARD} ${command}`;
+}
 
 /** A structured result from a shell command execution. */
 export interface ShellExecutionResult {
@@ -92,18 +108,11 @@ interface ActivePty {
 const getFullBufferText = (terminal: pkg.Terminal): string => {
   const buffer = terminal.buffer.active;
   const lines: string[] = [];
-
-  // Read from the beginning of the buffer (including scrollback)
-  // baseY is the absolute position of the first line in the buffer
-  const startLine = 0;
-  const endLine = buffer.baseY + buffer.length;
-
-  for (let i = startLine; i < endLine; i++) {
+  for (let i = 0; i < buffer.length; i++) {
     const line = buffer.getLine(i);
     const lineContent = line ? line.translateToString() : '';
     lines.push(lineContent);
   }
-
   return lines.join('\n').trimEnd();
 };
 
@@ -197,33 +206,15 @@ export class ShellExecutionService {
   ): ShellExecutionHandle {
     try {
       const isWindows = os.platform() === 'win32';
-      // const { executable, argsPrefix } = getShellConfiguration();
-      // const spawnArgs = [...argsPrefix, commandToExecute];
+      const { executable, argsPrefix, shell } = getShellConfiguration();
+      const guardedCommand = ensurePromptvarsDisabled(commandToExecute, shell);
+      const spawnArgs = [...argsPrefix, guardedCommand];
 
-      // Use PowerShell on Windows for better Unicode support
-      let command: string;
-      let args: string[];
-      let shell: string | boolean;
-
-      if (isWindows) {
-        command = 'powershell.exe';
-        args = [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${commandToExecute}`,
-        ];
-        shell = false; // Use direct spawn without shell wrapper
-      } else {
-        command = 'bash';
-        args = ['-c', commandToExecute];
-        shell = false;
-      }
-
-      const child = cpSpawn(command, args, {
+      const child = cpSpawn(executable, spawnArgs, {
         cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
-        shell,
+        windowsVerbatimArguments: isWindows ? false : undefined,
+        shell: false,
         detached: !isWindows,
         env: {
           ...process.env,
@@ -251,11 +242,7 @@ export class ShellExecutionService {
 
         const handleOutput = (data: Buffer, stream: 'stdout' | 'stderr') => {
           if (!stdoutDecoder || !stderrDecoder) {
-            // On Windows with PowerShell, always use UTF-8 since we set [Console]::OutputEncoding
-            // On other platforms, detect encoding from buffer
-            const encoding = isWindows
-              ? 'utf-8'
-              : getCachedEncodingForBuffer(data);
+            const encoding = getCachedEncodingForBuffer(data);
             try {
               stdoutDecoder = new TextDecoder(encoding);
               stderrDecoder = new TextDecoder(encoding);
@@ -433,24 +420,11 @@ export class ShellExecutionService {
     try {
       const cols = shellExecutionConfig.terminalWidth ?? 80;
       const rows = shellExecutionConfig.terminalHeight ?? 30;
-      const isWindows = os.platform() === 'win32';
+      const { executable, argsPrefix, shell } = getShellConfiguration();
+      const guardedCommand = ensurePromptvarsDisabled(commandToExecute, shell);
+      const args = [...argsPrefix, guardedCommand];
 
-      // Use PowerShell on Windows for better Unicode support
-      // PowerShell handles CJK characters correctly, unlike cmd.exe
-      const shell: string = isWindows ? 'powershell.exe' : 'bash';
-
-      // For PowerShell, set output encoding to UTF-8 and use -Command
-      // For bash, use -c flag
-      const args = isWindows
-        ? [
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${commandToExecute}`,
-          ]
-        : ['-c', commandToExecute];
-
-      const ptyProcess = ptyInfo.module.spawn(shell, args, {
+      const ptyProcess = ptyInfo.module.spawn(executable, args, {
         cwd,
         name: 'xterm',
         cols,
@@ -469,7 +443,6 @@ export class ShellExecutionService {
           allowProposedApi: true,
           cols,
           rows,
-          scrollback: 50000, // Increase scrollback buffer to prevent output truncation
         });
         headlessTerminal.scrollToTop();
 
@@ -595,11 +568,7 @@ export class ShellExecutionService {
             () =>
               new Promise<void>((resolve) => {
                 if (!decoder) {
-                  // On Windows with PowerShell, always use UTF-8 since we set [Console]::OutputEncoding
-                  // On other platforms, detect encoding from buffer
-                  const encoding = isWindows
-                    ? 'utf-8'
-                    : getCachedEncodingForBuffer(data);
+                  const encoding = getCachedEncodingForBuffer(data);
                   try {
                     decoder = new TextDecoder(encoding);
                   } catch {
@@ -660,11 +629,10 @@ export class ShellExecutionService {
             const finalize = () => {
               render(true);
               const finalBuffer = Buffer.concat(outputChunks);
-              const fullText = getFullBufferText(headlessTerminal);
 
               resolve({
                 rawOutput: finalBuffer,
-                output: fullText,
+                output: getFullBufferText(headlessTerminal),
                 exitCode,
                 signal: signal ?? null,
                 error,
@@ -803,9 +771,11 @@ export class ShellExecutionService {
         if (
           e instanceof Error &&
           (('code' in e && e.code === 'ESRCH') ||
-            e.message === 'Cannot resize a pty that has already exited')
+            e.message.includes('Cannot resize a pty that has already exited'))
         ) {
-          // ignore
+          // On Unix, we get an ESRCH error.
+          // On Windows, we get a message-based error.
+          // In both cases, it's safe to ignore.
         } else {
           throw e;
         }

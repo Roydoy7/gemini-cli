@@ -78,6 +78,7 @@ import type { PolicyEngineConfig } from '../policy/types.js';
 import type { UserTierId } from '../code_assist/types.js';
 import { AgentRegistry } from '../agents/registry.js';
 // import { SubagentToolWrapper } from '../agents/subagent-tool-wrapper.js';
+import { McpClientManager } from '../tools/mcp-client-manager.js';
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -139,6 +140,7 @@ export interface GeminiCLIExtension {
   mcpServers?: Record<string, MCPServerConfig>;
   contextFiles: string[];
   excludeTools?: string[];
+  hooks?: unknown;
   id: string;
 }
 
@@ -257,13 +259,16 @@ export interface ConfigParameters {
   listExtensions?: boolean;
   extensionLoader?: ExtensionLoader;
   enabledExtensions?: string[];
-  blockedMcpServers?: Array<{ name: string; extensionName: string }>;
+  allowedMcpServers?: string[];
+  blockedMcpServers?: string[];
+  enableExtensionReloading?: boolean;
   noBrowser?: boolean;
   summarizeToolOutput?: Record<string, SummarizeToolOutputSettings>;
   folderTrust?: boolean;
   ideMode?: boolean;
   loadMemoryFromIncludeDirectories?: boolean;
   chatCompression?: ChatCompressionSettings;
+  compressionThreshold?: number;
   interactive?: boolean;
   trustedFolder?: boolean;
   useRipgrep?: boolean;
@@ -276,6 +281,10 @@ export interface ConfigParameters {
   truncateToolOutputLines?: number;
   enableToolOutputTruncation?: boolean;
   eventEmitter?: EventEmitter;
+  hooks?: unknown;
+  experiments?: unknown;
+  modelConfigServiceConfig?: unknown;
+  enableHooks?: boolean;
   useSmartEdit?: boolean;
   useWriteTodos?: boolean;
   policyEngineConfig?: PolicyEngineConfig;
@@ -295,6 +304,7 @@ export interface ConfigParameters {
 
 export class Config {
   private toolRegistry!: ToolRegistry;
+  private mcpClientManager?: McpClientManager;
   private promptRegistry!: PromptRegistry;
   private agentRegistry!: AgentRegistry;
   private readonly sessionId: string;
@@ -352,10 +362,10 @@ export class Config {
   private readonly listExtensions: boolean;
   private readonly _extensionLoader: ExtensionLoader;
   private readonly _enabledExtensions: string[];
-  private readonly _blockedMcpServers: Array<{
-    name: string;
-    extensionName: string;
-  }>;
+  private allowedMcpServers: string[];
+  private blockedMcpServers: string[];
+  private readonly enableExtensionReloading: boolean;
+  private readonly compressionThreshold: number;
   fallbackModelHandler?: FallbackModelHandler;
   onRetryAttemptHandler?: (
     attempt: number,
@@ -465,7 +475,9 @@ export class Config {
     this._extensionLoader =
       params.extensionLoader ?? new SimpleExtensionLoader([]);
     this._enabledExtensions = params.enabledExtensions ?? [];
-    this._blockedMcpServers = params.blockedMcpServers ?? [];
+    this.allowedMcpServers = params.allowedMcpServers ?? [];
+    this.blockedMcpServers = params.blockedMcpServers ?? [];
+    this.enableExtensionReloading = params.enableExtensionReloading ?? false;
     this.noBrowser = params.noBrowser ?? false;
     this.summarizeToolOutput = params.summarizeToolOutput;
     this.folderTrust = params.folderTrust ?? false;
@@ -473,6 +485,7 @@ export class Config {
     this.loadMemoryFromIncludeDirectories =
       params.loadMemoryFromIncludeDirectories ?? false;
     this.chatCompression = params.chatCompression;
+    this.compressionThreshold = params.compressionThreshold ?? 0.3;
     this.interactive = params.interactive ?? false;
     this.ptyInfo = params.ptyInfo ?? 'child_process';
     this.trustedFolder = params.trustedFolder;
@@ -562,6 +575,19 @@ export class Config {
     await this.agentRegistry.initialize();
 
     this.toolRegistry = await this.createToolRegistry();
+    this.mcpClientManager = new McpClientManager(
+      this.toolRegistry,
+      this,
+      this.eventEmitter,
+    );
+
+    // Start MCP servers in background to avoid blocking initialization
+    // MCP tools will be registered dynamically as they become available
+    this.mcpClientManager.startConfiguredMcpServers().catch((error) => {
+      debugLogger.error('Error starting MCP servers:', error);
+    });
+
+    await this.getExtensionLoader().start(this);
 
     await this.geminiClient.initialize();
   }
@@ -591,7 +617,7 @@ export class Config {
       this.geminiClient.stripThoughtsFromHistory();
     }
 
-    const newContentGeneratorConfig = createContentGeneratorConfig(
+    const newContentGeneratorConfig = await createContentGeneratorConfig(
       this,
       authMethod,
     );
@@ -782,8 +808,17 @@ export class Config {
     return this.allowedTools;
   }
 
-  getExcludeTools(): string[] | undefined {
-    return this.excludeTools;
+  getExcludeTools(): Set<string> | undefined {
+    const excludeToolsSet = new Set([...(this.excludeTools ?? [])]);
+    for (const extension of this.getExtensionLoader().getExtensions()) {
+      if (!extension.isActive) {
+        continue;
+      }
+      if (extension.excludeTools) {
+        extension.excludeTools.forEach((t) => excludeToolsSet.add(t));
+      }
+    }
+    return excludeToolsSet;
   }
 
   getToolDiscoveryCommand(): string | undefined {
@@ -977,8 +1012,43 @@ export class Config {
     return this._enabledExtensions;
   }
 
-  getBlockedMcpServers(): Array<{ name: string; extensionName: string }> {
-    return this._blockedMcpServers;
+  getAllowedMcpServers(): string[] | undefined {
+    return this.allowedMcpServers;
+  }
+
+  getBlockedMcpServers(): string[] | undefined {
+    return this.blockedMcpServers;
+  }
+
+  getEnableExtensionReloading(): boolean {
+    return this.enableExtensionReloading;
+  }
+
+  getCompressionThreshold(): number {
+    return this.compressionThreshold;
+  }
+
+  getMcpClientManager(): McpClientManager | undefined {
+    return this.mcpClientManager;
+  }
+
+  // Stub methods for upstream compatibility (not implemented in our fork)
+  getHooks(): unknown {
+    return undefined;
+  }
+
+  getExperiments(): unknown {
+    return undefined;
+  }
+
+  modelConfigService: unknown = undefined;
+
+  getImportFormat(): 'flat' | 'tree' | undefined {
+    return undefined;
+  }
+
+  getDiscoveryMaxDirs(): number | undefined {
+    return undefined;
   }
 
   getNoBrowser(): boolean {
@@ -1173,7 +1243,7 @@ export class Config {
   }
 
   async createToolRegistry(): Promise<ToolRegistry> {
-    const registry = new ToolRegistry(this, this.eventEmitter);
+    const registry = new ToolRegistry(this);
 
     // Set message bus on tool registry before discovery so MCP tools can access it
     if (this.getEnableMessageBusIntegration()) {
@@ -1186,7 +1256,7 @@ export class Config {
       const className = ToolClass.name;
       const toolName = ToolClass.Name || className;
       const coreTools = this.getCoreTools();
-      const excludeTools = this.getExcludeTools() || [];
+      const excludeTools = this.getExcludeTools() || new Set<string>();
       // On some platforms, the className can be minified to _ClassName.
       const normalizedClassName = className.replace(/^_+/, '');
 
@@ -1201,9 +1271,8 @@ export class Config {
         );
       }
 
-      const isExcluded = excludeTools.some(
-        (tool) => tool === toolName || tool === normalizedClassName,
-      );
+      const isExcluded =
+        excludeTools.has(toolName) || excludeTools.has(normalizedClassName);
 
       if (isExcluded) {
         isEnabled = false;

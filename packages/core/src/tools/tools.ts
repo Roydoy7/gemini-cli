@@ -82,6 +82,7 @@ export abstract class BaseToolInvocation<
     protected readonly messageBus?: MessageBus,
     readonly _toolName?: string,
     readonly _toolDisplayName?: string,
+    readonly _serverName?: string,
   ) {}
 
   abstract getDescription(): string;
@@ -219,6 +220,7 @@ export abstract class BaseToolInvocation<
         type: MessageBusType.TOOL_CONFIRMATION_REQUEST,
         toolCall,
         correlationId,
+        serverName: this._serverName,
       };
 
       try {
@@ -311,6 +313,7 @@ export abstract class DeclarativeTool<
     readonly isOutputMarkdown: boolean = true,
     readonly canUpdateOutput: boolean = false,
     readonly messageBus?: MessageBus,
+    readonly extensionName?: string,
     readonly extensionId?: string,
   ) {}
 

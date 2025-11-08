@@ -6,11 +6,22 @@
 
 // Export config
 export * from './config/config.js';
+export * from './config/defaultModelConfigs.js';
 export * from './output/types.js';
 export * from './output/json-formatter.js';
 export * from './output/stream-json-formatter.js';
-export * from './policy/types.js';
+export {
+  ApprovalMode as PolicyApprovalMode,
+  PolicyDecision,
+} from './policy/types.js';
+export type {
+  PolicyRule,
+  PolicyEngineConfig,
+  PolicySettings,
+} from './policy/types.js';
 export * from './policy/policy-engine.js';
+export * from './policy/toml-loader.js';
+export * from './policy/config.js';
 export * from './confirmation-bus/types.js';
 export * from './confirmation-bus/message-bus.js';
 
@@ -53,6 +64,7 @@ export * from './code_assist/codeAssist.js';
 export * from './code_assist/oauth2.js';
 export * from './code_assist/server.js';
 export * from './code_assist/types.js';
+export * from './core/apiKeyCredentialStorage.js';
 
 // Export auth system
 export { AuthManager } from './auth/AuthManager.js';
@@ -98,6 +110,7 @@ export * from './utils/thoughtUtils.js';
 export * from './utils/debugLogger.js';
 export * from './utils/events.js';
 export * from './utils/extensionLoader.js';
+export * from './utils/package.js';
 
 // Export services
 export * from './services/fileDiscoveryService.js';
@@ -199,3 +212,6 @@ export type {
 
 // Export test utils
 export * from './test-utils/index.js';
+
+// Export hook types
+export * from './hooks/types.js';
