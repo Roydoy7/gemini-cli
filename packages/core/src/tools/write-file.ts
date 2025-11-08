@@ -121,6 +121,7 @@ export async function getCorrectedFileContent(
         old_string: originalContent, // Treat entire current content as old_string
         new_string: proposedContent,
         file_path: filePath,
+        description: 'Replace entire file content',
       },
       config.getGeminiClient(),
       config.getBaseLlmClient(),

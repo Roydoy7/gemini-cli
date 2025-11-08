@@ -780,6 +780,9 @@ export const useGeminiStream = (
           case ServerGeminiEventType.ToolProgress:
             // CLI doesn't display tool progress UI, silently ignore
             break;
+          case ServerGeminiEventType.TokenUsage:
+            // Token usage is tracked separately, silently ignore
+            break;
           default: {
             // enforces exhaustive switch-case
             const unreachable: never = event;

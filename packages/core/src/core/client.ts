@@ -179,8 +179,22 @@ export class GeminiClient implements IClient {
   }
 
   setHistory(history: UniversalMessage[]) {
-    console.log('[GeminiClient] setHistory: Converting UniversalMessage[] to Gemini format');
+    console.log(
+      '[GeminiClient] setHistory: Converting UniversalMessage[] to Gemini format',
+    );
     const geminiHistory = this.convertUniversalToGemini(history);
+    this.getChat().setHistory(geminiHistory);
+    this.forceFullIdeContext = true;
+  }
+
+  /**
+   * Set history from Gemini Content[] format (for backwards compatibility)
+   * @param geminiHistory - History in Gemini Content[] format
+   */
+  setHistoryFromGemini(geminiHistory: Content[]) {
+    console.log(
+      '[GeminiClient] setHistoryFromGemini: Using Gemini format directly',
+    );
     this.getChat().setHistory(geminiHistory);
     this.forceFullIdeContext = true;
   }
@@ -227,7 +241,10 @@ export class GeminiClient implements IClient {
     const { ToolsetManager } = await import('../tools/ToolsetManager.js');
     const toolsetManager = new ToolsetManager();
     // Filter tools by provider - only get tools that work with Gemini
-    const roleToolClasses = toolsetManager.getToolsForRole(currentRole.id, 'gemini');
+    const roleToolClasses = toolsetManager.getToolsForRole(
+      currentRole.id,
+      'gemini',
+    );
 
     // Get the tool registry
     const toolRegistry = this.config.getToolRegistry();
@@ -671,7 +688,8 @@ ${envContextString}
     const hasPendingToolCall =
       !!lastMessage &&
       lastMessage.role === 'assistant' &&
-      (lastMessage.toolCalls && lastMessage.toolCalls.length > 0);
+      lastMessage.toolCalls &&
+      lastMessage.toolCalls.length > 0;
 
     if (this.config.getIdeMode() && !hasPendingToolCall) {
       const { contextParts, newIdeContext } = this.getIdeContextParts(
@@ -721,7 +739,9 @@ ${envContextString}
     const globalModel = this.config.getGlobalModel();
     if (globalModel) {
       modelToUse = globalModel;
-      console.log(`[GeminiClient] Using global model from config: ${modelToUse}`);
+      console.log(
+        `[GeminiClient] Using global model from config: ${modelToUse}`,
+      );
       // Lock the model for the sequence
       this.currentSequenceModel = modelToUse;
     }
@@ -1063,7 +1083,8 @@ ${envContextString}
       if (msg.role === 'system') continue;
 
       // Tool response messages (user role with functionResponse parts)
-      const functionResponseParts = msg.parts?.filter((p) => 'functionResponse' in p) || [];
+      const functionResponseParts =
+        msg.parts?.filter((p) => 'functionResponse' in p) || [];
       if (functionResponseParts.length > 0) {
         for (const part of functionResponseParts) {
           if ('functionResponse' in part && part.functionResponse) {
@@ -1081,7 +1102,11 @@ ${envContextString}
       // Assistant messages (model role)
       if (msg.role === 'model') {
         let textContent = '';
-        const toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
+        const toolCalls: Array<{
+          id: string;
+          name: string;
+          arguments: Record<string, unknown>;
+        }> = [];
 
         for (const part of msg.parts || []) {
           if ('text' in part && part.text) {
@@ -1090,7 +1115,10 @@ ${envContextString}
             toolCalls.push({
               id: part.functionCall.name || '',
               name: part.functionCall.name || '',
-              arguments: (part.functionCall.args || {}) as Record<string, unknown>,
+              arguments: (part.functionCall.args || {}) as Record<
+                string,
+                unknown
+              >,
             });
           }
         }
@@ -1113,7 +1141,9 @@ ${envContextString}
       // User messages
       if (msg.role === 'user') {
         const textParts = msg.parts?.filter((p) => 'text' in p) || [];
-        const textContent = textParts.map((p) => ('text' in p ? p.text : '')).join('');
+        const textContent = textParts
+          .map((p) => ('text' in p ? p.text : ''))
+          .join('');
 
         if (textContent) {
           universalMessages.push({
@@ -1163,7 +1193,10 @@ ${envContextString}
 
       // Assistant messages
       if (msg.role === 'assistant') {
-        const parts: Array<{ text?: string; functionCall?: { name: string; args: Record<string, unknown> } }> = [];
+        const parts: Array<{
+          text?: string;
+          functionCall?: { name: string; args: Record<string, unknown> };
+        }> = [];
 
         if (msg.content) {
           parts.push({ text: msg.content });

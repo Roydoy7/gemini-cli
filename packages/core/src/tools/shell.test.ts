@@ -125,19 +125,26 @@ describe('ShellTool', () => {
 
   describe('build', () => {
     it('should return an invocation for a valid command', () => {
-      const invocation = shellTool.build({ command: 'goodCommand --safe' });
+      const invocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'goodCommand --safe',
+      });
       expect(invocation).toBeDefined();
     });
 
     it('should throw an error for an empty command', () => {
-      expect(() => shellTool.build({ command: ' ' })).toThrow(
-        'Command cannot be empty.',
-      );
+      expect(() =>
+        shellTool.build({ description: 'Test shell command', command: ' ' }),
+      ).toThrow('Command cannot be empty.');
     });
 
     it('should throw an error for a relative directory path', () => {
       expect(() =>
-        shellTool.build({ command: 'ls', directory: 'rel/path' }),
+        shellTool.build({
+          description: 'Test shell command',
+          command: 'ls',
+          directory: 'rel/path',
+        }),
       ).toThrow('Directory must be an absolute path.');
     });
 
@@ -146,7 +153,11 @@ describe('ShellTool', () => {
         createMockWorkspaceContext('/test/dir', ['/another/workspace']),
       );
       expect(() =>
-        shellTool.build({ command: 'ls', directory: '/not/in/workspace' }),
+        shellTool.build({
+          description: 'Test shell command',
+          command: 'ls',
+          directory: '/not/in/workspace',
+        }),
       ).toThrow(
         "Directory '/not/in/workspace' is not within any of the registered workspace directories.",
       );
@@ -157,6 +168,7 @@ describe('ShellTool', () => {
         createMockWorkspaceContext('/test/dir', ['/another/workspace']),
       );
       const invocation = shellTool.build({
+        description: 'Test shell command',
         command: 'ls',
         directory: '/test/dir/subdir',
       });
@@ -185,7 +197,10 @@ describe('ShellTool', () => {
     };
 
     it('should wrap command on linux and parse pgrep output', async () => {
-      const invocation = shellTool.build({ command: 'my-command &' });
+      const invocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'my-command &',
+      });
       const promise = invocation.execute(mockAbortSignal);
       resolveShellExecution({ pid: 54321 });
 
@@ -213,6 +228,7 @@ describe('ShellTool', () => {
         createMockWorkspaceContext('/test/dir'),
       );
       const invocation = shellTool.build({
+        description: 'Test shell command',
         command: 'ls',
         directory: '/test/dir/subdir',
       });
@@ -234,7 +250,10 @@ describe('ShellTool', () => {
 
     itWindowsOnly('should not wrap command on windows', async () => {
       vi.mocked(os.platform).mockReturnValue('win32');
-      const invocation = shellTool.build({ command: 'dir' });
+      const invocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'dir',
+      });
       const promise = invocation.execute(mockAbortSignal);
       resolveShellExecution({
         rawOutput: Buffer.from(''),
@@ -259,7 +278,10 @@ describe('ShellTool', () => {
 
     it('should format error messages correctly', async () => {
       const error = new Error('wrapped command failed');
-      const invocation = shellTool.build({ command: 'user-command' });
+      const invocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'user-command',
+      });
       const promise = invocation.execute(mockAbortSignal);
       resolveShellExecution({
         error,
@@ -279,7 +301,10 @@ describe('ShellTool', () => {
 
     it('should return a SHELL_EXECUTE_ERROR for a command failure', async () => {
       const error = new Error('command failed');
-      const invocation = shellTool.build({ command: 'user-command' });
+      const invocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'user-command',
+      });
       const promise = invocation.execute(mockAbortSignal);
       resolveShellExecution({
         error,
@@ -294,14 +319,18 @@ describe('ShellTool', () => {
     });
 
     it('should throw an error for invalid parameters', () => {
-      expect(() => shellTool.build({ command: '' })).toThrow(
-        'Command cannot be empty.',
-      );
+      expect(() =>
+        shellTool.build({ description: 'Test shell command', command: '' }),
+      ).toThrow('Command cannot be empty.');
     });
 
     it('should throw an error for invalid directory', () => {
       expect(() =>
-        shellTool.build({ command: 'ls', directory: 'nonexistent' }),
+        shellTool.build({
+          description: 'Test shell command',
+          command: 'ls',
+          directory: 'nonexistent',
+        }),
       ).toThrow('Directory must be an absolute path.');
     });
 
@@ -313,7 +342,10 @@ describe('ShellTool', () => {
         'summarized output',
       );
 
-      const invocation = shellTool.build({ command: 'ls' });
+      const invocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'ls',
+      });
       const promise = invocation.execute(mockAbortSignal);
       resolveExecutionPromise({
         output: 'long output',
@@ -345,7 +377,10 @@ describe('ShellTool', () => {
       });
       vi.mocked(fs.existsSync).mockReturnValue(true); // Pretend the file exists
 
-      const invocation = shellTool.build({ command: 'a-command' });
+      const invocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'a-command',
+      });
       await expect(invocation.execute(mockAbortSignal)).rejects.toThrow(error);
 
       const tmpFile = path.join(os.tmpdir(), 'shell_pgrep_abcdef.tmp');
@@ -363,7 +398,10 @@ describe('ShellTool', () => {
       });
 
       it('should immediately show binary detection message and throttle progress', async () => {
-        const invocation = shellTool.build({ command: 'cat img' });
+        const invocation = shellTool.build({
+          description: 'Test shell command',
+          command: 'cat img',
+        });
         const promise = invocation.execute(mockAbortSignal, updateOutputMock);
 
         mockShellOutputCallback({ type: 'binary_detected' });
@@ -410,7 +448,10 @@ describe('ShellTool', () => {
 
   describe('shouldConfirmExecute', () => {
     it('should request confirmation for a new command and allowlist it on "Always"', async () => {
-      const params = { command: 'npm install' };
+      const params = {
+        description: 'Test shell command',
+        command: 'npm install',
+      };
       const invocation = shellTool.build(params);
       const confirmation = await invocation.shouldConfirmExecute(
         new AbortController().signal,
@@ -425,7 +466,10 @@ describe('ShellTool', () => {
       );
 
       // Should now be allowlisted
-      const secondInvocation = shellTool.build({ command: 'npm test' });
+      const secondInvocation = shellTool.build({
+        description: 'Test shell command',
+        command: 'npm test',
+      });
       const secondConfirmation = await secondInvocation.shouldConfirmExecute(
         new AbortController().signal,
       );
@@ -433,7 +477,9 @@ describe('ShellTool', () => {
     });
 
     it('should throw an error if validation fails', () => {
-      expect(() => shellTool.build({ command: '' })).toThrow();
+      expect(() =>
+        shellTool.build({ description: 'Test shell command', command: '' }),
+      ).toThrow();
     });
 
     describe('in non-interactive mode', () => {
@@ -443,7 +489,10 @@ describe('ShellTool', () => {
 
       it('should not throw an error or block for an allowed command', async () => {
         (mockConfig.getAllowedTools as Mock).mockReturnValue(['ShellTool(wc)']);
-        const invocation = shellTool.build({ command: 'wc -l foo.txt' });
+        const invocation = shellTool.build({
+          description: 'Test shell command',
+          command: 'wc -l foo.txt',
+        });
         const confirmation = await invocation.shouldConfirmExecute(
           new AbortController().signal,
         );
@@ -454,7 +503,10 @@ describe('ShellTool', () => {
         (mockConfig.getAllowedTools as Mock).mockReturnValue([
           'ShellTool(wc -l)',
         ]);
-        const invocation = shellTool.build({ command: 'wc -l foo.txt' });
+        const invocation = shellTool.build({
+          description: 'Test shell command',
+          command: 'wc -l foo.txt',
+        });
         const confirmation = await invocation.shouldConfirmExecute(
           new AbortController().signal,
         );
@@ -465,7 +517,10 @@ describe('ShellTool', () => {
         (mockConfig.getAllowedTools as Mock).mockReturnValue([
           'ShellTool(wc -l)',
         ]);
-        const invocation = shellTool.build({ command: 'madeupcommand' });
+        const invocation = shellTool.build({
+          description: 'Test shell command',
+          command: 'madeupcommand',
+        });
         await expect(
           invocation.shouldConfirmExecute(new AbortController().signal),
         ).rejects.toThrow('madeupcommand');
@@ -475,7 +530,10 @@ describe('ShellTool', () => {
         (mockConfig.getAllowedTools as Mock).mockReturnValue([
           'ShellTool(wc -l)',
         ]);
-        const invocation = shellTool.build({ command: 'wc' });
+        const invocation = shellTool.build({
+          description: 'Test shell command',
+          command: 'wc',
+        });
         await expect(
           invocation.shouldConfirmExecute(new AbortController().signal),
         ).rejects.toThrow('wc');
@@ -485,7 +543,10 @@ describe('ShellTool', () => {
         (mockConfig.getAllowedTools as Mock).mockReturnValue([
           'ShellTool(echo)',
         ]);
-        const invocation = shellTool.build({ command: 'echo "foo" && ls -l' });
+        const invocation = shellTool.build({
+          description: 'Test shell command',
+          command: 'echo "foo" && ls -l',
+        });
         await expect(
           invocation.shouldConfirmExecute(new AbortController().signal),
         ).rejects.toThrow(
