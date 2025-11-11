@@ -29,6 +29,7 @@ import { logFileOperation } from '../telemetry/loggers.js';
 import { FileOperationEvent } from '../telemetry/types.js';
 import { ToolErrorType } from './tool-error.js';
 import { READ_MANY_FILES_TOOL_NAME } from './tool-names.js';
+import { registerFileForTracking } from './fileTrackingIntegration.js';
 
 /**
  * Parameters for the ReadManyFilesTool.
@@ -365,6 +366,10 @@ ${finalExclusionPatternsForDescription
               programming_language,
             ),
           );
+
+          // Register file for tracking after successful read
+          // This allows us to detect if the file is modified externally later
+          await registerFileForTracking(this.config, filePath);
         }
       } else {
         // Handle Promise rejection (unexpected errors)

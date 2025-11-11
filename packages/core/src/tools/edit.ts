@@ -42,6 +42,7 @@ import { IdeClient } from '../ide/ide-client.js';
 import { safeLiteralReplace } from '../utils/textUtils.js';
 import { EDIT_TOOL_NAME, READ_FILE_TOOL_NAME } from './tool-names.js';
 import { debugLogger } from '../utils/debugLogger.js';
+import { registerFileForTracking } from './fileTrackingIntegration.js';
 
 export function applyReplacement(
   currentContent: string | null,
@@ -393,9 +394,14 @@ class EditToolInvocation
 
     try {
       this.ensureParentDirectoriesExist(this.resolvedPath);
+
       await this.config
         .getFileSystemService()
         .writeTextFile(this.resolvedPath, editData.newContent);
+
+      // Register file after modification to track current state
+      // This ensures LLM's own changes are not reported as external changes
+      await registerFileForTracking(this.config, this.resolvedPath);
 
       const fileName = path.basename(this.resolvedPath);
       const originallyProposedContent =

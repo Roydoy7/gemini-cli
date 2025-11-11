@@ -27,6 +27,7 @@ import { getErrorMessage } from '../utils/errors.js';
 import { ShellExecutionService } from '../services/shellExecutionService.js';
 import type { ShellExecutionConfig } from '../services/shellExecutionService.js';
 import type { AnsiOutput } from '../utils/terminalSerializer.js';
+import { registerDirectoryForTracking } from './fileTrackingIntegration.js';
 
 export const OUTPUT_UPDATE_INTERVAL_MS = 1000;
 
@@ -704,6 +705,10 @@ The script took too long to complete. Consider:
           100,
           'Execution completed successfully',
         );
+
+        // Register directory after successful execution to track current state
+        // This ensures Python's own changes are not reported as external changes
+        await registerDirectoryForTracking(this.config, workingDir);
       }
 
       const formattedOutput =
@@ -769,7 +774,9 @@ The script took too long to complete. Consider:
     }
   }
 
-  private getGuideContent(guide: 'excel' | 'basics' | 'error_handling'): string {
+  private getGuideContent(
+    guide: 'excel' | 'basics' | 'error_handling',
+  ): string {
     const guides = {
       excel: `# EXCEL OPERATIONS GUIDE
 
@@ -1008,11 +1015,7 @@ This retrieves detailed documentation without consuming tokens in the main descr
   protected createInvocation(
     params: PythonToolParams,
   ): ToolInvocation<PythonToolParams, ToolResult> {
-    return new PythonToolInvocation(
-      this.config,
-      params,
-      this.allowlist,
-    );
+    return new PythonToolInvocation(this.config, params, this.allowlist);
   }
 
   private getPythonPathStatic(): string {

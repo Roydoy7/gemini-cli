@@ -21,6 +21,7 @@ import { getProgrammingLanguage } from '../telemetry/telemetry-utils.js';
 import { logFileOperation } from '../telemetry/loggers.js';
 import { FileOperationEvent } from '../telemetry/types.js';
 import { READ_FILE_TOOL_NAME } from './tool-names.js';
+import { registerFileForTracking } from './fileTrackingIntegration.js';
 
 /**
  * Parameters for the ReadFile tool
@@ -130,6 +131,10 @@ ${result.llmContent}`;
         programming_language,
       ),
     );
+
+    // Register file for tracking after successful read
+    // This allows us to detect if the file is modified externally later
+    await registerFileForTracking(this.config, this.resolvedPath);
 
     return {
       llmContent,

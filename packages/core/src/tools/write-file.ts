@@ -43,6 +43,7 @@ import { FileOperation } from '../telemetry/metrics.js';
 import { getSpecificMimeType } from '../utils/fileUtils.js';
 import { getLanguageFromFilePath } from '../utils/language-detection.js';
 import type { MessageBus } from '../confirmation-bus/message-bus.js';
+import { registerFileForTracking } from './fileTrackingIntegration.js';
 
 /**
  * Parameters for the WriteFile tool
@@ -277,6 +278,10 @@ class WriteFileToolInvocation extends BaseToolInvocation<
       await this.config
         .getFileSystemService()
         .writeTextFile(file_path, fileContent);
+
+      // Register file after modification to track current state
+      // This ensures LLM's own changes are not reported as external changes
+      await registerFileForTracking(this.config, file_path);
 
       // Generate diff for display result
       const fileName = path.basename(file_path);
