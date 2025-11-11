@@ -24,6 +24,7 @@ import { FileTool } from './file-tool.js';
 import { WebTool } from './web-tool.js';
 import { TodoTool } from './todo-tool.js';
 import { PythonTool } from './python-tool.js';
+import { TypeScriptTool } from './typescript-tool.js';
 // import { XlwingsTool } from './xlwings-tool.js';
 import { MarkItDownTool } from './markitdown-tool.js';
 import { GeminiSearchTool } from './gemini-search-tool.js';
@@ -89,6 +90,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     ReadManyFilesTool,
     MemoryTool,
     PythonTool,
+    TypeScriptTool,
     MarkItDownTool,
     KnowledgeBaseTool,
     GeminiSearchTool,
@@ -109,6 +111,7 @@ const ROLE_TOOLSET_MAP: Record<string, ToolClass[]> = {
     TodoTool,
     MemoryTool,
     PythonTool,
+    TypeScriptTool,
     GeminiSearchTool,
     WaitTool,
   ],
