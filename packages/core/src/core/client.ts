@@ -109,6 +109,55 @@ function createSystemReminderPart() {
   };
 }
 
+/**
+ * Creates environment awareness reminder with file change information
+ * This injects detected file changes into the user's message automatically
+ */
+async function createEnvironmentAwarenessReminderPart(
+  config: Config,
+): Promise<{ text: string } | null> {
+  try {
+    const sessionId = config.getSessionId();
+    if (!sessionId) {
+      return null;
+    }
+
+    // Dynamically import to avoid circular dependency
+    const { EnvironmentAwarenessManager } = await import(
+      '../services/environmentAwareness.js'
+    );
+
+    const manager = EnvironmentAwarenessManager.getInstance();
+    const tracker = manager.getTracker(sessionId);
+
+    // Detect changes
+    const changes = await tracker.detectChanges();
+
+    if (changes.length === 0) {
+      return null; // No changes to report
+    }
+
+    // Format changes for LLM
+    const formattedChanges = manager.formatChangesForLLM(changes);
+
+    return {
+      text: `<system_reminder>
+${formattedChanges}
+
+This information is automatically provided to keep you aware of environment changes.
+Consider these changes when responding to the user.
+Do NOT explicitly mention this reminder to the user unless directly relevant to their question.
+</system_reminder>`,
+    };
+  } catch (error) {
+    debugLogger.warn(
+      '[EnvironmentAwareness] Failed to create reminder:',
+      error,
+    );
+    return null;
+  }
+}
+
 const MAX_TURNS = 100;
 
 export class GeminiClient implements IClient {
@@ -725,15 +774,31 @@ ${envContextString}
       return turn;
     }
 
-    // Inject reminders before user messages (only on first message)
+    // Inject reminders before user messages
     let modifiedRequest = request;
-    if (Array.isArray(request) && history.length === 0) {
-      modifiedRequest = [
-        createLanguageReminderPart(),
-        createActionReminderPart(),
-        createSystemReminderPart(),
-        ...request,
-      ];
+    if (Array.isArray(request)) {
+      const reminders = [];
+
+      // First message reminders
+      if (history.length === 0) {
+        reminders.push(
+          createLanguageReminderPart(),
+          createActionReminderPart(),
+          createSystemReminderPart(),
+        );
+      }
+
+      // Environment awareness reminder (every message)
+      const envReminder = await createEnvironmentAwarenessReminderPart(
+        this.config,
+      );
+      if (envReminder) {
+        reminders.push(envReminder);
+      }
+
+      if (reminders.length > 0) {
+        modifiedRequest = [...reminders, ...request];
+      }
     }
 
     const routingContext: RoutingContext = {

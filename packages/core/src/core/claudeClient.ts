@@ -15,6 +15,55 @@ import type { Turn } from './turn.js';
 import type { UniversalMessage } from './message-types.js';
 
 /**
+ * Creates environment awareness reminder with file change information
+ * This injects detected file changes into the user's message automatically
+ */
+async function createEnvironmentAwarenessReminderPart(
+  config: Config,
+): Promise<{ text: string } | null> {
+  try {
+    const sessionId = config.getSessionId();
+    if (!sessionId) {
+      return null;
+    }
+
+    // Dynamically import to avoid circular dependency
+    const { EnvironmentAwarenessManager } = await import(
+      '../services/environmentAwareness.js'
+    );
+
+    const manager = EnvironmentAwarenessManager.getInstance();
+    const tracker = manager.getTracker(sessionId);
+
+    // Detect changes
+    const changes = await tracker.detectChanges();
+
+    if (changes.length === 0) {
+      return null; // No changes to report
+    }
+
+    // Format changes for LLM
+    const formattedChanges = manager.formatChangesForLLM(changes);
+
+    return {
+      text: `<system_reminder>
+${formattedChanges}
+
+This information is automatically provided to keep you aware of environment changes.
+Consider these changes when responding to the user.
+Do NOT explicitly mention this reminder to the user unless directly relevant to their question.
+</system_reminder>`,
+    };
+  } catch (error) {
+    console.error(
+      '[ClaudeClient] Failed to create environment awareness reminder:',
+      error,
+    );
+    return null;
+  }
+}
+
+/**
  * ClaudeClient - Manages a single Claude chat session
  *
  * Mirrors GeminiClient's structure but uses Claude API instead of Gemini.
@@ -240,10 +289,28 @@ ${envContextString}
 
     this.getChat().setSystemInstruction(systemInstruction);
 
+    // Inject environment awareness reminder before user messages
+    let modifiedRequest = request;
+    if (Array.isArray(request)) {
+      const reminders = [];
+
+      // Environment awareness reminder (every message)
+      const envReminder = await createEnvironmentAwarenessReminderPart(
+        this.config,
+      );
+      if (envReminder) {
+        reminders.push(envReminder);
+      }
+
+      if (reminders.length > 0) {
+        modifiedRequest = [...reminders, ...request];
+      }
+    }
+
     // Convert PartListUnion to Claude message format
     // Tool responses (functionResponse parts) are converted to tool_result blocks
     // and will be added to history by sendMessageStream
-    const message = this.convertRequestToClaudeMessage(request);
+    const message = this.convertRequestToClaudeMessage(modifiedRequest);
 
     // Get model from global config or use default
     const globalModel = this.config.getGlobalModel();
@@ -309,10 +376,11 @@ ${envContextString}
 
                 // Add cache creation details if present
                 if ('cache_creation' in usage && usage.cache_creation) {
-                  const cacheCreation = usage.cache_creation as unknown as Record<
-                    string,
-                    number | undefined
-                  >;
+                  const cacheCreation =
+                    usage.cache_creation as unknown as Record<
+                      string,
+                      number | undefined
+                    >;
                   tokenUsage.cacheCreation = {
                     ephemeral_5m_input_tokens:
                       cacheCreation['ephemeral_5m_input_tokens'],
@@ -391,7 +459,9 @@ ${envContextString}
                   partial_json: string;
                 };
                 // Accumulate the partial JSON
-                const accumulator = toolInputAccumulators.get(claudeEvent.index);
+                const accumulator = toolInputAccumulators.get(
+                  claudeEvent.index,
+                );
                 if (accumulator) {
                   accumulator.partialJson += inputDelta.partial_json;
                 }
@@ -468,7 +538,8 @@ ${envContextString}
 
                 // Update token usage statistics (delta provides final output token count)
                 if (tokenUsage) {
-                  tokenUsage.outputTokens = claudeEvent.usage.output_tokens || 0;
+                  tokenUsage.outputTokens =
+                    claudeEvent.usage.output_tokens || 0;
                   tokenUsage.totalTokens =
                     tokenUsage.inputTokens + tokenUsage.outputTokens;
 

@@ -15,6 +15,55 @@ import type { Turn } from './turn.js';
 import type { UniversalMessage } from './message-types.js';
 
 /**
+ * Creates environment awareness reminder with file change information
+ * This injects detected file changes into the user's message automatically
+ */
+async function createEnvironmentAwarenessReminderPart(
+  config: Config,
+): Promise<{ text: string } | null> {
+  try {
+    const sessionId = config.getSessionId();
+    if (!sessionId) {
+      return null;
+    }
+
+    // Dynamically import to avoid circular dependency
+    const { EnvironmentAwarenessManager } = await import(
+      '../services/environmentAwareness.js'
+    );
+
+    const manager = EnvironmentAwarenessManager.getInstance();
+    const tracker = manager.getTracker(sessionId);
+
+    // Detect changes
+    const changes = await tracker.detectChanges();
+
+    if (changes.length === 0) {
+      return null; // No changes to report
+    }
+
+    // Format changes for LLM
+    const formattedChanges = manager.formatChangesForLLM(changes);
+
+    return {
+      text: `<system_reminder>
+${formattedChanges}
+
+This information is automatically provided to keep you aware of environment changes.
+Consider these changes when responding to the user.
+Do NOT explicitly mention this reminder to the user unless directly relevant to their question.
+</system_reminder>`,
+    };
+  } catch (error) {
+    console.error(
+      '[OpenAIClient] Failed to create environment awareness reminder:',
+      error,
+    );
+    return null;
+  }
+}
+
+/**
  * OpenAIClient - Manages a single OpenAI chat session
  *
  * Mirrors GeminiClient's structure but uses OpenAI API instead of Gemini.
@@ -243,10 +292,28 @@ ${envContextString}
 
     this.getChat().setSystemInstruction(systemInstruction);
 
+    // Inject environment awareness reminder before user messages
+    let modifiedRequest = request;
+    if (Array.isArray(request)) {
+      const reminders = [];
+
+      // Environment awareness reminder (every message)
+      const envReminder = await createEnvironmentAwarenessReminderPart(
+        this.config,
+      );
+      if (envReminder) {
+        reminders.push(envReminder);
+      }
+
+      if (reminders.length > 0) {
+        modifiedRequest = [...reminders, ...request];
+      }
+    }
+
     // Convert PartListUnion to OpenAI message format
     // Tool responses (functionResponse parts) are converted to tool messages
     // and will be added to history by sendMessageStream
-    const message = this.convertRequestToOpenAIMessage(request);
+    const message = this.convertRequestToOpenAIMessage(modifiedRequest);
 
     // Get model from global config or use default
     const globalModel = this.config.getGlobalModel();
