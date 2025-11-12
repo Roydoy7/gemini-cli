@@ -10,6 +10,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as Diff from 'diff';
 import { debugLogger } from '../utils/debugLogger.js';
+import { ExcelParser, type ExcelSnapshot } from '../utils/excelDiff.js';
 
 const execAsync = promisify(exec);
 
@@ -27,6 +28,10 @@ interface TrackedFile {
   lastSize: number;
   /** Whether this is a text file (can generate diff) */
   isTextFile: boolean;
+  /** Whether this is an Excel file */
+  isExcelFile: boolean;
+  /** Last known Excel snapshot (for .xlsx files) */
+  lastExcelSnapshot?: ExcelSnapshot;
 }
 
 /**
@@ -129,11 +134,28 @@ export class SessionFileTracker {
     try {
       const stats = await fs.promises.stat(absolutePath);
       const isTextFile = this.isTextFile(absolutePath);
+      const isExcelFile = this.isExcelFile(absolutePath);
 
       let content: string | undefined;
       if (isTextFile && stats.size < 10 * 1024 * 1024) {
         // Only track content for text files < 10MB
         content = await fs.promises.readFile(absolutePath, 'utf-8');
+      }
+
+      let excelSnapshot: ExcelSnapshot | undefined;
+      if (isExcelFile && stats.size < 50 * 1024 * 1024) {
+        // Parse Excel files < 50MB
+        try {
+          excelSnapshot = await ExcelParser.createSnapshot(absolutePath);
+          debugLogger.log(
+            `[FileTracker] Parsed Excel file: ${absolutePath} (${excelSnapshot.sheetHashes.size} sheets)`,
+          );
+        } catch (error) {
+          debugLogger.warn(
+            `[FileTracker] Failed to parse Excel file ${absolutePath}:`,
+            error,
+          );
+        }
       }
 
       const trackedFile: TrackedFile = {
@@ -142,6 +164,8 @@ export class SessionFileTracker {
         lastMtime: stats.mtimeMs,
         lastSize: stats.size,
         isTextFile,
+        isExcelFile,
+        lastExcelSnapshot: excelSnapshot,
       };
 
       this.trackedFiles.set(absolutePath, trackedFile);
@@ -238,6 +262,38 @@ export class SessionFileTracker {
 
         // Update tracked content
         trackedFile.lastContent = newContent;
+      } else if (
+        trackedFile.isExcelFile &&
+        trackedFile.lastExcelSnapshot &&
+        stats.size < 50 * 1024 * 1024
+      ) {
+        // Generate Excel diff
+        try {
+          const newSnapshot = await ExcelParser.createSnapshot(
+            filePath,
+            trackedFile.lastExcelSnapshot,
+          );
+
+          const changes = ExcelParser.compareSnapshots(
+            trackedFile.lastExcelSnapshot,
+            newSnapshot,
+          );
+
+          if (changes.length > 0) {
+            diff = ExcelParser.formatChanges(changes);
+            debugLogger.log(
+              `[FileTracker] Excel changes detected: ${changes.length} sheet(s) modified`,
+            );
+          }
+
+          // Update tracked snapshot
+          trackedFile.lastExcelSnapshot = newSnapshot;
+        } catch (error) {
+          debugLogger.warn(
+            `[FileTracker] Failed to generate Excel diff for ${filePath}:`,
+            error,
+          );
+        }
       }
 
       // Update tracked file info
