@@ -353,19 +353,7 @@ Your core function is efficient and safe assistance. Balance extreme conciseness
       ? `\n\n---\n\n${userMemory.trim()}`
       : '';
 
-  // Add MCP virtual filesystem information if available
-  const mcpClientManager = config.getMcpClientManager();
-  const virtualFs = mcpClientManager?.getVirtualFilesystem();
-  const mcpDirectoryTree = virtualFs?.isReady()
-    ? virtualFs.getDirectoryTree()
-    : '';
-
-  const mcpSuffix =
-    mcpDirectoryTree && mcpDirectoryTree.length > 0
-      ? `\n\n---\n\n# MCP Tools Available\n\nThe following MCP (Model Context Protocol) tools are available through a virtual filesystem.\nYou can use the \`mcp_read\` tool to read specific tool definitions when needed.\n\n\`\`\`\n${mcpDirectoryTree}\n\`\`\`\n\nTo use an MCP tool:\n1. Use \`mcp_read\` to read the tool's TypeScript definition\n2. Write TypeScript code that imports and calls the tool\n3. Execute your code using the \`typescript\` tool`
-      : '';
-
-  return `${basePrompt}${memorySuffix}${mcpSuffix}`;
+  return `${basePrompt}${memorySuffix}`;
 }
 
 /**

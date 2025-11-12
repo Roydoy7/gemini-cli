@@ -23,7 +23,6 @@ import {
   McpServerEnablementManager,
   generateMcpServerKey,
 } from '../config/mcpServerEnablement.js';
-import { McpVirtualFilesystem } from '../mcp/virtual-filesystem.js';
 
 /**
  * Manages the lifecycle of multiple MCP clients, including local child processes.
@@ -43,7 +42,6 @@ export class McpClientManager {
     extensionName: string;
   }> = [];
   private mcpEnablementManager?: McpServerEnablementManager;
-  private virtualFilesystem: McpVirtualFilesystem;
 
   constructor(
     toolRegistry: ToolRegistry,
@@ -53,7 +51,6 @@ export class McpClientManager {
     this.toolRegistry = toolRegistry;
     this.cliConfig = cliConfig;
     this.eventEmitter = eventEmitter;
-    this.virtualFilesystem = new McpVirtualFilesystem(this);
   }
 
   getBlockedMcpServers() {
@@ -278,9 +275,6 @@ export class McpClientManager {
         this.maybeDiscoverMcpServer(name, config),
       ),
     );
-
-    // Generate virtual filesystem after MCP discovery completes
-    await this.virtualFilesystem.generate();
   }
 
   /**
@@ -361,12 +355,5 @@ export class McpClientManager {
    */
   getClients(): Map<string, McpClient> {
     return this.clients;
-  }
-
-  /**
-   * Get the virtual filesystem for MCP tools
-   */
-  getVirtualFilesystem(): McpVirtualFilesystem {
-    return this.virtualFilesystem;
   }
 }
