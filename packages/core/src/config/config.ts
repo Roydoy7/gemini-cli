@@ -78,7 +78,7 @@ import type { PolicyEngineConfig } from '../policy/types.js';
 import type { UserTierId } from '../code_assist/types.js';
 import { AgentRegistry } from '../agents/registry.js';
 // import { SubagentToolWrapper } from '../agents/subagent-tool-wrapper.js';
-import { McpClientManager } from '../tools/mcp-client-manager.js';
+import { McpVirtualManager } from '../tools/mcp-virtual-manager.js';
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -304,7 +304,7 @@ export interface ConfigParameters {
 
 export class Config {
   private toolRegistry!: ToolRegistry;
-  private mcpClientManager?: McpClientManager;
+  private mcpClientManager?: McpVirtualManager;
   private promptRegistry!: PromptRegistry;
   private agentRegistry!: AgentRegistry;
   private readonly sessionId: string;
@@ -575,17 +575,18 @@ export class Config {
     await this.agentRegistry.initialize();
 
     this.toolRegistry = await this.createToolRegistry();
-    this.mcpClientManager = new McpClientManager(
+    this.mcpClientManager = new McpVirtualManager(
       this.toolRegistry,
       this,
       this.eventEmitter,
     );
 
-    // Start MCP servers in background to avoid blocking initialization
-    // MCP tools will be registered dynamically as they become available
-    this.mcpClientManager.startConfiguredMcpServers().catch((error) => {
+    // Start MCP servers synchronously to ensure tools are available before chat starts
+    try {
+      await this.mcpClientManager.startConfiguredMcpServers();
+    } catch (error) {
       debugLogger.error('Error starting MCP servers:', error);
-    });
+    }
 
     await this.getExtensionLoader().start(this);
 
@@ -1028,7 +1029,7 @@ export class Config {
     return this.compressionThreshold;
   }
 
-  getMcpClientManager(): McpClientManager | undefined {
+  getMcpClientManager(): McpVirtualManager | undefined {
     return this.mcpClientManager;
   }
 

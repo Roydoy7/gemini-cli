@@ -36,7 +36,7 @@ export abstract class ExtensionLoader {
    * Fully initializes all active extensions.
    *
    * Called within `Config.initialize`, which must already have an
-   * McpClientManager, PromptRegistry, and GeminiChat set up.
+   * McpVirtualManager, PromptRegistry, and GeminiChat set up.
    */
   async start(config: Config): Promise<void> {
     this.isStarting = true;

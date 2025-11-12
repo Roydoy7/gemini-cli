@@ -83,13 +83,28 @@ export async function getEnvironmentContext(config: Config): Promise<Part[]> {
   // Generate encoding warnings based on system language
   let encodingWarning = '';
   if (systemLanguage === 'ja') {
-    encodingWarning = '\nWARNING: Japanese OS detected - be careful of Shift_JIS encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
+    encodingWarning =
+      '\nWARNING: Japanese OS detected - be careful of Shift_JIS encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
   } else if (systemLanguage === 'zh') {
-    encodingWarning = '\nWARNING: Chinese OS detected - be careful of GBK/GB2312 encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
+    encodingWarning =
+      '\nWARNING: Chinese OS detected - be careful of GBK/GB2312 encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
   } else if (systemLanguage === 'ko') {
-    encodingWarning = '\nWARNING: Korean OS detected - be careful of EUC-KR encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
+    encodingWarning =
+      '\nWARNING: Korean OS detected - be careful of EUC-KR encoding when reading/writing files. Use UTF-8 encoding explicitly when possible.';
   } else if (platform === 'win32') {
-    encodingWarning = '\nNOTE: Windows OS detected - default encoding may vary by locale. Use UTF-8 encoding explicitly when reading/writing files.';
+    encodingWarning =
+      '\nNOTE: Windows OS detected - default encoding may vary by locale. Use UTF-8 encoding explicitly when reading/writing files.';
+  }
+
+  // Get MCP tools context if available
+  const mcpManager = config.getMcpClientManager();
+  let mcpToolsContext = '';
+  if (mcpManager) {
+    try {
+      mcpToolsContext = await mcpManager.getMcpToolsContext();
+    } catch (_error) {
+      // Silently ignore errors - MCP tools are optional
+    }
   }
 
   const context = `
@@ -101,6 +116,7 @@ IMPORTANT: DO NOT let the os language or locale affect your response language - 
 ${directoryContext}
 IMPORTANT: REFUSE to operate outside of <workspace> tags above, if the user asks you to do so, warn them that you can only operate within <workspace>.
 Operate under subfolders of <workspace> is allowed.
+${mcpToolsContext ? '\n\n' + mcpToolsContext : ''}
         `.trim();
 
   const initialParts: Part[] = [{ text: context }];

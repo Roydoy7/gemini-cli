@@ -481,12 +481,33 @@ ${transformedCode
       // Progress reporting function (exposed to user code)
       report_progress: progressReporter,
 
-      // MCP Tool Loader (placeholder - will be implemented later)
+      // MCP Tool Loader - dynamically loads MCP tools
+      // Used for legacy .mcp/ import syntax: import { tool } from '.mcp/server/tool'
       __loadMcpTool: async (serverName: string, toolName: string) => {
-        // TODO: Integrate with McpClientManager to load actual MCP tools
-        throw new Error(
-          `MCP tool loading not yet implemented: ${serverName}/${toolName}`,
-        );
+        const mcpManager = this.config.getMcpClientManager();
+        if (!mcpManager) {
+          throw new Error('MCP client manager not available');
+        }
+
+        // Return an object with the tool function
+        // The function signature matches what's generated in the virtual filesystem
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          [toolName]: async (input: any) =>
+            await mcpManager.callTool(serverName, toolName, input),
+        };
+      },
+
+      // MCP Client interface for calling MCP tools from generated code
+      __mcpClient: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        callTool: async (serverName: string, toolName: string, input: any) => {
+          const mcpManager = this.config.getMcpClientManager();
+          if (!mcpManager) {
+            throw new Error('MCP client manager not available');
+          }
+          return await mcpManager.callTool(serverName, toolName, input);
+        },
       },
 
       // Whitelisted globals

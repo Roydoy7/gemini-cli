@@ -15,7 +15,7 @@ import {
 } from 'vitest';
 import { SimpleExtensionLoader } from './extensionLoader.js';
 import type { Config, GeminiCLIExtension } from '../config/config.js';
-import { type McpClientManager } from '../tools/mcp-client-manager.js';
+import { type McpVirtualManager } from '../tools/mcp-virtual-manager.js';
 import type { GeminiClient } from '../core/client.js';
 
 const mockRefreshServerHierarchicalMemory = vi.hoisted(() => vi.fn());
@@ -31,7 +31,7 @@ vi.mock('./memoryDiscovery.js', async (importActual) => {
 describe('SimpleExtensionLoader', () => {
   let mockConfig: Config;
   let extensionReloadingEnabled: boolean;
-  let mockMcpClientManager: McpClientManager;
+  let mockMcpClientManager: McpVirtualManager;
   let mockGeminiClientSetTools: MockInstance<
     typeof GeminiClient.prototype.setTools
   >;
@@ -58,7 +58,7 @@ describe('SimpleExtensionLoader', () => {
     mockMcpClientManager = {
       startExtension: vi.fn(),
       stopExtension: vi.fn(),
-    } as unknown as McpClientManager;
+    } as unknown as McpVirtualManager;
     extensionReloadingEnabled = false;
     mockGeminiClientSetTools = vi.fn();
     mockConfig = {
